@@ -45,3 +45,11 @@
   font-weight: bold;
   margin-bottom: 0.5rem;
 }
+
+.pagination {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1em;
+}
