@@ -4,41 +4,11 @@ SRC:
 
         git clone git@gitlab.cirg.washington.edu:cnics/mci.git
 
-Target:
-
-        /srv/www/$FQDN/htdocs/mci
-        (legacy)
-
-    For container-based deployments see `docs/docker-compose.md` which describes
-    how to run the application with Docker Compose and mount persistent volumes.
-
-Deploy Notes:
-
-        chown -R cnics:www-data ~/mci
-        chmod 2770 ~/mci/app/chartUploads
-        chmod 2775 ~/mci/app/tmp/[cache|logs|sessions|test]
-
-Puppet Hooks:
-
-        app/config/database.php
-
-TODO:
-
-        Verify that .htaccess has no explicitly allowed users ( what is the default ? )
-
-
 DOCKER DATABASE:
 
         cp .env.example .env
         docker-compose up -d mariadb
 
-DATABASE INITIALIZATION:
-
-        # Core schema
-        mysql -u$DB_USER -p$DB_PASSWORD $DB_NAME < app/config/sql/sessions.sql
-        # Additional schemas are under app/config/sql/
-        # Test dataset
-        mysql $DB_NAME < app/tests/cnics-mci_test.test_event_derived_datas.schema.sql
 ## Container Setup
 
 This repository includes a lightweight Docker configuration based on the setup used in the `asbi-screening-app` project. A basic PHP/Apache image is provided along with a docker-compose file for local development.
