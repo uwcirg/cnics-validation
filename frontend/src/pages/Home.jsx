@@ -121,55 +121,7 @@ function Home() {
         <Table rows={filteredNeedPacketRows} />
       </section>
 
-      <div className="sections-grid">
-        <details id="admin-tools" className="home-details" open>
-          <summary>Administrative Tools</summary>
-          <ul>
-            <li>
-              <Link to="/events/viewAll">View all events</Link>
-            </li>
-            <li>
-              <Link to="/events/add">Add an event</Link>
-            </li>
-            <li>
-              <Link to="/events/addMany">Add multiple events from a CSV file</Link>
-            </li>
-          </ul>
-        </details>
-
-        <details id="users" className="home-details" open>
-          <summary>Users</summary>
-          <ul>
-            <li>
-              <Link to="/users/add">Add a user</Link>
-            </li>
-            <li>
-              <Link to="/users/viewAll">Edit/Delete users</Link>
-            </li>
-          </ul>
-        </details>
-
-        <details id="upload" className="home-details" open>
-          <summary>Upload Packets</summary>
-          <ul>
-            <li>
-              <Link to="/events/upload">Upload New Packets</Link>
-            </li>
-            <li>
-              <Link to="/events/upload">Re-upload Existing Packets</Link>
-            </li>
-          </ul>
-        </details>
-
-        <details id="review" className="home-details" open>
-          <summary>Reviewer Tools</summary>
-          <ul>
-            <li>
-              <Link to="/events/review">Review Events</Link>
-            </li>
-          </ul>
-        </details>
-      </div>
+      {/* Dropdown menus are now available in the top navigation */}
     </div>
   )
 }

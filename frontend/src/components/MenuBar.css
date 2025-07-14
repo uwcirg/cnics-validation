@@ -4,3 +4,17 @@
   list-style: none;
   padding: 0;
 }
+
+.menu-bar details summary {
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.menu-bar li details ul {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0.25rem 0.5rem;
+  background: #f8f8f8;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
