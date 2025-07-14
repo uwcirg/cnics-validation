@@ -1,0 +1,19 @@
+.infobox {
+  background-color: #f2e8c2;
+  border: #f1d676 1px solid;
+  padding: 5px 10px;
+  border-radius: 12px;
+  margin-bottom: 1em;
+}
+
+.indent1 {
+  margin-left: 1em;
+}
+
+.indent2 {
+  margin-left: 2em;
+}
+
+.indent3 {
+  margin-left: 3em;
+}
