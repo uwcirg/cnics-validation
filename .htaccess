@@ -1,0 +1,17 @@
+# Managed in https://gitlab.cirg.washington.edu/
+
+<IfModule mod_rewrite.c>
+   RewriteEngine on
+   RewriteRule    ^$ app/webroot/    [L]
+   RewriteRule    (.*) app/webroot/$1 [L]
+</IfModule>
+SSLRequireSSL
+ErrorDocument 403 "You must use SSL.
+
+AuthName "MCI"
+AuthType basic
+
+AuthBasicProvider ldap
+AuthLDAPURL "ldaps://ldap1.cirg.washington.edu ldap2.cirg.washington.edu/ou=cnics,ou=projects,ou=Clinical Informatics Research Group,dc=cirg,dc=us"
+
+require ldap-group cn=cnicsUpload,ou=groups,ou=cnics,ou=projects,ou="Clinical Informatics Research Group",dc=cirg,dc=us
