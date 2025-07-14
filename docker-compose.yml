@@ -1,12 +1,31 @@
 version: "3.8"
 services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:22.0
+    container_name: keycloak
+    command: ["start-dev"]
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KEYCLOAK_IMPORT: ${KEYCLOAK_IMPORT:-/opt/keycloak/data/import/example-realm.json}
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./keycloak/realm:/opt/keycloak/data/import
+
   mariadb:
     image: mariadb:10.5
     restart: unless-stopped
     container_name: mariadb
     environment:
-      MYSQL_ROOT_PASSWORD: $Satinder.96
-      MYSQL_DATABASE: $cnics_mci
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    env_file:
+      - .env
     volumes:
       - db_data:/var/lib/mysql
     ports:
@@ -16,9 +35,11 @@ services:
     build: ./flask_backend
     environment:
       - DB_HOST=mariadb
-      - DB_USER=$root
-      - DB_PASSWORD=$Satinder.96
-      - DB_NAME=$cnics_mci
+      - DB_USER=${DB_USER:-root}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME:-mci}
+    env_file:
+      - .env
     depends_on:
       - mariadb
     ports:
@@ -28,6 +49,8 @@ services:
     build: ./frontend
     environment:
       - VITE_API_URL=http://backend:3000
+    env_file:
+      - .env
     ports:
       - "3000:3000"
 
