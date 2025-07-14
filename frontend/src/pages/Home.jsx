@@ -2,6 +2,11 @@ import { Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import './Home.css'
 
+// Base URL for the backend API. When running under Docker Compose the
+// environment variable is provided by the compose file. Fallback to a
+// relative path so the frontend can be served without configuration.
+const API_BASE = import.meta.env.VITE_API_URL || ''
+
 function Table({ rows }) {
   if (!rows.length) return <p>No data found.</p>
   const headers = Object.keys(rows[0])
@@ -33,12 +38,12 @@ function Home() {
   const [search, setSearch] = useState('')
 
   useEffect(() => {
-    fetch('/api/tables/events')
+    fetch(`${API_BASE}/api/tables/events`)
       .then((res) => res.json())
       .then((json) => setRows(json.data || []))
       .catch(() => {})
 
-    fetch('/api/events/need_packets')
+    fetch(`${API_BASE}/api/events/need_packets`)
       .then((res) => res.json())
       .then((json) => setNeedPacketRows(json.data || []))
       .catch(() => {})
