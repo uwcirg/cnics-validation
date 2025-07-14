@@ -37,6 +37,8 @@ DATABASE INITIALIZATION:
         # Core schema
         mysql -u$DB_USER -p$DB_PASSWORD $DB_NAME < app/config/sql/sessions.sql
         # Additional schemas are under app/config/sql/
+        # Sample CNICS dataset
+        mysql -u$DB_USER -p$DB_PASSWORD $DB_NAME < flask_backend/cnics.sql
         # Test dataset
         mysql $DB_NAME < app/tests/cnics-mci_test.test_event_derived_datas.schema.sql
 ## Container Setup
