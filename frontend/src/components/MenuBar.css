@@ -1,4 +1,4 @@
-.menu-bar ul {
+.menu-bar > ul {
   display: flex;
   gap: 1rem;
   list-style: none;
@@ -17,4 +17,5 @@
   background: #f8f8f8;
   border: 1px solid #ccc;
   border-radius: 4px;
+  display: block;
 }

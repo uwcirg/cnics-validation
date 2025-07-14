@@ -1,9 +1,24 @@
 import { Link } from 'react-router-dom'
+import { useEffect, useRef } from 'react'
 import './MenuBar.css'
 
 function MenuBar({ admin, uploader, reviewer }) {
+  const menuRef = useRef(null)
+
+  useEffect(() => {
+    function handleClick(event) {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        menuRef.current
+          .querySelectorAll('details[open]')
+          .forEach((detail) => detail.removeAttribute('open'))
+      }
+    }
+    document.addEventListener('click', handleClick)
+    return () => document.removeEventListener('click', handleClick)
+  }, [])
+
   return (
-    <nav className="menu-bar">
+    <nav className="menu-bar" ref={menuRef}>
       <ul>
         {admin && (
           <li>
