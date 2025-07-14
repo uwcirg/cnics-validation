@@ -29,6 +29,7 @@ function Table({ rows }) {
 
 function Home() {
   const [rows, setRows] = useState([])
+  const [needPacketRows, setNeedPacketRows] = useState([])
   const [search, setSearch] = useState('')
 
   useEffect(() => {
@@ -36,9 +37,20 @@ function Home() {
       .then((res) => res.json())
       .then((json) => setRows(json.data || []))
       .catch(() => {})
+
+    fetch('/api/events/need_packets')
+      .then((res) => res.json())
+      .then((json) => setNeedPacketRows(json.data || []))
+      .catch(() => {})
   }, [])
 
   const filteredRows = rows.filter((row) =>
+    Object.values(row).some((v) =>
+      String(v).toLowerCase().includes(search.toLowerCase())
+    )
+  )
+
+  const filteredNeedPacketRows = needPacketRows.filter((row) =>
     Object.values(row).some((v) =>
       String(v).toLowerCase().includes(search.toLowerCase())
     )
@@ -102,6 +114,11 @@ function Home() {
       <section>
         <h3>Table Preview</h3>
         <Table rows={filteredRows} />
+      </section>
+
+      <section>
+        <h3>Events That Need Packets</h3>
+        <Table rows={filteredNeedPacketRows} />
       </section>
 
       <div className="sections-grid">

@@ -47,6 +47,17 @@ def get_table(name):
         print(exc)
         return jsonify({'error': 'Failed to fetch table data'}), 500
 
+
+@app.route('/api/events/need_packets')
+@requires_auth
+def events_need_packets():
+    try:
+        rows = table_service.get_events_need_packets()
+        return jsonify({'data': rows})
+    except Exception as exc:
+        print(exc)
+        return jsonify({'error': 'Failed to fetch table data'}), 500
+
 if __name__ == '__main__':
     port = int(os.getenv('PORT', '3000'))
     app.run(host='0.0.0.0', port=port)
