@@ -1,20 +1,20 @@
 version: "3.8"
 
 services:
-  keycloak:
-    image: quay.io/keycloak/keycloak:22.0
-    container_name: keycloak
-    command: ["start-dev"]
-    environment:
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
-      KEYCLOAK_IMPORT: ${KEYCLOAK_IMPORT:-/opt/keycloak/data/import/example-realm.json}
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./keycloak/realm:/opt/keycloak/data/import
-    networks:
-      - internal
+  # keycloak:
+  #   image: quay.io/keycloak/keycloak:22.0
+  #   container_name: keycloak
+  #   command: ["start-dev"]
+  #   environment:
+  #     KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+  #     KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+  #     KEYCLOAK_IMPORT: ${KEYCLOAK_IMPORT:-/opt/keycloak/data/import/example-realm.json}
+  #   ports:
+  #     - "8080:8080"
+  #   volumes:
+  #     - ./keycloak/realm:/opt/keycloak/data/import
+  #   networks:
+  #     - internal
 
   mariadb:
     image: mariadb:10.11
