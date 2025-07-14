@@ -20,8 +20,9 @@ services:
     image: mariadb:10.11
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: example
-      MYSQL_DATABASE: mci
+      MYSQL_ROOT_PASSWORD: Satinder.06
+      MYSQL_DATABASE: cnics_mci
+      MYSQL_USER: root
     volumes:
       - mariadb-data:/var/lib/mysql
       - logs-data:/var/log/mysql
