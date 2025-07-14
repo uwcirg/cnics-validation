@@ -36,7 +36,7 @@ This repository includes a lightweight Docker configuration based on the setup u
 
 Runtime configuration is provided via a `.env` file that you create by
 copying `.env.example`. Docker Compose automatically loads this file when the
-containers are started. The template defines the following variables:
+services are built or started. The template defines the following variables:
 
 - `DB_ROOT_PASSWORD` – password for the MariaDB root user.
 - `DB_NAME` – name of the application's database.
