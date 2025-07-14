@@ -10,3 +10,4 @@ app/tmp/*
 frontend/node_modules/*
 frontend/dist
 backend/node_modules/*
+.env

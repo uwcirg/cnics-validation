@@ -64,13 +64,18 @@ This repository includes a lightweight Docker configuration based on the setup u
 
 ### Environment Variables
 
-Runtime configuration is provided via `.env` which is loaded automatically by
-`docker-compose`. The following variables are available:
+Runtime configuration is provided via a `.env` file that you create by
+copying `.env.example`. Docker Compose automatically loads this file when the
+containers are started. The template defines the following variables:
 
-- `FHIR_SERVER` – URL of the FHIR server used by the application.
+- `DB_ROOT_PASSWORD` – password for the MariaDB root user.
+- `DB_NAME` – name of the application's database.
+- `DB_USER` – database user for the application.
+- `DB_PASSWORD` – password for `DB_USER`.
 - `VITE_API_URL` – base URL of the backend API consumed by the React frontend.
+- `FHIR_SERVER` – URL of the FHIR server used by the application.
 
-You may override these values by editing your `.env` file.
+Override these values in your copied `.env` file as needed.
 
 ## Local Development
 
