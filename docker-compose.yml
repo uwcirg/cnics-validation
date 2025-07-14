@@ -26,10 +26,22 @@ services:
     ports:
       - "3306:3306"
 
+  backend:
+    build: ./flask_backend
+    environment:
+      - DB_HOST=mariadb
+      - DB_USER=${DB_USER:-root}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME:-mci}
+    depends_on:
+      - mariadb
+    ports:
+      - "3001:3000"
+
   web:
     build: ./frontend
     environment:
-      - VITE_API_URL=http://localhost
+      - VITE_API_URL=http://backend:3000
     ports:
       - "3000:3000"
 
