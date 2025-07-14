@@ -27,7 +27,7 @@ TODO:
         Verify that .htaccess has no explicitly allowed users ( what is the default ? )
 
 
-DOCKER MARIADB:
+DOCKER DATABASE:
 
         cp .env.example .env
         docker-compose up -d mariadb
@@ -45,21 +45,32 @@ This repository includes a lightweight Docker configuration based on the setup u
 
 ### Build and Run
 
-```bash
-# build the container
-docker-compose build
+1. Copy `.env.example` to `.env` and edit if necessary. `VITE_API_URL` should
+   point at the backend API (defaults to `http://localhost:3001`).
+2. Build the Docker images:
 
-# start the container on http://localhost:8080
-docker-compose up
-```
+   ```bash
+   docker-compose build
+   ```
+
+3. Start the stack:
+
+   ```bash
+   docker-compose up
+   ```
+
+   The frontend will be served on <http://localhost:3000/> and the backend API
+   on <http://localhost:3001/>.
 
 ### Environment Variables
 
-Runtime configuration is provided via `default.env` which is loaded by `docker-compose`. The following variables are available:
+Runtime configuration is provided via `.env` which is loaded automatically by
+`docker-compose`. The following variables are available:
 
 - `FHIR_SERVER` – URL of the FHIR server used by the application.
+- `VITE_API_URL` – base URL of the backend API consumed by the React frontend.
 
-You may override these values by creating your own `.env` or editing `default.env`.
+You may override these values by editing your `.env` file.
 
 ## Local Development
 
