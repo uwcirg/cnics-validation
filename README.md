@@ -59,6 +59,9 @@ This repository includes a lightweight Docker configuration based on the setup u
    docker-compose up
    ```
 
+   If you modify frontend code later, rerun `docker-compose up --build` so
+   the updated bundle is served.
+
    The frontend will be served on <http://localhost:3000/> and the backend API
    on <http://localhost:3001/>.
 

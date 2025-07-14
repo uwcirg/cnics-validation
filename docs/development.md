@@ -4,6 +4,8 @@ These steps start the frontend and backend using Docker Compose.
 
 1. Copy `.env.example` to `.env`.
 2. Run `docker-compose up --build` to build images and start containers.
+   Re-run this command after making changes to the frontend so that the
+   production bundle is rebuilt.
 3. Open <http://localhost:3000/> in your browser. The backend API will be
    available at <http://localhost:3001/>.
 
