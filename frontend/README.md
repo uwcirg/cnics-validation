@@ -52,3 +52,20 @@ To create static files under `dist/` run:
 ```bash
 npm run build
 ```
+
+## Troubleshooting build errors
+
+If `npm run build` fails or you see a "Permission denied" error for
+`node_modules/.bin/vite`, ensure the Vite binary is executable:
+
+```bash
+chmod +x node_modules/.bin/vite
+```
+
+Should problems persist (for example due to the known Rollup caching issue),
+remove `node_modules` and `package-lock.json` and reinstall dependencies:
+
+```bash
+rm -rf node_modules package-lock.json
+npm install
+```
