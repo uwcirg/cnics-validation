@@ -52,3 +52,11 @@ To create static files under `dist/` run:
 ```bash
 npm run build
 ```
+
+## Linting
+
+Run ESLint from the repository root:
+
+```bash
+npm run lint
+```
