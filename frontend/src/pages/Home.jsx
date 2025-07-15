@@ -109,6 +109,28 @@ function Home() {
         packet.
       </p>
 
+
+      <section>
+        <h3>Quick Search</h3>
+        <input
+          className="quick-search"
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search"
+        />
+      </section>
+
+      <section>
+        <h3>Table Preview</h3>
+        <Table rows={filteredRows} />
+      </section>
+
+      <section>
+        <h3>Events That Need Packets</h3>
+        <Table rows={filteredNeedPacketRows} />
+      </section>
+
       <div className="infobox">
         <h3>Review packets should contain:</h3>
         <ol>
