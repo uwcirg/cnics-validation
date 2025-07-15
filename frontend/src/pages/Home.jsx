@@ -63,7 +63,8 @@ function Home() {
   const [search, setSearch] = useState('')
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/tables/events`)
+    // Use the events_view provided by the backend instead of the raw table
+    fetch(`${API_BASE}/api/tables/events_view`)
       .then((res) => res.json())
       .then((json) => setRows(json.data || []))
       .catch(() => {})
