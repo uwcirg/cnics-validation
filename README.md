@@ -11,7 +11,7 @@ DOCKER DATABASE:
 
 ## Container Setup
 
-This repository includes a lightweight Docker configuration based on the setup used in the `asbi-screening-app` project. A basic PHP/Apache image is provided along with a docker-compose file for local development.
+This repository includes a lightweight Docker configuration based on the setup used in the `asbi-screening-app` project. The compose file builds the React frontend and Flask backend for local development.
 
 ### Build and Run
 
