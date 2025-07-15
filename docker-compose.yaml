@@ -16,6 +16,7 @@ services:
 
   web:
     image: php:8.1-apache
+    command: ["apache2-foreground"]
     volumes:
       - .:/var/www/html:ro
     environment:
