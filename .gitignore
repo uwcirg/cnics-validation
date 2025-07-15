@@ -12,3 +12,4 @@ frontend/dist
 backend/node_modules/*
 .env
 docker-compose.yaml
+app/webroot/files/*.pdf

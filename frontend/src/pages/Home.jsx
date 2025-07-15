@@ -63,7 +63,8 @@ function Home() {
   const [search, setSearch] = useState('')
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/tables/events`)
+    // Use the events_view provided by the backend instead of the raw table
+    fetch(`${API_BASE}/api/tables/events_view`)
       .then((res) => res.json())
       .then((json) => setRows(json.data || []))
       .catch(() => {})
@@ -128,6 +129,40 @@ function Home() {
             .pdf
           </a>
         </div>
+      </div>
+
+      <div className="infobox">
+        <h3>Additional Documents:</h3>
+        <ul>
+          <li>
+            <a href="/files/CNICS MI event scrubbing protocol.doc" download>
+              Event Scrubbing Protocol
+            </a>
+            {' | '}
+            <a href="/files/CNICS MI event scrubbing protocol.pdf" target="_blank">PDF</a>
+          </li>
+          <li>
+            <a href="/files/CNICS VTE Review packet assembly instructions.doc" download>
+              VTE Packet Assembly Instructions
+            </a>
+            {' | '}
+            <a href="/files/CNICS VTE Review packet assembly instructions.pdf" target="_blank">PDF</a>
+          </li>
+          <li>
+            <a href="/files/NA-ACCORD MI Review packet assembly instructions.doc" download>
+              NA-ACCORD Packet Assembly Instructions
+            </a>
+            {' | '}
+            <a href="/files/NA-ACCORD MI Review packet assembly instructions.pdf" target="_blank">PDF</a>
+          </li>
+          <li>
+            <a href="/files/NA-ACCORD MI reviewer instructions.doc" download>
+              NA-ACCORD Reviewer Instructions
+            </a>
+            {' | '}
+            <a href="/files/NA-ACCORD MI reviewer instructions.pdf" target="_blank">PDF</a>
+          </li>
+        </ul>
       </div>
 
       <section>

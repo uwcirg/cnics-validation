@@ -2,3 +2,5 @@ flask
 python-dotenv
 mysql-connector-python
 python-keycloak
+python-docx
+reportlab

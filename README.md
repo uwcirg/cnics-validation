@@ -54,11 +54,9 @@ See [docs/development.md](docs/development.md) for instructions on running the a
 ## Generating PDF copies of instruction files
 
 Some pages link to `.pdf` versions of the documents under `app/webroot/files/`.
-These PDFs are not stored in the repository. Run `python generate_pdfs.py` from
-the project root to create them locally. The script converts modern `.docx`
-files to PDF and generates placeholder PDFs for older `.doc` files.
-The script requires the `python-docx` and `reportlab` packages which can be
-installed with `pip install python-docx reportlab`.
+If a requested PDF does not exist the Flask backend will generate it on demand
+using `python-docx` and `reportlab`. You can also pre-create the PDFs locally by
+running `python generate_pdfs.py` from the project root.
 
 
 
