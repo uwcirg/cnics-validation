@@ -91,6 +91,11 @@ function Home() {
     <div className="home-container">
       <h1>CNICS Validation</h1>
       <p>Welcome to the CNICS Validation application.</p>
+      <p>
+        Use this page to find an event and upload its packet. Please note the
+        instructions on the right about how to properly assemble a review
+        packet.
+      </p>
 
       <div className="infobox">
         <h3>Review packets should contain:</h3>
@@ -184,6 +189,11 @@ function Home() {
       <section>
         <h3>Events That Need Packets</h3>
         <Table rows={filteredNeedPacketRows} />
+      </section>
+
+      <section>
+        <h3>Event Packets for Your Review</h3>
+        <p>No events to review.</p>
       </section>
 
       {/* Dropdown menus are now available in the top navigation */}
