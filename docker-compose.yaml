@@ -30,9 +30,12 @@ services:
       - internal
 
   web:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL}
     environment:
-      VITE_API_URL: http://localhost:3001
+      VITE_API_URL: ${VITE_API_URL}
     depends_on:
       - backend
     ports:
