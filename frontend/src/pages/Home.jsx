@@ -60,6 +60,7 @@ function Table({ rows }) {
 function Home() {
   const [rows, setRows] = useState([])
   const [needPacketRows, setNeedPacketRows] = useState([])
+  const [reviewRows, setReviewRows] = useState([])
   const [search, setSearch] = useState('')
 
   useEffect(() => {
@@ -73,6 +74,11 @@ function Home() {
       .then((res) => res.json())
       .then((json) => setNeedPacketRows(json.data || []))
       .catch(() => {})
+
+    fetch(`${API_BASE}/api/events/for_review`)
+      .then((res) => res.json())
+      .then((json) => setReviewRows(json.data || []))
+      .catch(() => {})
   }, [])
 
   const filteredRows = rows.filter((row) =>
@@ -82,6 +88,12 @@ function Home() {
   )
 
   const filteredNeedPacketRows = needPacketRows.filter((row) =>
+    Object.values(row).some((v) =>
+      String(v).toLowerCase().includes(search.toLowerCase())
+    )
+  )
+
+  const filteredReviewRows = reviewRows.filter((row) =>
     Object.values(row).some((v) =>
       String(v).toLowerCase().includes(search.toLowerCase())
     )
@@ -193,7 +205,11 @@ function Home() {
 
       <section>
         <h3>Event Packets for Your Review</h3>
-        <p>No events to review.</p>
+        {filteredReviewRows.length ? (
+          <Table rows={filteredReviewRows} />
+        ) : (
+          <p>No events to review.</p>
+        )}
       </section>
 
       {/* Dropdown menus are now available in the top navigation */}
