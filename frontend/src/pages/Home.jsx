@@ -60,6 +60,7 @@ function Table({ rows }) {
 function Home() {
   const [rows, setRows] = useState([])
   const [needPacketRows, setNeedPacketRows] = useState([])
+  const [reviewRows, setReviewRows] = useState([])
   const [search, setSearch] = useState('')
 
   useEffect(() => {
@@ -72,6 +73,11 @@ function Home() {
     fetch(`${API_BASE}/api/events/need_packets`)
       .then((res) => res.json())
       .then((json) => setNeedPacketRows(json.data || []))
+      .catch(() => {})
+
+    fetch(`${API_BASE}/api/events/for_review`)
+      .then((res) => res.json())
+      .then((json) => setReviewRows(json.data || []))
       .catch(() => {})
   }, [])
 
@@ -87,10 +93,22 @@ function Home() {
     )
   )
 
+  const filteredReviewRows = reviewRows.filter((row) =>
+    Object.values(row).some((v) =>
+      String(v).toLowerCase().includes(search.toLowerCase())
+    )
+  )
+
   return (
     <div className="home-container">
       <h1>CNICS Validation</h1>
       <p>Welcome to the CNICS Validation application.</p>
+      <p>
+        Use this page to find an event and upload its packet. Please note the
+        instructions on the right about how to properly assemble a review
+        packet.
+      </p>
+
 
       <section>
         <h3>Quick Search</h3>
@@ -185,6 +203,36 @@ function Home() {
           </li>
         </ul>
       </div>
+
+      <section>
+        <h3>Quick Search</h3>
+        <input
+          className="quick-search"
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search"
+        />
+      </section>
+
+      <section>
+        <h3>Table Preview</h3>
+        <Table rows={filteredRows} />
+      </section>
+
+      <section>
+        <h3>Events That Need Packets</h3>
+        <Table rows={filteredNeedPacketRows} />
+      </section>
+
+      <section>
+        <h3>Event Packets for Your Review</h3>
+        {filteredReviewRows.length ? (
+          <Table rows={filteredReviewRows} />
+        ) : (
+          <p>No events to review.</p>
+        )}
+      </section>
 
       {/* Dropdown menus are now available in the top navigation */}
     </div>

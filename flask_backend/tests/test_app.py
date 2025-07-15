@@ -39,3 +39,26 @@ def test_auth_required_need_packets(mock_service):
     client = app_mod.app.test_client()
     res = client.get('/api/events/need_packets')
     assert res.status_code == 401
+
+
+@patch('flask_backend.table_service.get_events_for_review')
+def test_get_for_review_route(mock_service):
+    mock_service.return_value = [{'ID': 2}]
+    import importlib
+    app_mod = importlib.import_module('flask_backend.app')
+    app_mod.keycloak_openid = None
+    client = app_mod.app.test_client()
+    res = client.get('/api/events/for_review')
+    assert res.status_code == 200
+    assert res.get_json() == {'data': [{'ID': 2}]}
+
+
+@patch('flask_backend.table_service.get_events_for_review')
+def test_auth_required_for_review(mock_service):
+    mock_service.return_value = []
+    import importlib
+    app_mod = importlib.import_module('flask_backend.app')
+    app_mod.keycloak_openid = object()
+    client = app_mod.app.test_client()
+    res = client.get('/api/events/for_review')
+    assert res.status_code == 401
