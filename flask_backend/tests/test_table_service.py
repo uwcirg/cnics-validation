@@ -28,5 +28,7 @@ def test_get_events_need_packets(mock_get_pool):
     rows = ts.get_events_need_packets()
 
     mock_get_pool.assert_called()
-    assert "GROUP BY e.id" in mock_cursor.execute.call_args.args[0]
+    query = mock_cursor.execute.call_args.args[0]
+    assert "GROUP BY e.id" in query
+    assert ("JOIN patients" in query) or ("JOIN uw_patients2" in query)
     assert rows == [{'ID': 1}]
