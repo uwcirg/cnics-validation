@@ -12,5 +12,5 @@ def test_create_views(mock_connect):
 
     mock_connect.assert_called()
     assert "CREATE OR REPLACE VIEW" in mock_cursor.execute.call_args.args[0]
-    assert "JOIN uw_patients" in mock_cursor.execute.call_args.args[0]
+    assert "JOIN uw_patients2" in mock_cursor.execute.call_args.args[0]
     mock_conn.commit.assert_called()

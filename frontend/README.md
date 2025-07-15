@@ -68,4 +68,11 @@ remove `node_modules` and `package-lock.json` and reinstall dependencies:
 ```bash
 rm -rf node_modules package-lock.json
 npm install
+
+## Linting
+
+Run ESLint from the repository root:
+
+```bash
+npm run lint
 ```
