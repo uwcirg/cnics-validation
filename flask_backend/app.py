@@ -103,6 +103,17 @@ def events_for_review():
         return jsonify({'error': 'Failed to fetch table data'}), 500
 
 
+@app.route('/api/events/status_summary')
+@requires_auth
+def events_status_summary():
+    try:
+        summary = table_service.get_event_status_summary()
+        return jsonify({'data': summary})
+    except Exception as exc:
+        print(exc)
+        return jsonify({'error': 'Failed to fetch table data'}), 500
+
+
 @app.route('/files/<path:filename>')
 def get_file(filename: str):
     file_path = os.path.join(FILES_DIR, filename)

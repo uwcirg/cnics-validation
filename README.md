@@ -66,3 +66,10 @@ running `python generate_pdfs.py` from the project root.
 The Flask backend under `flask_backend/` exposes REST endpoints that the React frontend fetches. Docker Compose runs a `backend` service alongside the `web` frontend service. The frontend reads the API base URL from the `VITE_API_URL` environment variable.
 
 See [docs/separation_of_duties.md](docs/separation_of_duties.md) for details on the responsibilities of each component.
+
+### Available Endpoints
+
+- `/api/tables/<name>` – return rows from a database table or view.
+- `/api/events/need_packets` – events awaiting packet uploads.
+- `/api/events/for_review` – events with packets ready for review.
+- `/api/events/status_summary` – counts of events grouped by status.
