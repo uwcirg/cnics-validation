@@ -77,3 +77,14 @@ def get_events_for_review():
     cursor.close()
     conn.close()
     return rows
+
+
+def get_event_status_summary():
+    """Return a mapping of event status names to row counts."""
+    conn = get_pool().get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT status, COUNT(*) AS count FROM events GROUP BY status")
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return {row["status"]: row["count"] for row in rows}
