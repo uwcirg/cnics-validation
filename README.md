@@ -8,6 +8,7 @@ DOCKER DATABASE:
 
         cp .env.example .env
         docker-compose up -d mariadb
+        # Initialization scripts load `cnics.sql` and create the `events_view` view
 
 ## Container Setup
 
