@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import './Home.css'
 
@@ -203,36 +202,6 @@ function Home() {
           </li>
         </ul>
       </div>
-
-      <section>
-        <h3>Quick Search</h3>
-        <input
-          className="quick-search"
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search"
-        />
-      </section>
-
-      <section>
-        <h3>Table Preview</h3>
-        <Table rows={filteredRows} />
-      </section>
-
-      <section>
-        <h3>Events That Need Packets</h3>
-        <Table rows={filteredNeedPacketRows} />
-      </section>
-
-      <section>
-        <h3>Event Packets for Your Review</h3>
-        {filteredReviewRows.length ? (
-          <Table rows={filteredReviewRows} />
-        ) : (
-          <p>No events to review.</p>
-        )}
-      </section>
 
       {/* Dropdown menus are now available in the top navigation */}
     </div>
