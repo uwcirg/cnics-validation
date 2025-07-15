@@ -109,10 +109,10 @@ function Home() {
         </ol>
         <div>
           Full instructions:{' '}
-          <a href="/files/CNICS MI Review packet assembly instructions.doc" download>.doc</a>{' '}
+          <a href={`${API_BASE}/files/CNICS MI Review packet assembly instructions.doc`} download>.doc</a>{' '}
           |{' '}
           <a
-            href="/files/CNICS MI Review packet assembly instructions.pdf"
+            href={`${API_BASE}/files/CNICS MI Review packet assembly instructions.pdf`}
             target="_blank"
           >
             .pdf
@@ -124,8 +124,8 @@ function Home() {
         <h3>Review Instructions:</h3>
         <div>
           View as:{' '}
-          <a href="/files/CNICS MI reviewer instructions.doc" download>.doc</a> |{' '}
-          <a href="/files/CNICS MI reviewer instructions.pdf" target="_blank">
+          <a href={`${API_BASE}/files/CNICS MI reviewer instructions.doc`} download>.doc</a> |{' '}
+          <a href={`${API_BASE}/files/CNICS MI reviewer instructions.pdf`} target="_blank">
             .pdf
           </a>
         </div>
@@ -135,32 +135,32 @@ function Home() {
         <h3>Additional Documents:</h3>
         <ul>
           <li>
-            <a href="/files/CNICS MI event scrubbing protocol.doc" download>
+            <a href={`${API_BASE}/files/CNICS MI event scrubbing protocol.doc`} download>
               Event Scrubbing Protocol
             </a>
             {' | '}
-            <a href="/files/CNICS MI event scrubbing protocol.pdf" target="_blank">PDF</a>
+            <a href={`${API_BASE}/files/CNICS MI event scrubbing protocol.pdf`} target="_blank">PDF</a>
           </li>
           <li>
-            <a href="/files/CNICS VTE Review packet assembly instructions.doc" download>
+            <a href={`${API_BASE}/files/CNICS VTE Review packet assembly instructions.doc`} download>
               VTE Packet Assembly Instructions
             </a>
             {' | '}
-            <a href="/files/CNICS VTE Review packet assembly instructions.pdf" target="_blank">PDF</a>
+            <a href={`${API_BASE}/files/CNICS VTE Review packet assembly instructions.pdf`} target="_blank">PDF</a>
           </li>
           <li>
-            <a href="/files/NA-ACCORD MI Review packet assembly instructions.doc" download>
+            <a href={`${API_BASE}/files/NA-ACCORD MI Review packet assembly instructions.doc`} download>
               NA-ACCORD Packet Assembly Instructions
             </a>
             {' | '}
-            <a href="/files/NA-ACCORD MI Review packet assembly instructions.pdf" target="_blank">PDF</a>
+            <a href={`${API_BASE}/files/NA-ACCORD MI Review packet assembly instructions.pdf`} target="_blank">PDF</a>
           </li>
           <li>
-            <a href="/files/NA-ACCORD MI reviewer instructions.doc" download>
+            <a href={`${API_BASE}/files/NA-ACCORD MI reviewer instructions.doc`} download>
               NA-ACCORD Reviewer Instructions
             </a>
             {' | '}
-            <a href="/files/NA-ACCORD MI reviewer instructions.pdf" target="_blank">PDF</a>
+            <a href={`${API_BASE}/files/NA-ACCORD MI reviewer instructions.pdf`} target="_blank">PDF</a>
           </li>
         </ul>
       </div>
