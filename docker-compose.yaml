@@ -14,64 +14,36 @@ services:
     networks:
       - internal
 
-  web:
-    image: php:8.1-apache
-    command: ["apache2-foreground"]
-    volumes:
-      - .:/var/www/html:ro
+  backend:
+    build: ./flask_backend
     environment:
-      LOG_SERVER_URL: http://postgrest-internal:3000/events
       DB_HOST: mariadb
-      DB_USER: root
-      DB_PASSWORD: example
-      DB_NAME: mci
-    logging:
-      driver: "json-file"
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      PORT: 3000
     depends_on:
       - mariadb
+    ports:
+      - "3001:3000"
     networks:
       - internal
 
-  auth-proxy:
-    image: quay.io/oauth2-proxy/oauth2-proxy:v7.3.0
-    expose:
-      - 4180
+  web:
+    build: ./frontend
     environment:
-      OAUTH2_PROXY_CLIENT_ID: logs_oauth2_proxy
-      OAUTH2_PROXY_HTTP_ADDRESS: 0.0.0.0:4180
-      OAUTH2_PROXY_REVERSE_PROXY: "true"
-      OAUTH2_PROXY_UPSTREAMS: static://202
-      OAUTH2_PROXY_SET_XAUTHREQUEST: "true"
-      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET}
-      OAUTH2_PROXY_COOKIE_DOMAINS: .${BASE_DOMAIN}
-      OAUTH2_PROXY_WHITELIST_DOMAINS: .${BASE_DOMAIN}
-      OAUTH2_PROXY_COOKIE_EXPIRE: 30m
-      OAUTH2_PROXY_COOKIE_REFRESH: 1m
-      OAUTH2_PROXY_EMAIL_DOMAINS: "*"
-      OAUTH2_PROXY_INSECURE_OIDC_ALLOW_UNVERIFIED_EMAIL: "true"
-      OAUTH2_PROXY_OIDC_ISSUER_URL: https://keycloak.${BASE_DOMAIN}/realms/ltt
-      OAUTH2_PROXY_USER_ID_CLAIM: preferred_username
-      OAUTH2_PROXY_PROVIDER: oidc
-      OAUTH2_PROXY_SCOPE: openid profile email
-      OAUTH2_PROXY_CLIENT_SECRET: ${OAUTH2_PROXY_CLIENT_SECRET}
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.auth-proxy.rule=Host(`auth-proxy.${BASE_DOMAIN}`)
-      - traefik.http.routers.auth-proxy.entrypoints=websecure
-      - traefik.http.routers.auth-proxy.tls.certresolver=letsencrypt
-      - traefik.http.middlewares.oidc-auth.forwardAuth.address=http://auth-proxy:4180/
-      - traefik.http.middlewares.oidc-auth.forwardAuth.trustForwardHeader=true
-      - traefik.http.middlewares.oidc-auth.forwardAuth.authResponseHeaders=X-Auth-Request-User,X-Auth-Request-Email,X-Auth-Request-Access-Token,Authorization
+      VITE_API_URL: http://localhost:3001
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
     networks:
       - internal
       
 
 volumes:
-  postgres-data:
   logs-data:
   mariadb-data:
 
 networks:
   internal:
-  ingress:
-    external: true
