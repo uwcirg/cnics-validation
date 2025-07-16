@@ -60,6 +60,7 @@ function Home() {
   const [rows, setRows] = useState([])
   const [needPacketRows, setNeedPacketRows] = useState([])
   const [reviewRows, setReviewRows] = useState([])
+  const [statusSummary, setStatusSummary] = useState(null)
   const [search, setSearch] = useState('')
 
   useEffect(() => {
@@ -76,6 +77,11 @@ function Home() {
     fetch(`${API_BASE}/api/events/for_review`)
       .then((res) => res.json())
       .then((json) => setReviewRows(json.data || []))
+      .catch(() => {})
+
+    fetch(`${API_BASE}/api/events/status_summary`)
+      .then((res) => res.json())
+      .then((json) => setStatusSummary(json.data || null))
       .catch(() => {})
   }, [])
 
@@ -128,6 +134,37 @@ function Home() {
         <h3>Events That Need Packets</h3>
         <Table rows={filteredNeedPacketRows} />
       </section>
+
+      <section>
+        <h3>Event Packets for Your Review</h3>
+        {filteredReviewRows.length ? (
+          <Table rows={filteredReviewRows} />
+        ) : (
+          <p>No events to review.</p>
+        )}
+      </section>
+
+      {statusSummary && (
+        <section>
+          <h3>Event Status Summary</h3>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Count</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(statusSummary).map(([status, count]) => (
+                <tr key={status}>
+                  <td>{status}</td>
+                  <td>{count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
 
       <div className="infobox">
         <h3>Review packets should contain:</h3>
