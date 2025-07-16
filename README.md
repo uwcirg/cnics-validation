@@ -8,7 +8,7 @@ DOCKER DATABASE:
 
         cp .env.example .env
         docker-compose up -d mariadb
-        # Initialization scripts load `cnics.sql` and create the `events_view` view
+        # Initialization scripts load `cnics.sql`
 
 ## Container Setup
 
@@ -67,9 +67,9 @@ The Flask backend under `flask_backend/` exposes REST endpoints that the React f
 
 See [docs/separation_of_duties.md](docs/separation_of_duties.md) for details on the responsibilities of each component.
 
-### Available Endpoints
+-### Available Endpoints
 
-- `/api/tables/<name>` – return rows from a database table or view.
+- `/api/tables/<name>` – return rows from a database table.
 - `/api/events/need_packets` – events awaiting packet uploads.
 - `/api/events/for_review` – events with packets ready for review.
 - `/api/events/status_summary` – counts of events grouped by status.

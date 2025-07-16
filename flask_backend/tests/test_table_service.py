@@ -10,10 +10,10 @@ def test_get_table_data(mock_get_pool):
     mock_conn.cursor.return_value = mock_cursor
     mock_get_pool.return_value.get_connection.return_value = mock_conn
 
-    rows = ts.get_table_data('events_view')
+    rows = ts.get_table_data('events')
 
     mock_get_pool.assert_called()
-    mock_cursor.execute.assert_called_with('SELECT * FROM `events_view` LIMIT 100')
+    mock_cursor.execute.assert_called_with('SELECT * FROM `events` LIMIT 100')
     assert rows == [{'id': 1}]
 
 
@@ -30,7 +30,7 @@ def test_get_events_need_packets(mock_get_pool):
     mock_get_pool.assert_called()
     query = mock_cursor.execute.call_args.args[0]
     assert "GROUP BY e.id" in query
-    assert ("JOIN patients" in query) or ("JOIN uw_patients2" in query)
+    assert "JOIN uw_patients2" in query
     assert rows == [{'ID': 1}]
 
 

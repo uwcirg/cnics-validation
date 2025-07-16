@@ -23,6 +23,4 @@ against a Keycloak server. Configure `KEYCLOAK_URL`, `KEYCLOAK_CLIENT_ID` and
 `KEYCLOAK_CLIENT_SECRET` accordingly.
 
 A sample CNICS database dump `cnics.sql` is provided in this directory for local
-testing. Load it into your MariaDB instance after creating the schema. The
-Docker initialization scripts also create views such as `events_view` so the
-frontend can query the API immediately.
+testing. Load it into your MariaDB instance after creating the schema.
