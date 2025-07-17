@@ -42,8 +42,6 @@ def ensure_pdf(doc_path: str, pdf_path: str) -> None:
             y = height - 40
     c.save()
 
-app = Flask(__name__)
-
 # Optional Keycloak configuration mirroring the Express backend
 keycloak_openid = None
 if os.getenv("KEYCLOAK_REALM"):
