@@ -9,7 +9,12 @@ from keycloak import KeycloakOpenID
 from . import table_service
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+# Enable CORS for API routes with credentials support
+CORS(
+    app,
+    resources={r"/api/*": {"origins": "*"}},
+    supports_credentials=True,
+)
 
 load_dotenv()
 
