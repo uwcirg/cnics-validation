@@ -1,4 +1,5 @@
 from flask import Flask, jsonify, request, abort, send_from_directory
+from flask_cors import CORS
 import os
 from docx import Document
 from reportlab.pdfgen import canvas
@@ -7,6 +8,8 @@ from dotenv import load_dotenv
 from keycloak import KeycloakOpenID
 from . import table_service
 
+app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
 
 load_dotenv()
 

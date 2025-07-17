@@ -1,4 +1,6 @@
 flask
+flask-cors
+flask-sqlalchemy
 python-dotenv
 mysql-connector-python
 python-keycloak
