@@ -18,7 +18,14 @@ CORS(
 
 load_dotenv()
 
-FILES_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'app', 'webroot', 'files'))
+# Directory containing static instruction files. When running in Docker the
+# path can be overridden with the ``FILES_DIR`` environment variable so the
+# backend can access files from outside its build context.
+FILES_DIR = os.getenv("FILES_DIR")
+if not FILES_DIR:
+    FILES_DIR = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "app", "webroot", "files")
+    )
 os.makedirs(FILES_DIR, exist_ok=True)
 
 

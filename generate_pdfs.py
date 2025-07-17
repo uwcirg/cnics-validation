@@ -3,7 +3,7 @@ from docx import Document
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 
-FILES_DIR = 'app/webroot/files'
+FILES_DIR = os.getenv('FILES_DIR', 'app/webroot/files')
 
 for fname in os.listdir(FILES_DIR):
     if fname.lower().endswith('.doc'):

@@ -27,11 +27,13 @@ This repository includes a lightweight Docker configuration based on the setup u
 3. Start the stack:
 
    ```bash
-   docker-compose up
-   ```
+    docker-compose up
+    ```
 
-   The frontend will be served on <http://localhost:3000/> and the backend API
-   on <http://localhost:3001/>.
+    The frontend will be served on <http://localhost:3000/> and the backend API
+    on <http://localhost:3001/>.
+    The compose file mounts `app/webroot/files` into the backend container so
+    instruction documents are available at `/files/<name>`.
 
 ### Environment Variables
 
@@ -45,6 +47,7 @@ services are built or started. The template defines the following variables:
 - `DB_PASSWORD` – password for `DB_USER`.
 - `VITE_API_URL` – base URL of the backend API consumed by the React frontend.
 - `FHIR_SERVER` – URL of the FHIR server used by the application.
+- `FILES_DIR` – directory containing instruction files served by the backend.
 
 Override these values in your copied `.env` file as needed.
 
