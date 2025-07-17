@@ -25,6 +25,10 @@
   padding: 4px 8px;
 }
 
+.data-table tr.clickable {
+  cursor: pointer;
+}
+
 .sections-grid {
   display: flex;
   flex-wrap: wrap;

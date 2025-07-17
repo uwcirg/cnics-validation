@@ -1,7 +1,13 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import './EventUpload.css'
 
 function EventUpload() {
+  const [searchParams] = useSearchParams()
+  const eventId = searchParams.get('event_id')
+  const patientId = searchParams.get('patient_id')
+  const date = searchParams.get('date')
+  const criteria = searchParams.get('criteria')
   const [noPacketReason, setNoPacketReason] = useState('')
   const [priorEventDateKnown, setPriorEventDateKnown] = useState('')
 
@@ -20,6 +26,15 @@ function EventUpload() {
   return (
     <div>
       <h1>Upload Event Packet</h1>
+
+      {eventId && (
+        <div className="infobox">
+          <div>Packet for MI {eventId}</div>
+          <div>Patient ID: {patientId}</div>
+          <div>Date: {date}</div>
+          <div>Criteria: {criteria}</div>
+        </div>
+      )}
 
       <div className="infobox">
         <h3>Review packets should contain:</h3>
