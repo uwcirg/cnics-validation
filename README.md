@@ -58,9 +58,10 @@ See [docs/development.md](docs/development.md) for instructions on running the a
 ## Generating PDF copies of instruction files
 
 Some pages link to `.pdf` versions of the documents under `app/webroot/files/`.
-If a requested PDF does not exist the Flask backend will generate it on demand
-using `python-docx` and `reportlab`. You can also pre-create the PDFs locally by
-running `python generate_pdfs.py` from the project root.
+When running via Docker Compose this directory is mounted read-only, so the
+backend cannot create PDF files on the fly. Run `python generate_pdfs.py` from
+the project root **before** starting the containers to generate the PDF copies
+locally.
 
 
 
