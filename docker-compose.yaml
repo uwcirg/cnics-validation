@@ -21,6 +21,7 @@ services:
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
       DB_NAME: ${DB_NAME}
+      FILES_DIR: /files
       PORT: 3000
     depends_on:
       - mariadb
@@ -28,6 +29,8 @@ services:
       - "3001:3000"
     networks:
       - internal
+    volumes:
+      - ${FILES_DIR:-./app/webroot/files}:/files:ro
 
   web:
     build:
