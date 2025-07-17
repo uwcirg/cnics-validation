@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import './Home.css'
 
 // Base URL for the backend API. When running under Docker Compose the
@@ -7,13 +8,16 @@ import './Home.css'
 const API_BASE = import.meta.env.VITE_API_URL || ''
 
 function Table({ rows }) {
+  const navigate = useNavigate()
   const [page, setPage] = useState(1)
   const pageSize = 20
 
   if (!rows.length) return <p>No data found.</p>
 
   const totalPages = Math.ceil(rows.length / pageSize)
-  const headers = Object.keys(rows[0])
+  const headers = ['ID', 'Patient ID', 'Date', 'Criteria'].filter(
+    (h) => h in rows[0]
+  )
   const pageRows = rows.slice((page - 1) * pageSize, page * pageSize)
 
   const goPrev = () => setPage(p => Math.max(1, p - 1))
@@ -31,7 +35,15 @@ function Table({ rows }) {
         </thead>
         <tbody>
           {pageRows.map((row, idx) => (
-            <tr key={idx}>
+            <tr
+              key={idx}
+              className="clickable"
+              onClick={() =>
+                navigate(
+                  `/events/upload?event_id=${row['ID']}&patient_id=${row['Patient ID']}&date=${row['Date']}&criteria=${encodeURIComponent(row['Criteria'])}`
+                )
+              }
+            >
               {headers.map(h => (
                 <td key={h}>{row[h]}</td>
               ))}
