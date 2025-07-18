@@ -6,6 +6,7 @@ import EventAdd from './pages/EventAdd'
 import EventAddMany from './pages/EventAddMany'
 import EventAssignMany from './pages/EventAssignMany'
 import EventUpload from './pages/EventUpload'
+import EventReupload from './pages/EventReupload'
 import EventReview from './pages/EventReview'
 import EventScreen from './pages/EventScreen'
 import EventScrub from './pages/EventScrub'
@@ -35,6 +36,7 @@ function App() {
           <Route path="/events/addMany" element={<EventAddMany />} />
           <Route path="/events/assignMany" element={<EventAssignMany />} />
           <Route path="/events/upload" element={<EventUpload />} />
+          <Route path="/events/reupload" element={<EventReupload />} />
           <Route path="/events/review" element={<EventReview />} />
           <Route path="/events/screen" element={<EventScreen />} />
           <Route path="/events/scrub" element={<EventScrub />} />

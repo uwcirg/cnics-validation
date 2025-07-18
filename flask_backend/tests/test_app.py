@@ -64,6 +64,29 @@ def test_auth_required_for_review(mock_service):
     assert res.status_code == 401
 
 
+@patch('flask_backend.table_service.get_events_for_reupload')
+def test_get_for_reupload_route(mock_service):
+    mock_service.return_value = [{'ID': 3}]
+    import importlib
+    app_mod = importlib.import_module('flask_backend.app')
+    app_mod.keycloak_openid = None
+    client = app_mod.app.test_client()
+    res = client.get('/api/events/need_reupload')
+    assert res.status_code == 200
+    assert res.get_json() == {'data': [{'ID': 3}]}
+
+
+@patch('flask_backend.table_service.get_events_for_reupload')
+def test_auth_required_for_reupload(mock_service):
+    mock_service.return_value = []
+    import importlib
+    app_mod = importlib.import_module('flask_backend.app')
+    app_mod.keycloak_openid = object()
+    client = app_mod.app.test_client()
+    res = client.get('/api/events/need_reupload')
+    assert res.status_code == 401
+
+
 @patch('flask_backend.table_service.get_event_status_summary')
 def test_status_summary_route(mock_service):
     mock_service.return_value = {'uploaded': 5}

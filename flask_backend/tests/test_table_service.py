@@ -52,6 +52,23 @@ def test_get_events_for_review(mock_get_pool):
 
 
 @patch('flask_backend.table_service.get_pool')
+def test_get_events_for_reupload(mock_get_pool):
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.fetchall.return_value = [{'ID': 3}]
+    mock_conn.cursor.return_value = mock_cursor
+    mock_get_pool.return_value.get_connection.return_value = mock_conn
+
+    rows = ts.get_events_for_reupload()
+
+    mock_get_pool.assert_called()
+    query = mock_cursor.execute.call_args.args[0]
+    assert "WHERE e.status = 'rejected'" in query
+    assert "GROUP BY e.id" in query
+    assert rows == [{'ID': 3}]
+
+
+@patch('flask_backend.table_service.get_pool')
 def test_get_event_status_summary(mock_get_pool):
     mock_conn = MagicMock()
     mock_cursor = MagicMock()

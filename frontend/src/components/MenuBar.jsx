@@ -64,7 +64,7 @@ function MenuBar({ admin, uploader, reviewer }) {
                   <Link to="/events/upload">Upload New Packets</Link>
                 </li>
                 <li>
-                  <Link to="/events/upload">Re-upload Existing Packets</Link>
+                  <Link to="/events/reupload">Re-upload Existing Packets</Link>
                 </li>
               </ul>
             </details>
