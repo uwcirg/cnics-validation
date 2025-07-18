@@ -13,3 +13,6 @@ backend/node_modules/*
 .env
 docker-compose.yaml
 app/webroot/files/*.pdf
+__pycache__/
+flask_backend/__pycache__/
+flask_backend/tests/__pycache__/

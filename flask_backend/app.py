@@ -165,6 +165,17 @@ def events_for_review():
         return jsonify({'error': 'Failed to fetch table data'}), 500
 
 
+@app.route('/api/events/need_reupload')
+@requires_auth
+def events_need_reupload():
+    try:
+        rows = table_service.get_events_for_reupload()
+        return jsonify({'data': rows})
+    except Exception as exc:
+        print(exc)
+        return jsonify({'error': 'Failed to fetch table data'}), 500
+
+
 @app.route('/api/events/status_summary')
 @requires_auth
 def events_status_summary():
