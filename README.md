@@ -46,6 +46,7 @@ services are built or started. The template defines the following variables:
 - `DB_USER` – database user for the application.
 - `DB_PASSWORD` – password for `DB_USER`.
 - `VITE_API_URL` – base URL of the backend API consumed by the React frontend.
+- `FRONTEND_ORIGIN` – allowed origin for CORS requests to the backend.
 - `FHIR_SERVER` – URL of the FHIR server used by the application.
 - `FILES_DIR` – directory containing instruction files served by the backend.
 
@@ -77,3 +78,9 @@ See [docs/separation_of_duties.md](docs/separation_of_duties.md) for details on 
 - `/api/events/need_packets` – events awaiting packet uploads.
 - `/api/events/for_review` – events with packets ready for review.
 - `/api/events/status_summary` – counts of events grouped by status.
+
+### OpenAPI Documentation
+
+Run `python scripts/generate_openapi.py` to generate `openapi.json` describing
+the backend API. A GitHub action updates this file on each push.
+---

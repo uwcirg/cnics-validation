@@ -6,3 +6,5 @@ mysql-connector-python
 python-keycloak
 python-docx
 reportlab
+apispec
+apispec-webframeworks

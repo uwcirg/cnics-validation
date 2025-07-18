@@ -9,12 +9,15 @@ from keycloak import KeycloakOpenID
 from . import table_service
 
 app = Flask(__name__)
-# Enable CORS for API routes with credentials support
+
+# Enable CORS only for requests coming from the frontend
+allowed_origin = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
 CORS(
     app,
-    resources={r"/api/*": {"origins": "*"}},
+    resources={r"/api/*": {"origins": allowed_origin}},
     supports_credentials=True,
 )
+
 
 load_dotenv()
 
@@ -81,11 +84,31 @@ def requires_auth(func):
         return func(*args, **kwargs)
 
     wrapper.__name__ = func.__name__
+    wrapper.__doc__ = func.__doc__
     return wrapper
 
 @app.route('/api/tables/<name>')
 @requires_auth
 def get_table(name):
+    """Return rows from a database table.
+    ---
+    parameters:
+      - name: name
+        in: path
+        type: string
+        required: true
+        description: Name of the table
+    responses:
+      200:
+        description: Table rows
+        schema:
+          type: object
+          properties:
+            data:
+              type: array
+              items:
+                type: object
+    """
     try:
         rows = table_service.get_table_data(name)
         return jsonify({'data': rows})
@@ -97,6 +120,19 @@ def get_table(name):
 @app.route('/api/events/need_packets')
 @requires_auth
 def events_need_packets():
+    """Events that require packet uploads.
+    ---
+    responses:
+      200:
+        description: Event rows
+        schema:
+          type: object
+          properties:
+            data:
+              type: array
+              items:
+                type: object
+    """
     try:
         rows = table_service.get_events_need_packets()
         return jsonify({'data': rows})
@@ -108,6 +144,19 @@ def events_need_packets():
 @app.route('/api/events/for_review')
 @requires_auth
 def events_for_review():
+    """Events with packets awaiting review.
+    ---
+    responses:
+      200:
+        description: Event rows
+        schema:
+          type: object
+          properties:
+            data:
+              type: array
+              items:
+                type: object
+    """
     try:
         rows = table_service.get_events_for_review()
         return jsonify({'data': rows})
@@ -119,6 +168,19 @@ def events_for_review():
 @app.route('/api/events/status_summary')
 @requires_auth
 def events_status_summary():
+    """Summary counts of events grouped by status.
+    ---
+    responses:
+      200:
+        description: Event summary
+        schema:
+          type: object
+          properties:
+            data:
+              type: object
+              additionalProperties:
+                type: integer
+    """
     try:
         summary = table_service.get_event_status_summary()
         return jsonify({'data': summary})
@@ -140,6 +202,9 @@ def get_file(filename: str):
     if not os.path.exists(file_path):
         abort(404)
     return send_from_directory(FILES_DIR, filename)
+
+# Placeholder for OpenAPI generation scripts
+swagger = None
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', '3000'))
