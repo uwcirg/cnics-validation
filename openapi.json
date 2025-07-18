@@ -1,0 +1,60 @@
+paths:
+  /api/tables/{name}:
+    get:
+      parameters:
+      - name: name
+        in: path
+        type: string
+        required: true
+        description: Name of the table
+      responses:
+        '200':
+          description: Table rows
+          schema:
+            type: object
+            properties:
+              data:
+                type: array
+                items:
+                  type: object
+  /api/events/need_packets:
+    get:
+      responses:
+        '200':
+          description: Event rows
+          schema:
+            type: object
+            properties:
+              data:
+                type: array
+                items:
+                  type: object
+  /api/events/for_review:
+    get:
+      responses:
+        '200':
+          description: Event rows
+          schema:
+            type: object
+            properties:
+              data:
+                type: array
+                items:
+                  type: object
+  /api/events/status_summary:
+    get:
+      responses:
+        '200':
+          description: Event summary
+          schema:
+            type: object
+            properties:
+              data:
+                type: object
+                additionalProperties:
+                  type: integer
+info:
+  title: CNICS Validation API
+  version: 1.0.0
+openapi: 3.0.3
+
