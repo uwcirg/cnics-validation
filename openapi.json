@@ -41,6 +41,7 @@ paths:
                 type: array
                 items:
                   type: object
+  /api/events/need_reupload: {}
   /api/events/status_summary:
     get:
       responses:
