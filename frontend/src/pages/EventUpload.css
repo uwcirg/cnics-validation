@@ -17,3 +17,9 @@
 .indent3 {
   margin-left: 3em;
 }
+.quick-search {
+  border: #a4a4a4 solid 2px;
+  border-radius: 4px;
+  padding: 2px 3px;
+  margin-bottom: 1em;
+}
