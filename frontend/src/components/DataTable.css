@@ -1,0 +1,23 @@
+.data-table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-bottom: 1em;
+}
+
+.data-table th,
+.data-table td {
+  border: 1px solid #ccc;
+  padding: 4px 8px;
+}
+
+.data-table tr.clickable {
+  cursor: pointer;
+}
+
+.pagination {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1em;
+}

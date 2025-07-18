@@ -1,15 +1,21 @@
-import { useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import DataTable from '../components/DataTable'
 import './EventUpload.css'
 
 function EventUpload() {
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
   const eventId = searchParams.get('event_id')
   const patientId = searchParams.get('patient_id')
   const date = searchParams.get('date')
   const criteria = searchParams.get('criteria')
+  const [rows, setRows] = useState([])
+  const [search, setSearch] = useState('')
   const [noPacketReason, setNoPacketReason] = useState('')
   const [priorEventDateKnown, setPriorEventDateKnown] = useState('')
+
+  const API_BASE = import.meta.env.VITE_API_URL || ''
 
   const noPacketReasons = [
     'Outside hospital',
@@ -23,9 +29,45 @@ function EventUpload() {
     noPacketReason === 'Ascertainment diagnosis referred to a prior event'
   const showOtherCause = noPacketReason === 'Other'
 
+  useEffect(() => {
+    fetch(`${API_BASE}/api/events/need_packets`)
+      .then((res) => res.json())
+      .then((json) => setRows(json.data || []))
+      .catch(() => {})
+  }, [API_BASE])
+
+  const filteredRows = rows.filter((row) =>
+    Object.values(row).some((v) =>
+      String(v).toLowerCase().includes(search.toLowerCase())
+    )
+  )
+
   return (
     <div>
       <h1>Upload Event Packet</h1>
+
+      {!eventId && (
+        <>
+          <section>
+            <h3>Quick Search</h3>
+            <input
+              className="quick-search"
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search"
+            />
+          </section>
+          <DataTable
+            rows={filteredRows}
+            onRowClick={(row) =>
+              navigate(
+                `/events/upload?event_id=${row['ID']}&patient_id=${row['Patient ID']}&date=${row['Date']}&criteria=${encodeURIComponent(row['Criteria'])}`
+              )
+            }
+          />
+        </>
+      )}
 
       {eventId && (
         <div className="infobox">
@@ -66,25 +108,27 @@ function EventUpload() {
         </div>
       </div>
 
-      <h2 className="indent1" style={{ paddingTop: '6px' }}>
-        If packet is available:
-      </h2>
-      <div className="indent2">
-        <form>
-          <div>
-            <label>
-              Choose a file to upload: <input type="file" name="packet" />
-            </label>
+      {eventId && (
+        <>
+          <h2 className="indent1" style={{ paddingTop: '6px' }}>
+            If packet is available:
+          </h2>
+          <div className="indent2">
+            <form>
+              <div>
+                <label>
+                  Choose a file to upload: <input type="file" name="packet" />
+                </label>
+              </div>
+              <button type="submit">Upload</button>
+            </form>
           </div>
-          <button type="submit">Upload</button>
-        </form>
-      </div>
 
-      <h2 className="indent1" style={{ paddingTop: '6px' }}>
-        If no packet is available:
-      </h2>
-      <div className="indent2">
-        <form>
+          <h2 className="indent1" style={{ paddingTop: '6px' }}>
+            If no packet is available:
+          </h2>
+          <div className="indent2">
+            <form>
           <div id="noPacketReason" style={{ marginBottom: '12px' }}>
             Please document why there is no event packet:{' '}
             <select
@@ -199,6 +243,8 @@ function EventUpload() {
           )) || null}
         </form>
       </div>
+        </>
+      )}
     </div>
   )
 }

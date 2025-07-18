@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import DataTable from '../components/DataTable'
 import './Home.css'
 
 // Base URL for the backend API. When running under Docker Compose the
@@ -7,65 +8,14 @@ import './Home.css'
 // relative path so the frontend can be served without configuration.
 const API_BASE = import.meta.env.VITE_API_URL || ''
 
-function Table({ rows }) {
+function TableWrapper({ rows }) {
   const navigate = useNavigate()
-  const [page, setPage] = useState(1)
-  const pageSize = 20
-
-  if (!rows.length) return <p>No data found.</p>
-
-  const totalPages = Math.ceil(rows.length / pageSize)
-  const headers = ['ID', 'Patient ID', 'Date', 'Criteria'].filter(
-    (h) => h in rows[0]
-  )
-  const pageRows = rows.slice((page - 1) * pageSize, page * pageSize)
-
-  const goPrev = () => setPage(p => Math.max(1, p - 1))
-  const goNext = () => setPage(p => Math.min(totalPages, p + 1))
-
-  return (
-    <>
-      <table className="data-table">
-        <thead>
-          <tr>
-            {headers.map(h => (
-              <th key={h}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {pageRows.map((row, idx) => (
-            <tr
-              key={idx}
-              className="clickable"
-              onClick={() =>
-                navigate(
-                  `/events/upload?event_id=${row['ID']}&patient_id=${row['Patient ID']}&date=${row['Date']}&criteria=${encodeURIComponent(row['Criteria'])}`
-                )
-              }
-            >
-              {headers.map(h => (
-                <td key={h}>{row[h]}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {totalPages > 1 && (
-        <div className="pagination">
-          <button onClick={goPrev} disabled={page === 1}>
-            Previous
-          </button>
-          <span>
-            Page {page} of {totalPages}
-          </span>
-          <button onClick={goNext} disabled={page === totalPages}>
-            Next
-          </button>
-        </div>
-      )}
-    </>
-  )
+  const handleClick = (row) => {
+    navigate(
+      `/events/upload?event_id=${row['ID']}&patient_id=${row['Patient ID']}&date=${row['Date']}&criteria=${encodeURIComponent(row['Criteria'])}`
+    )
+  }
+  return <DataTable rows={rows} onRowClick={handleClick} />
 }
 
 function Home() {
@@ -139,18 +89,18 @@ function Home() {
 
       <section>
         <h3>Table Preview</h3>
-        <Table rows={filteredRows} />
+        <TableWrapper rows={filteredRows} />
       </section>
 
       <section>
         <h3>Events That Need Packets</h3>
-        <Table rows={filteredNeedPacketRows} />
+        <TableWrapper rows={filteredNeedPacketRows} />
       </section>
 
       <section>
         <h3>Event Packets for Your Review</h3>
         {filteredReviewRows.length ? (
-          <Table rows={filteredReviewRows} />
+          <TableWrapper rows={filteredReviewRows} />
         ) : (
           <p>No events to review.</p>
         )}
