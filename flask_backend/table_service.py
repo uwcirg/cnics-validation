@@ -1,39 +1,19 @@
-import os
-import mysql.connector
-from mysql.connector.pooling import MySQLConnectionPool
-from dotenv import load_dotenv
+from sqlalchemy import Table, select, func
 
-load_dotenv()
-
-DB_CONFIG = {
-    'host': os.getenv('DB_HOST', 'localhost'),
-    'user': os.getenv('DB_USER', 'root'),
-    'password': os.getenv('DB_PASSWORD', ''),
-    'database': os.getenv('DB_NAME', 'mci'),
-}
-
-# Lazily initialized connection pool similar to the Node backend implementation
-POOL = None
+from . import models
 
 
-def get_pool():
-    global POOL
-    if POOL is None:
-        POOL = MySQLConnectionPool(
-            pool_name="mci_pool",
-            pool_size=10,
-            **DB_CONFIG,
-        )
-    return POOL
+def get_session():
+    """Lazily create a new SQLAlchemy session."""
+    return models.get_session()
 
 def get_table_data(name: str):
     """Return up to 100 rows from the specified table."""
-    conn = get_pool().get_connection()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute(f"SELECT * FROM `{name}` LIMIT 100")
-    rows = cursor.fetchall()
-    cursor.close()
-    conn.close()
+    session = get_session()
+    table = Table(name, models.Base.metadata, autoload_with=models.engine)
+    stmt = select(table).limit(100)
+    rows = session.execute(stmt).mappings().all()
+    session.close()
     return rows
 
 
@@ -50,12 +30,16 @@ def get_events_need_packets():
         "JOIN patients_view p ON e.patient_id = p.id "
         "WHERE e.status = 'created' "
         "GROUP BY e.id LIMIT 100"
+
     )
-    cursor.execute(query)
-    rows = cursor.fetchall()
-    cursor.close()
-    conn.close()
+    rows = session.execute(stmt).mappings().all()
+    session.close()
     return rows
+
+
+def get_events_need_packets():
+    """Return up to 100 events that still require packet uploads."""
+    return _events_by_status("created")
 
 
 def get_events_for_review():
@@ -77,6 +61,7 @@ def get_events_for_review():
     cursor.close()
     conn.close()
     return rows
+
 
 
 def get_events_for_reupload():
@@ -102,10 +87,8 @@ def get_events_for_reupload():
 
 def get_event_status_summary():
     """Return a mapping of event status names to row counts."""
-    conn = get_pool().get_connection()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT status, COUNT(*) AS count FROM events GROUP BY status")
-    rows = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return {row["status"]: row["count"] for row in rows}
+    session = get_session()
+    stmt = select(models.Event.status, func.count().label("count")).group_by(models.Event.status)
+    rows = session.execute(stmt).all()
+    session.close()
+    return {row[0]: row[1] for row in rows}
