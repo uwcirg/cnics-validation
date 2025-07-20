@@ -47,7 +47,7 @@ def get_events_need_packets():
         "GROUP_CONCAT(c.name ORDER BY c.name SEPARATOR ', ') AS `Criteria` "
         "FROM events e "
         "JOIN criterias c ON e.id = c.event_id "
-        "JOIN uw_patients2 p ON e.patient_id = p.id "
+        "JOIN patients_view p ON e.patient_id = p.id "
         "WHERE e.status = 'created' "
         "GROUP BY e.id LIMIT 100"
     )
@@ -68,7 +68,7 @@ def get_events_for_review():
         "GROUP_CONCAT(c.name ORDER BY c.name SEPARATOR ', ') AS `Criteria` "
         "FROM events e "
         "JOIN criterias c ON e.id = c.event_id "
-        "JOIN uw_patients2 p ON e.patient_id = p.id "
+        "JOIN patients_view p ON e.patient_id = p.id "
         "WHERE e.status = 'uploaded' "
         "GROUP BY e.id LIMIT 100"
     )
@@ -89,7 +89,7 @@ def get_events_for_reupload():
         "GROUP_CONCAT(c.name ORDER BY c.name SEPARATOR ', ') AS `Criteria` "
         "FROM events e "
         "JOIN criterias c ON e.id = c.event_id "
-        "JOIN uw_patients2 p ON e.patient_id = p.id "
+        "JOIN patients_view p ON e.patient_id = p.id "
         "WHERE e.status = 'rejected' "
         "GROUP BY e.id LIMIT 100"
     )

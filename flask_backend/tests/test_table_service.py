@@ -30,7 +30,7 @@ def test_get_events_need_packets(mock_get_pool):
     mock_get_pool.assert_called()
     query = mock_cursor.execute.call_args.args[0]
     assert "GROUP BY e.id" in query
-    assert "JOIN uw_patients2" in query
+    assert "JOIN patients_view" in query
     assert rows == [{'ID': 1}]
 
 
