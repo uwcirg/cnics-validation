@@ -162,3 +162,4 @@ t_uw_patients2 = Table(
     Column('last_update', TIMESTAMP, nullable=False, server_default=text("'0000-00-00 00:00:00'")),
     Column('create_date', DateTime, nullable=False, server_default=text("'0000-00-00 00:00:00'"))
 )
+
