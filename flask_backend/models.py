@@ -1,7 +1,14 @@
 from typing import Optional
 from sqlalchemy import Column, Date, DateTime, Enum, Float, String, TIMESTAMP, text, ForeignKey, create_engine
 from sqlalchemy.dialects.mysql import INTEGER, TINYINT, VARCHAR
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Mapped,
+    mapped_column,
+    relationship,
+    sessionmaker,
+    Session,
+)
 import datetime
 import os
 
@@ -166,12 +173,12 @@ t_uw_patients2 = Table(
 
 # --- Database session handling -------------------------------------------------
 _engine = None
-_Session = None
+_SessionFactory = None
 
 
-def get_session():
-    """Return a new SQLAlchemy session configured from environment variables."""
-    global _engine, _Session
+def get_engine():
+    """Lazily create and return the SQLAlchemy engine."""
+    global _engine
     if _engine is None:
         user = os.getenv("DB_USER", "root")
         pw = os.getenv("DB_PASSWORD", "")
@@ -179,7 +186,14 @@ def get_session():
         db = os.getenv("DB_NAME", "cnics")
         url = f"mysql+mysqlconnector://{user}:{pw}@{host}/{db}"
         _engine = create_engine(url, pool_pre_ping=True)
-        _Session = sessionmaker(bind=_engine)
-    return _Session()
+    return _engine
+
+
+def get_session() -> Session:
+    """Return a new SQLAlchemy session configured from environment variables."""
+    global _SessionFactory
+    if _SessionFactory is None:
+        _SessionFactory = sessionmaker(bind=get_engine())
+    return _SessionFactory()
 
 
