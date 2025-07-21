@@ -1,8 +1,16 @@
 from typing import Optional
-from sqlalchemy import Column, Date, DateTime, Enum, Float, String, TIMESTAMP, text, ForeignKey
+from sqlalchemy import Column, Date, DateTime, Enum, Float, String, TIMESTAMP, text, ForeignKey, create_engine
 from sqlalchemy.dialects.mysql import INTEGER, TINYINT, VARCHAR
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Mapped,
+    mapped_column,
+    relationship,
+    sessionmaker,
+    Session,
+)
 import datetime
+import os
 
 class Base(DeclarativeBase):
     pass
@@ -162,4 +170,30 @@ t_uw_patients2 = Table(
     Column('last_update', TIMESTAMP, nullable=False, server_default=text("'0000-00-00 00:00:00'")),
     Column('create_date', DateTime, nullable=False, server_default=text("'0000-00-00 00:00:00'"))
 )
+
+# --- Database session handling -------------------------------------------------
+_engine = None
+_SessionFactory = None
+
+
+def get_engine():
+    """Lazily create and return the SQLAlchemy engine."""
+    global _engine
+    if _engine is None:
+        user = os.getenv("DB_USER", "root")
+        pw = os.getenv("DB_PASSWORD", "")
+        host = os.getenv("DB_HOST", "localhost")
+        db = os.getenv("DB_NAME", "cnics")
+        url = f"mysql+mysqlconnector://{user}:{pw}@{host}/{db}"
+        _engine = create_engine(url, pool_pre_ping=True)
+    return _engine
+
+
+def get_session() -> Session:
+    """Return a new SQLAlchemy session configured from environment variables."""
+    global _SessionFactory
+    if _SessionFactory is None:
+        _SessionFactory = sessionmaker(bind=get_engine())
+    return _SessionFactory()
+
 
