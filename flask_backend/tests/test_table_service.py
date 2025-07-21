@@ -27,10 +27,10 @@ def test_get_events_need_packets(mock_get_session):
 
     rows = ts.get_events_need_packets()
 
-    mock_get_pool.assert_called()
-    query = mock_cursor.execute.call_args.args[0]
-    assert "GROUP BY e.id" in query
-    assert "JOIN patients_view" in query
+    mock_get_session.assert_called()
+    query = mock_session.execute.call_args.args[0]
+    assert "GROUP BY events.id" in str(query)
+    assert "JOIN patients_view" in str(query)
     assert rows == [{'ID': 1}]
 
 
