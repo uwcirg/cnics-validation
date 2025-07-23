@@ -264,3 +264,20 @@ CREATE TABLE `uw_patients2` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+
+--
+-- Table structure for table `patients`
+--
+
+DROP TABLE IF EXISTS `patients`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `patients` (
+  `id` int(10) unsigned NOT NULL,
+  `site_patient_id` varchar(64) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `site` varchar(20) NOT NULL,
+  `last_update` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `create_date` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  PRIMARY KEY (`id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;

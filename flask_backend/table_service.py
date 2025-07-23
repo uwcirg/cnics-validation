@@ -72,7 +72,7 @@ def get_events_with_patient_site():
     patient_ids = [row["patient_id"] for row in rows]
     ext_session = models.get_external_session()
     if patient_ids:
-        stmt = text("SELECT id, site FROM uw_patients2 WHERE id IN :ids").bindparams(
+        stmt = text("SELECT id, site FROM patients WHERE id IN :ids").bindparams(
             bindparam("ids", expanding=True)
         )
         ext_rows = ext_session.execute(stmt, {"ids": patient_ids}).mappings().all()

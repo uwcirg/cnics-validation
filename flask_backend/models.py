@@ -161,15 +161,24 @@ class UwPatients(Base):
     last_update: Mapped[datetime.datetime] = mapped_column(TIMESTAMP, server_default=text('current_timestamp() ON UPDATE current_timestamp()'))
     create_date: Mapped[datetime.datetime] = mapped_column(DateTime, server_default=text("'0000-00-00 00:00:00'"))
 
+class UwPatients2(Base):
+    __tablename__ = 'uw_patients2'
 
-t_uw_patients2 = Table(
-    'uw_patients2', Base.metadata,
-    Column('id', INTEGER(10), nullable=False, server_default=text('0')),
-    Column('site_patient_id', VARCHAR(64), nullable=False),
-    Column('site', String(20), nullable=False),
-    Column('last_update', TIMESTAMP, nullable=False, server_default=text("'0000-00-00 00:00:00'")),
-    Column('create_date', DateTime, nullable=False, server_default=text("'0000-00-00 00:00:00'"))
-)
+    id: Mapped[int] = mapped_column(INTEGER(10), primary_key=True)
+    site_patient_id: Mapped[str] = mapped_column(String(64))
+    site: Mapped[str] = mapped_column(String(20))
+    last_update: Mapped[datetime.datetime] = mapped_column(TIMESTAMP, server_default=text("'0000-00-00 00:00:00'"))
+    create_date: Mapped[datetime.datetime] = mapped_column(DateTime, server_default=text("'0000-00-00 00:00:00'"))
+
+class Patients(Base):
+    __tablename__ = 'patients'
+
+    id: Mapped[int] = mapped_column(INTEGER(10), primary_key=True)
+    site_patient_id: Mapped[str] = mapped_column(String(64))
+    site: Mapped[str] = mapped_column(String(20))
+    last_update: Mapped[datetime.datetime] = mapped_column(TIMESTAMP, server_default=text("'0000-00-00 00:00:00'"))
+    create_date: Mapped[datetime.datetime] = mapped_column(DateTime, server_default=text("'0000-00-00 00:00:00'"))
+
 
 # --- Database session handling -------------------------------------------------
 _engine = None
