@@ -174,6 +174,8 @@ t_uw_patients2 = Table(
 # --- Database session handling -------------------------------------------------
 _engine = None
 _SessionFactory = None
+_external_engine = None
+_ExternalSessionFactory = None
 
 
 def get_engine():
@@ -195,5 +197,24 @@ def get_session() -> Session:
     if _SessionFactory is None:
         _SessionFactory = sessionmaker(bind=get_engine())
     return _SessionFactory()
+
+
+def get_external_engine():
+    """Create and return an engine for the external database."""
+    global _external_engine
+    if _external_engine is None:
+        url = os.getenv("EXTERNAL_DB_URL")
+        if not url:
+            raise RuntimeError("EXTERNAL_DB_URL is not configured")
+        _external_engine = create_engine(url, pool_pre_ping=True)
+    return _external_engine
+
+
+def get_external_session() -> Session:
+    """Return a new SQLAlchemy session for the external database."""
+    global _ExternalSessionFactory
+    if _ExternalSessionFactory is None:
+        _ExternalSessionFactory = sessionmaker(bind=get_external_engine())
+    return _ExternalSessionFactory()
 
 
