@@ -18,7 +18,7 @@ def get_table_data(name: str):
     stmt = text(f"SELECT * FROM {name} LIMIT 100")
     rows = session.execute(stmt).mappings().all()
     session.close()
-    return rows
+    return [dict(r) for r in rows]
 
 
 def get_events_by_status(status: str):
@@ -30,13 +30,13 @@ def get_events_by_status(status: str):
         "GROUP_CONCAT(criterias.name ORDER BY criterias.name SEPARATOR ', ') AS `Criteria` "
         "FROM events "
         "JOIN criterias ON events.id = criterias.event_id "
-        "JOIN patients_view ON events.patient_id = patients_view.id "
+        "JOIN patients ON events.patient_id = patients.id "
         "WHERE events.status = :status "
         "GROUP BY events.id, events.patient_id, events.event_date LIMIT 100"
     )
     rows = session.execute(text(query), {"status": status}).mappings().all()
     session.close()
-    return rows
+    return [dict(r) for r in rows]
 
 
 def get_events_need_packets():
@@ -68,6 +68,7 @@ def get_events_with_patient_site():
     session = get_session()
     rows = session.execute(text("SELECT id, patient_id FROM events LIMIT 100")).mappings().all()
     session.close()
+    rows = [dict(r) for r in rows]
 
     patient_ids = [row["patient_id"] for row in rows]
     ext_session = models.get_external_session()
@@ -76,6 +77,7 @@ def get_events_with_patient_site():
             bindparam("ids", expanding=True)
         )
         ext_rows = ext_session.execute(stmt, {"ids": patient_ids}).mappings().all()
+        ext_rows = [dict(r) for r in ext_rows]
     else:
         ext_rows = []
     ext_session.close()
