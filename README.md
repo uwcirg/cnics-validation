@@ -49,6 +49,7 @@ services are built or started. The template defines the following variables:
 - `FRONTEND_ORIGIN` – allowed origin for CORS requests to the backend.
 - `FHIR_SERVER` – URL of the FHIR server used by the application.
 - `FILES_DIR` – directory containing instruction files served by the backend.
+- `EXTERNAL_DB_URL` – optional SQLAlchemy URL for a secondary database.
 
 Override these values in your copied `.env` file as needed.
 

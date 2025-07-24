@@ -1,10 +1,10 @@
 from types import SimpleNamespace
-from sqlalchemy import text
+from sqlalchemy import text, bindparam
 
 try:
     from . import models  # type: ignore
 except Exception:  # pragma: no cover - models may not be importable during tests
-    models = SimpleNamespace(get_session=lambda: None)
+    models = SimpleNamespace(get_session=lambda: None, get_external_session=lambda: None)
 
 
 def get_session():
@@ -61,3 +61,26 @@ def get_event_status_summary():
     rows = session.execute(stmt).all()
     session.close()
     return {row[0]: row[1] for row in rows}
+
+
+def get_events_with_patient_site():
+    """Return events with site info from the external database."""
+    session = get_session()
+    rows = session.execute(text("SELECT id, patient_id FROM events LIMIT 100")).mappings().all()
+    session.close()
+
+    patient_ids = [row["patient_id"] for row in rows]
+    ext_session = models.get_external_session()
+    if patient_ids:
+        stmt = text("SELECT id, site FROM patients WHERE id IN :ids").bindparams(
+            bindparam("ids", expanding=True)
+        )
+        ext_rows = ext_session.execute(stmt, {"ids": patient_ids}).mappings().all()
+    else:
+        ext_rows = []
+    ext_session.close()
+
+    lookup = {r["id"]: r["site"] for r in ext_rows}
+    for r in rows:
+        r["site"] = lookup.get(r["patient_id"])
+    return rows
