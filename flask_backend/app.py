@@ -112,8 +112,8 @@ def get_table(name):
     try:
         rows = table_service.get_table_data(name)
         return jsonify({'data': rows})
-    except Exception as exc:
-        print(exc)
+    except Exception:
+        app.logger.exception("Failed to fetch table data")
         return jsonify({'error': 'Failed to fetch table data'}), 500
 
 
@@ -136,8 +136,8 @@ def events_need_packets():
     try:
         rows = table_service.get_events_need_packets()
         return jsonify({'data': rows})
-    except Exception as exc:
-        print(exc)
+    except Exception:
+        app.logger.exception("Failed to fetch table data")
         return jsonify({'error': 'Failed to fetch table data'}), 500
 
 
@@ -160,8 +160,8 @@ def events_for_review():
     try:
         rows = table_service.get_events_for_review()
         return jsonify({'data': rows})
-    except Exception as exc:
-        print(exc)
+    except Exception:
+        app.logger.exception("Failed to fetch table data")
         return jsonify({'error': 'Failed to fetch table data'}), 500
 
 
@@ -171,8 +171,8 @@ def events_need_reupload():
     try:
         rows = table_service.get_events_for_reupload()
         return jsonify({'data': rows})
-    except Exception as exc:
-        print(exc)
+    except Exception:
+        app.logger.exception("Failed to fetch table data")
         return jsonify({'error': 'Failed to fetch table data'}), 500
 
 
@@ -195,8 +195,8 @@ def events_status_summary():
     try:
         summary = table_service.get_event_status_summary()
         return jsonify({'data': summary})
-    except Exception as exc:
-        print(exc)
+    except Exception:
+        app.logger.exception("Failed to fetch table data")
         return jsonify({'error': 'Failed to fetch table data'}), 500
 
 
