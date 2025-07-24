@@ -32,7 +32,7 @@ def get_events_by_status(status: str):
         "JOIN criterias ON events.id = criterias.event_id "
         "JOIN patients_view ON events.patient_id = patients_view.id "
         "WHERE events.status = :status "
-        "GROUP BY events.id LIMIT 100"
+        "GROUP BY events.id, events.patient_id, events.event_date LIMIT 100"
     )
     rows = session.execute(text(query), {"status": status}).mappings().all()
     session.close()

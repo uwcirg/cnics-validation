@@ -209,6 +209,7 @@ def get_session() -> Session:
         _SessionFactory = sessionmaker(bind=get_engine())
     return _SessionFactory()
 
+# recommended to use a separate function for external database connections
 
 def get_external_engine():
     """Create and return an engine for the external database."""
