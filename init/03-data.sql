@@ -27,7 +27,7 @@ SET character_set_client = @saved_cs_client;
 /*!50001 SET character_set_results     = utf8 */;
 /*!50001 SET collation_connection      = utf8_general_ci */;
 /*!50001 CREATE ALGORITHM=UNDEFINED */
-/*!50013 DEFINER=`gsbarnes`@`localhost` SQL SECURITY DEFINER */
+
 /*!50001 VIEW `patients_view` AS select `patients`.`id` AS `id`,`patients`.`site_patient_id` AS `site_patient_id`,`patients`.`site` AS `site`,`patients`.`last_update` AS `last_update`,`patients`.`create_date` AS `create_date` from `patients` */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;

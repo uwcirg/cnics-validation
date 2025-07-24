@@ -181,6 +181,31 @@ class Patients(Base):
     last_update: Mapped[datetime.datetime] = mapped_column(TIMESTAMP, server_default=text("'0000-00-00 00:00:00'"))
     create_date: Mapped[datetime.datetime] = mapped_column(DateTime, server_default=text("'0000-00-00 00:00:00'"))
 
+#The Patients class is defined in flask_backend/models.py as a straightforward SQLAlchemy model representing the patients table.
+#Each instance corresponds to one patient record. The fields map directly to columns in the database:
+
+    # This model simply declares columns for:
+
+    # id: integer primary key
+    # site_patient_id: the site‑specific identifier for the patient
+    # site: the site code
+    # last_update: timestamp of the last update
+    # create_date: datetime when the record was created
+
+    # Regarding its data source, the provided database dump cnics.sql shows that 
+    # the patients table is populated by copying records from the uw_patients2 table:
+
+    # -- Create table `patients` from `uw_patients2`
+    # DROP TABLE IF EXISTS `patients`;
+    # CREATE TABLE `patients` (
+    #   `id` int(10) unsigned NOT NULL,
+    #   `site_patient_id` varchar(64) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+    #   `site` varchar(20) NOT NULL,
+    #   `last_update` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
+    #   `create_date` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+    #   PRIMARY KEY (`id`)
+    # ) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
+    # INSERT INTO `patients` SELECT * FROM `uw_patients2` WHERE id <> 0;
 
 # --- Database session handling -------------------------------------------------
 _engine = None
