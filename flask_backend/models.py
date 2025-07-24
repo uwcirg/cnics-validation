@@ -15,7 +15,8 @@ import os
 class Base(DeclarativeBase):
     pass
 
-
+#In SQLAlchemy, the back_populates keyword is used to define a bidirectional relationship between two ORM classes. 
+# It ensures that both sides of the relationship are aware of each other and stay in sync.
 class Criterias(Base):
     __tablename__ = 'criterias'
 
@@ -80,6 +81,7 @@ class Events(Base):
     review2_date: Mapped[Optional[datetime.date]] = mapped_column(Date)
     assign3rd_date: Mapped[Optional[datetime.date]] = mapped_column(Date)
     review3_date: Mapped[Optional[datetime.date]] = mapped_column(Date)
+    #back_populates relationships keep both directions of the relationship in sync
     criterias = relationship("Criterias", back_populates="event")
     derived_data = relationship("EventDerivedDatas", back_populates="event", uselist=False)
     reviews = relationship("Reviews", back_populates="event")
