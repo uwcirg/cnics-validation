@@ -1,5 +1,5 @@
 from typing import Optional
-from sqlalchemy import Column, Date, DateTime, Enum, Float, String, TIMESTAMP, text, ForeignKey, create_engine
+from sqlalchemy import Column, Date, DateTime, Enum, Float, String, TIMESTAMP, text, ForeignKey, create_engine, Table
 from sqlalchemy.dialects.mysql import INTEGER, TINYINT, VARCHAR
 from sqlalchemy.orm import (
     DeclarativeBase,
@@ -20,7 +20,7 @@ class Criterias(Base):
     __tablename__ = 'criterias'
 
     id: Mapped[int] = mapped_column(INTEGER(11), primary_key=True)
-    event_id: Mapped[int] = mapped_column(ForeignKey("events.id"), INTEGER(11), comment='foreign key in events table')
+    event_id: Mapped[int] = mapped_column(INTEGER(11), ForeignKey("events.id"), comment='foreign key in events table')
     name: Mapped[str] = mapped_column(String(50))
     value: Mapped[str] = mapped_column(String(100))
     event = relationship("Events", back_populates="criterias")
@@ -29,7 +29,7 @@ class EventDerivedDatas(Base):
     __tablename__ = 'event_derived_datas'
 
     id: Mapped[int] = mapped_column(INTEGER(11), primary_key=True)
-    event_id: Mapped[int] = mapped_column(ForeignKey("events.id"), INTEGER(11), comment='foreign key into events table')
+    event_id: Mapped[int] = mapped_column(INTEGER(11), ForeignKey("events.id"), comment='foreign key into events table')
     outcome: Mapped[Optional[str]] = mapped_column(Enum('Definite', 'Probable', 'No', 'No [resuscitated cardiac arrest]'))
     primary_secondary: Mapped[Optional[str]] = mapped_column(Enum('Primary', 'Secondary'))
     false_positive_event: Mapped[Optional[int]] = mapped_column(TINYINT(1))
@@ -47,11 +47,11 @@ class Events(Base):
 
     id: Mapped[int] = mapped_column(INTEGER(11), primary_key=True)
     patient_id: Mapped[int] = mapped_column(INTEGER(10))
-    creator_id: Mapped[int] = mapped_column(ForeignKey("users.id"), INTEGER(11), comment='foreign key in users table')
+    creator_id: Mapped[int] = mapped_column(INTEGER(11), ForeignKey("users.id"), comment='foreign key in users table')
     status: Mapped[str] = mapped_column(Enum('created', 'uploaded', 'scrubbed', 'screened', 'assigned', 'sent', 'reviewer1_done', 'reviewer2_done', 'third_review_needed', 'third_review_assigned', 'done', 'rejected', 'no_packet_available'), server_default=text("'created'"))
     add_date: Mapped[datetime.date] = mapped_column(Date)
     event_date: Mapped[datetime.date] = mapped_column(Date)
-    uploader_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), INTEGER(11), comment='foreign key in users table')
+    uploader_id: Mapped[Optional[int]] = mapped_column(INTEGER(11), ForeignKey("users.id"), comment='foreign key in users table')
     file_number: Mapped[Optional[int]] = mapped_column(INTEGER(10))
     original_name: Mapped[Optional[str]] = mapped_column(String(100))
     marker_id: Mapped[Optional[int]] = mapped_column(INTEGER(11))
@@ -103,7 +103,7 @@ class Reviews(Base):
     __tablename__ = 'reviews'
 
     id: Mapped[int] = mapped_column(INTEGER(11), primary_key=True)
-    event_id: Mapped[int] = mapped_column(ForeignKey("events.id"), INTEGER(11))
+    event_id: Mapped[int] = mapped_column(INTEGER(11), ForeignKey("events.id"))
     reviewer_id: Mapped[int] = mapped_column(INTEGER(11))
     mci: Mapped[str] = mapped_column(Enum('Definite', 'Probable', 'No', 'No [resuscitated cardiac arrest]'))
     cardiac_cath: Mapped[int] = mapped_column(TINYINT(1))
@@ -131,7 +131,7 @@ class Solicitations(Base):
     __tablename__ = "solicitations"
 
     id: Mapped[int] = mapped_column(INTEGER(11), primary_key=True)
-    event_id: Mapped[int] = mapped_column(ForeignKey("events.id"), INTEGER(11))
+    event_id: Mapped[int] = mapped_column(INTEGER(11), ForeignKey("events.id"))
     date: Mapped[datetime.date] = mapped_column(Date)
     contact: Mapped[str] = mapped_column(String(200))
 
