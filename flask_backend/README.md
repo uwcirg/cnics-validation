@@ -22,5 +22,6 @@ If the environment variable `KEYCLOAK_REALM` is set, requests are validated
 against a Keycloak server. Configure `KEYCLOAK_URL`, `KEYCLOAK_CLIENT_ID` and
 `KEYCLOAK_CLIENT_SECRET` accordingly.
 
-A sample CNICS database dump `cnics.sql` is provided in this directory for local
-testing. Load it into your MariaDB instance after creating the schema.
+The repo includes a sample CNICS dump `cnics.sql` for reference. When the
+database container initializes it runs `init/04-create-patients.sql`, which
+creates and populates the `patients` table from `uw_patients2` if it is missing.

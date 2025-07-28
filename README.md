@@ -8,7 +8,9 @@ DOCKER DATABASE:
 
         cp .env.example .env
         docker-compose up -d mariadb
-        # Initialization scripts load `cnics.sql`
+        # Initialization scripts load `init/04-create-patients.sql` which
+        # populates the `patients` table from `uw_patients2` if it does not
+        # already exist
 
 ## Container Setup
 
