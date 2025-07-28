@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS `patients` (
   `last_update` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
   `create_date` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
   PRIMARY KEY (`id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
 
 INSERT INTO `patients`
 SELECT * FROM `uw_patients2`
