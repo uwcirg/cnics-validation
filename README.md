@@ -87,4 +87,17 @@ See [docs/separation_of_duties.md](docs/separation_of_duties.md) for details on 
 
 Run `python scripts/generate_openapi.py` to generate `openapi.json` describing
 the backend API. A GitHub action updates this file on each push.
+
+## Alternative SQLAlchemy models
+
+`flask_backend/models2.py` is a copy of `models.py` with all `back_populates`
+arguments removed from the `relationship()` definitions. The current
+application still imports `models.py` and does not use `models2.py`.
+
+Removing `back_populates` turns these relationships into one‑way links. SQLA
+chemy will no longer keep both sides of a relationship in sync automatically.
+For example, appending a `Criterias` object to `Events.criterias` will not set
+the corresponding `Criterias.event` attribute unless done manually. The new
+file is included for future experimentation and has no effect on the running
+code.
 ---
