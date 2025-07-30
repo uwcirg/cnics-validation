@@ -1,9 +1,14 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import "./DataTable.css"
 
 function DataTable({ rows, onRowClick }) {
   const [page, setPage] = useState(1)
   const pageSize = 20
+
+  // Reset back to the first page whenever the row set changes
+  useEffect(() => {
+    setPage(1)
+  }, [rows])
 
   if (!rows.length) return <p>No data found.</p>
 
@@ -40,7 +45,7 @@ function DataTable({ rows, onRowClick }) {
           ))}
         </tbody>
       </table>
-      {totalPages > 1 && (
+      {rows.length > pageSize && (
         <div className="pagination">
           <button onClick={goPrev} disabled={page === 1}>
             Previous

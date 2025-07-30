@@ -9,6 +9,11 @@ function Table({ rows }) {
   const [page, setPage] = useState(1)
   const pageSize = 20
 
+  // Reset page when new rows come in so pagination stays in range
+  useEffect(() => {
+    setPage(1)
+  }, [rows])
+
   if (!rows.length) return <p>No data found.</p>
 
   const totalPages = Math.ceil(rows.length / pageSize)
@@ -48,7 +53,7 @@ function Table({ rows }) {
           ))}
         </tbody>
       </table>
-      {totalPages > 1 && (
+      {rows.length > pageSize && (
         <div className="pagination">
           <button onClick={goPrev} disabled={page === 1}>
             Previous

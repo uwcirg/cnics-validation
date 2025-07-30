@@ -32,6 +32,14 @@ if not FILES_DIR:
 os.makedirs(FILES_DIR, exist_ok=True)
 
 
+def get_limit(default: int = 100) -> int:
+    """Return the integer limit requested by the client."""
+    try:
+        return int(request.args.get("limit", default))
+    except (TypeError, ValueError):
+        return default
+
+
 def ensure_pdf(doc_path: str, pdf_path: str) -> None:
     """Create a PDF from a doc/docx file if the PDF does not exist."""
     if os.path.exists(pdf_path):
@@ -109,8 +117,9 @@ def get_table(name):
               items:
                 type: object
     """
+    limit = get_limit()
     try:
-        rows = table_service.get_table_data(name)
+        rows = table_service.get_table_data(name, limit)
         return jsonify({'data': rows})
     except Exception:
         app.logger.exception("Failed to fetch table data")
@@ -133,8 +142,9 @@ def events_need_packets():
               items:
                 type: object
     """
+    limit = get_limit()
     try:
-        rows = table_service.get_events_need_packets()
+        rows = table_service.get_events_need_packets(limit)
         return jsonify({'data': rows})
     except Exception:
         app.logger.exception("Failed to fetch table data")
@@ -157,8 +167,9 @@ def events_for_review():
               items:
                 type: object
     """
+    limit = get_limit()
     try:
-        rows = table_service.get_events_for_review()
+        rows = table_service.get_events_for_review(limit)
         return jsonify({'data': rows})
     except Exception:
         app.logger.exception("Failed to fetch table data")
@@ -168,8 +179,9 @@ def events_for_review():
 @app.route('/api/events/need_reupload')
 @requires_auth
 def events_need_reupload():
+    limit = get_limit()
     try:
-        rows = table_service.get_events_for_reupload()
+        rows = table_service.get_events_for_reupload(limit)
         return jsonify({'data': rows})
     except Exception:
         app.logger.exception("Failed to fetch table data")
