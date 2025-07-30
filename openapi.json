@@ -7,6 +7,11 @@ paths:
         type: string
         required: true
         description: Name of the table
+      - name: limit
+        in: query
+        type: integer
+        required: false
+        description: Maximum number of records to return
       responses:
         '200':
           description: Table rows
@@ -19,6 +24,12 @@ paths:
                   type: object
   /api/events/need_packets:
     get:
+      parameters:
+      - name: limit
+        in: query
+        type: integer
+        required: false
+        description: Maximum number of records to return
       responses:
         '200':
           description: Event rows
@@ -31,6 +42,12 @@ paths:
                   type: object
   /api/events/for_review:
     get:
+      parameters:
+      - name: limit
+        in: query
+        type: integer
+        required: false
+        description: Maximum number of records to return
       responses:
         '200':
           description: Event rows
