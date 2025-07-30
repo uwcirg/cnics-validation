@@ -1,25 +1,45 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import "./DataTable.css"
 
-function DataTable({ rows, onRowClick }) {
+// ``rows`` is expected to contain only the rows for the current page.
+// ``totalCount`` is optional and can be used to compute total pages when
+// available from the API.
+function DataTable({ rows, onRowClick, onPageChange, totalCount }) {
   const [page, setPage] = useState(1)
   const pageSize = 20
 
-  // Reset back to the first page whenever the row set changes
-  useEffect(() => {
-    setPage(1)
-  }, [rows])
+  // When using server‑side pagination ``rows`` will change whenever a new
+  // page is fetched. We no longer reset ``page`` back to ``1`` on each update
+  // so that the current page indicator remains stable.
 
   if (!rows.length) return <p>No data found.</p>
 
-  const totalPages = Math.ceil(rows.length / pageSize)
+  const totalPages = totalCount ? Math.ceil(totalCount / pageSize) : null
   const headers = ['ID', 'Patient ID', 'Date', 'Criteria'].filter(
     (h) => h in rows[0]
   )
-  const pageRows = rows.slice((page - 1) * pageSize, page * pageSize)
+  const pageRows = rows
 
-  const goPrev = () => setPage((p) => Math.max(1, p - 1))
-  const goNext = () => setPage((p) => Math.min(totalPages, p + 1))
+  const goPrev = () => {
+    setPage((p) => {
+      const newPage = Math.max(1, p - 1)
+      if (newPage !== p && onPageChange) onPageChange(newPage)
+      return newPage
+    })
+  }
+  const goNext = () => {
+    setPage((p) => {
+      const newPage = totalPages ? Math.min(totalPages, p + 1) : p + 1
+      if (
+        (totalPages ? newPage <= totalPages : rows.length === pageSize) &&
+        newPage !== p &&
+        onPageChange
+      ) {
+        onPageChange(newPage)
+      }
+      return newPage
+    })
+  }
 
   return (
     <>
@@ -51,9 +71,13 @@ function DataTable({ rows, onRowClick }) {
             Previous
           </button>
           <span>
-            Page {page} of {totalPages}
+            Page {page}
+            {totalPages ? ` of ${totalPages}` : ''}
           </span>
-          <button onClick={goNext} disabled={page === totalPages}>
+          <button
+            onClick={goNext}
+            disabled={totalPages ? page === totalPages : rows.length < pageSize}
+          >
             Next
           </button>
         </div>

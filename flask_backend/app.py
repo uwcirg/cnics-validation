@@ -40,6 +40,14 @@ def get_limit(default: int = 100) -> int:
         return default
 
 
+def get_offset(default: int = 0) -> int:
+    """Return the integer offset requested by the client."""
+    try:
+        return int(request.args.get("offset", default))
+    except (TypeError, ValueError):
+        return default
+
+
 def ensure_pdf(doc_path: str, pdf_path: str) -> None:
     """Create a PDF from a doc/docx file if the PDF does not exist."""
     if os.path.exists(pdf_path):
@@ -118,8 +126,9 @@ def get_table(name):
                 type: object
     """
     limit = get_limit()
+    offset = get_offset()
     try:
-        rows = table_service.get_table_data(name, limit)
+        rows = table_service.get_table_data(name, limit, offset)
         return jsonify({'data': rows})
     except Exception:
         app.logger.exception("Failed to fetch table data")
@@ -143,8 +152,9 @@ def events_need_packets():
                 type: object
     """
     limit = get_limit()
+    offset = get_offset()
     try:
-        rows = table_service.get_events_need_packets(limit)
+        rows = table_service.get_events_need_packets(limit, offset)
         return jsonify({'data': rows})
     except Exception:
         app.logger.exception("Failed to fetch table data")
@@ -168,8 +178,9 @@ def events_for_review():
                 type: object
     """
     limit = get_limit()
+    offset = get_offset()
     try:
-        rows = table_service.get_events_for_review(limit)
+        rows = table_service.get_events_for_review(limit, offset)
         return jsonify({'data': rows})
     except Exception:
         app.logger.exception("Failed to fetch table data")
@@ -180,8 +191,9 @@ def events_for_review():
 @requires_auth
 def events_need_reupload():
     limit = get_limit()
+    offset = get_offset()
     try:
-        rows = table_service.get_events_for_reupload(limit)
+        rows = table_service.get_events_for_reupload(limit, offset)
         return jsonify({'data': rows})
     except Exception:
         app.logger.exception("Failed to fetch table data")
