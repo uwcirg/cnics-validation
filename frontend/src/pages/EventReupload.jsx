@@ -53,7 +53,7 @@ function Table({ rows }) {
           ))}
         </tbody>
       </table>
-      {rows.length > pageSize && (
+      {rows.length > 0 && (
         <div className="pagination">
           <button onClick={goPrev} disabled={page === 1}>
             Previous
