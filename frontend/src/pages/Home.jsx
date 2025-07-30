@@ -87,10 +87,12 @@ function Home() {
         />
       </section>
 
-      <section>
+
+
+      {/* <section>
         <h3>Table Preview</h3>
         <TableWrapper rows={filteredRows} />
-      </section>
+      </section> */}
 
       <section>
         <h3>Events That Need Packets</h3>
