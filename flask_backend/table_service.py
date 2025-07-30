@@ -15,20 +15,20 @@ def get_session():
     return models.get_session()
 
 
-def get_table_data(name: str, limit: int = 100):
-    """Return up to ``limit`` rows from the specified table."""
-    logger.debug("Fetching up to %d rows from table %s", limit, name)
+def get_table_data(name: str, limit: int = 100, offset: int = 0):
+    """Return rows from ``name`` with ``limit`` and ``offset``."""
+    logger.debug("Fetching up to %d rows from table %s starting at %d", limit, name, offset)
     session = get_session()
-    stmt = text(f"SELECT * FROM {name} LIMIT :limit")
-    rows = session.execute(stmt, {"limit": limit}).mappings().all()
+    stmt = text(f"SELECT * FROM {name} LIMIT :limit OFFSET :offset")
+    rows = session.execute(stmt, {"limit": limit, "offset": offset}).mappings().all()
     logger.debug("Fetched %d rows from table %s", len(rows), name)
     session.close()
     return [dict(r) for r in rows]
 
 
-def get_events_by_status(status: str, limit: int = 100):
-    """Return up to ``limit`` events filtered by status."""
-    logger.debug("Fetching up to %d events with status %s", limit, status)
+def get_events_by_status(status: str, limit: int = 100, offset: int = 0):
+    """Return events filtered by status with pagination."""
+    logger.debug("Fetching up to %d events with status %s starting at %d", limit, status, offset)
     session = get_session()
     query = (
         "SELECT events.id AS `ID`, events.patient_id AS `Patient ID`, "
@@ -38,27 +38,27 @@ def get_events_by_status(status: str, limit: int = 100):
         "JOIN criterias ON events.id = criterias.event_id "
         "JOIN patients ON events.patient_id = patients.id "
         "WHERE events.status = :status "
-        "GROUP BY events.id, events.patient_id, events.event_date LIMIT :limit"
+        "GROUP BY events.id, events.patient_id, events.event_date LIMIT :limit OFFSET :offset"
     )
-    rows = session.execute(text(query), {"status": status, "limit": limit}).mappings().all()
+    rows = session.execute(text(query), {"status": status, "limit": limit, "offset": offset}).mappings().all()
     logger.debug("Fetched %d events with status %s", len(rows), status)
     session.close()
     return [dict(r) for r in rows]
 
 
-def get_events_need_packets(limit: int = 100):
-    """Return up to ``limit`` events that still require packet uploads."""
-    return get_events_by_status("created", limit)
+def get_events_need_packets(limit: int = 100, offset: int = 0):
+    """Return events that still require packet uploads."""
+    return get_events_by_status("created", limit, offset)
 
 
-def get_events_for_review(limit: int = 100):
-    """Return up to ``limit`` events with uploaded packets awaiting review."""
-    return get_events_by_status("uploaded", limit)
+def get_events_for_review(limit: int = 100, offset: int = 0):
+    """Return events with uploaded packets awaiting review."""
+    return get_events_by_status("uploaded", limit, offset)
 
 
-def get_events_for_reupload(limit: int = 100):
-    """Return up to ``limit`` events that were rejected and need reupload."""
-    return get_events_by_status("rejected", limit)
+def get_events_for_reupload(limit: int = 100, offset: int = 0):
+    """Return events that were rejected and need reupload."""
+    return get_events_by_status("rejected", limit, offset)
 
 
 def get_event_status_summary():

@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import DataTable from '../components/DataTable'
 import './EventUpload.css'
 
+const PAGE_SIZE = 20
+
 function EventUpload() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -29,11 +31,15 @@ function EventUpload() {
     noPacketReason === 'Ascertainment diagnosis referred to a prior event'
   const showOtherCause = noPacketReason === 'Other'
 
-  useEffect(() => {
-    fetch(`${API_BASE}/api/events/need_packets`)
+  const fetchPage = (p) => {
+    fetch(`${API_BASE}/api/events/need_packets?limit=${PAGE_SIZE}&offset=${(p - 1) * PAGE_SIZE}`)
       .then((res) => res.json())
       .then((json) => setRows(json.data || []))
       .catch(() => {})
+  }
+
+  useEffect(() => {
+    fetchPage(1)
   }, [API_BASE])
 
   const filteredRows = rows.filter((row) =>
@@ -65,6 +71,7 @@ function EventUpload() {
                 `/events/upload?event_id=${row['ID']}&patient_id=${row['Patient ID']}&date=${row['Date']}&criteria=${encodeURIComponent(row['Criteria'])}`
               )
             }
+            onPageChange={fetchPage}
           />
         </>
       )}

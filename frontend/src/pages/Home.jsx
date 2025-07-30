@@ -8,20 +8,33 @@ import './Home.css'
 // relative path so the frontend can be served without configuration.
 const API_BASE = import.meta.env.VITE_API_URL || ''
 
-function TableWrapper({ rows }) {
+const PAGE_SIZE = 20
+
+function TableWrapper({ endpoint }) {
   const navigate = useNavigate()
+  const [rows, setRows] = useState([])
+
+  const fetchPage = (p) => {
+    fetch(`${API_BASE}${endpoint}?limit=${PAGE_SIZE}&offset=${(p - 1) * PAGE_SIZE}`)
+      .then((res) => res.json())
+      .then((json) => setRows(json.data || []))
+      .catch(() => {})
+  }
+
+  useEffect(() => {
+    fetchPage(1)
+  }, [endpoint])
+
   const handleClick = (row) => {
     navigate(
       `/events/upload?event_id=${row['ID']}&patient_id=${row['Patient ID']}&date=${row['Date']}&criteria=${encodeURIComponent(row['Criteria'])}`
     )
   }
-  return <DataTable rows={rows} onRowClick={handleClick} />
+  return <DataTable rows={rows} onRowClick={handleClick} onPageChange={fetchPage} />
 }
 
 function Home() {
   const [rows, setRows] = useState([])
-  const [needPacketRows, setNeedPacketRows] = useState([])
-  const [reviewRows, setReviewRows] = useState([])
   const [statusSummary, setStatusSummary] = useState(null)
   const [search, setSearch] = useState('')
 
@@ -29,16 +42,6 @@ function Home() {
     fetch(`${API_BASE}/api/tables/events`)
       .then((res) => res.json())
       .then((json) => setRows(json.data || []))
-      .catch(() => {})
-
-    fetch(`${API_BASE}/api/events/need_packets`)
-      .then((res) => res.json())
-      .then((json) => setNeedPacketRows(json.data || []))
-      .catch(() => {})
-
-    fetch(`${API_BASE}/api/events/for_review`)
-      .then((res) => res.json())
-      .then((json) => setReviewRows(json.data || []))
       .catch(() => {})
 
     fetch(`${API_BASE}/api/events/status_summary`)
@@ -53,17 +56,6 @@ function Home() {
     )
   )
 
-  const filteredNeedPacketRows = needPacketRows.filter((row) =>
-    Object.values(row).some((v) =>
-      String(v).toLowerCase().includes(search.toLowerCase())
-    )
-  )
-
-  const filteredReviewRows = reviewRows.filter((row) =>
-    Object.values(row).some((v) =>
-      String(v).toLowerCase().includes(search.toLowerCase())
-    )
-  )
 
   return (
     <div className="home-container">
@@ -89,23 +81,14 @@ function Home() {
 
 
 
-      {/* <section>
-        <h3>Table Preview</h3>
-        <TableWrapper rows={filteredRows} />
-      </section> */}
-
       <section>
         <h3>Events That Need Packets</h3>
-        <TableWrapper rows={filteredNeedPacketRows} />
+        <TableWrapper endpoint="/api/events/need_packets" />
       </section>
 
       <section>
         <h3>Event Packets for Your Review</h3>
-        {filteredReviewRows.length ? (
-          <TableWrapper rows={filteredReviewRows} />
-        ) : (
-          <p>No events to review.</p>
-        )}
+        <TableWrapper endpoint="/api/events/for_review" />
       </section>
 
       {statusSummary && (

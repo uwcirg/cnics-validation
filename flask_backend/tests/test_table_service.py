@@ -10,11 +10,11 @@ def test_get_table_data(mock_get_session):
     ]
     mock_get_session.return_value = mock_session
 
-    rows = ts.get_table_data('events', 10)
+    rows = ts.get_table_data('events', 10, 2)
 
     mock_get_session.assert_called()
     mock_session.execute.assert_called()
-    assert mock_session.execute.call_args.args[1] == {'limit': 10}
+    assert mock_session.execute.call_args.args[1] == {'limit': 10, 'offset': 2}
     assert rows == [{'id': 1}]
 
 
@@ -26,13 +26,13 @@ def test_get_events_need_packets(mock_get_session):
     ]
     mock_get_session.return_value = mock_session
 
-    rows = ts.get_events_need_packets(5)
+    rows = ts.get_events_need_packets(5, 0)
 
     mock_get_session.assert_called()
     query = mock_session.execute.call_args.args[0]
     assert "GROUP BY events.id" in str(query)
     assert "JOIN patients" in str(query)
-    assert mock_session.execute.call_args.args[1] == {'status': 'created', 'limit': 5}
+    assert mock_session.execute.call_args.args[1] == {'status': 'created', 'limit': 5, 'offset': 0}
     assert rows == [{'ID': 1}]
 
 
@@ -44,12 +44,12 @@ def test_get_events_for_review(mock_get_session):
     ]
     mock_get_session.return_value = mock_session
 
-    rows = ts.get_events_for_review(6)
+    rows = ts.get_events_for_review(6, 0)
 
     mock_get_session.assert_called()
     query = mock_session.execute.call_args.args[0]
     assert 'events.status' in str(query)
-    assert mock_session.execute.call_args.args[1] == {'status': 'uploaded', 'limit': 6}
+    assert mock_session.execute.call_args.args[1] == {'status': 'uploaded', 'limit': 6, 'offset': 0}
     assert rows == [{'ID': 2}]
 
 
@@ -61,12 +61,12 @@ def test_get_events_for_reupload(mock_get_session):
     ]
     mock_get_session.return_value = mock_session
 
-    rows = ts.get_events_for_reupload(7)
+    rows = ts.get_events_for_reupload(7, 0)
 
     mock_get_session.assert_called()
     query = mock_session.execute.call_args.args[0]
     assert 'events.status' in str(query)
-    assert mock_session.execute.call_args.args[1] == {'status': 'rejected', 'limit': 7}
+    assert mock_session.execute.call_args.args[1] == {'status': 'rejected', 'limit': 7, 'offset': 0}
     assert rows == [{'ID': 3}]
 
 
