@@ -1,33 +1,33 @@
-import { BrowserRouter as Router, Route, Routes } from 'react-router-dom'
+import { Route, BrowserRouter as Router, Routes } from 'react-router-dom'
 import BaseLayout from './components/BaseLayout'
-import Home from './pages/Home'
-import EventIndex from './pages/EventIndex'
-import EventAdd from './pages/EventAdd'
-import EventAddMany from './pages/EventAddMany'
-import EventAssignMany from './pages/EventAssignMany'
-import EventUpload from './pages/EventUpload'
-import EventReupload from './pages/EventReupload'
-import EventReview from './pages/EventReview'
-import EventScreen from './pages/EventScreen'
-import EventScrub from './pages/EventScrub'
-import EventViewAll from './pages/EventViewAll'
-import UsersViewAll from './pages/UsersViewAll'
-import UserAdd from './pages/UserAdd'
-import UserEdit from './pages/UserEdit'
-import UserDelete from './pages/UserDelete'
-import UserLogout from './pages/UserLogout'
-import SolicitationAdd from './pages/SolicitationAdd'
-import SolicitationDelete from './pages/SolicitationDelete'
 import CriteriaAdd from './pages/CriteriaAdd'
 import CriteriaDelete from './pages/CriteriaDelete'
 import ErrorNotAuthorized from './pages/ErrorNotAuthorized'
 import ErrorUnknownUser from './pages/ErrorUnknownUser'
+import EventAdd from './pages/EventAdd'
+import EventAddMany from './pages/EventAddMany'
+import EventAssignMany from './pages/EventAssignMany'
+import EventIndex from './pages/EventIndex'
+import EventReupload from './pages/EventReupload'
+import EventReview from './pages/EventReview'
+import EventScreen from './pages/EventScreen'
+import EventScrub from './pages/EventScrub'
+import EventUpload from './pages/EventUpload'
+import EventViewAll from './pages/EventViewAll'
+import Home from './pages/Home'
+import SolicitationAdd from './pages/SolicitationAdd'
+import SolicitationDelete from './pages/SolicitationDelete'
+import UserAdd from './pages/UserAdd'
+import UserDelete from './pages/UserDelete'
+import UserEdit from './pages/UserEdit'
+import UserLogout from './pages/UserLogout'
+import UsersViewAll from './pages/UsersViewAll'
 
 function App() {
   const auth = { admin: true, uploader: true, reviewer: true, username: 'demo' }
 
   return (
-    <Router>
+    <Router basename="/validation-ssingh20">
       <BaseLayout auth={auth}>
         <Routes>
           <Route path="/" element={<Home />} />
