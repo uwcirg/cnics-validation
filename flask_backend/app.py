@@ -11,7 +11,10 @@ from . import table_service
 app = Flask(__name__)
 
 # Enable CORS only for requests coming from the frontend
-allowed_origin = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
+allowed_origin = os.getenv(
+    "FRONTEND_ORIGIN",
+    "https://frontend.cnics-validation.pm.ssingh20.dev.cirg.uw.edu",
+)
 CORS(
     app,
     resources={r"/api/*": {"origins": allowed_origin}},

@@ -19,7 +19,7 @@ This repository includes a lightweight Docker configuration based on the setup u
 ### Build and Run
 
 1. Copy `.env.example` to `.env` and edit if necessary. `VITE_API_URL` should
-   point at the backend API (defaults to `http://localhost:3001`).
+   point at the backend API (defaults to `https://backend.cnics-validation.pm.ssingh20.dev.cirg.uw.edu`).
 2. Build the Docker images:
 
    ```bash
@@ -32,8 +32,8 @@ This repository includes a lightweight Docker configuration based on the setup u
     docker-compose up
     ```
 
-    The frontend will be served on <http://localhost:3000/> and the backend API
-    on <http://localhost:3001/>.
+    The frontend will be served on <https://frontend.cnics-validation.pm.ssingh20.dev.cirg.uw.edu/> and the backend API
+    on <https://backend.cnics-validation.pm.ssingh20.dev.cirg.uw.edu/>.
     The compose file mounts `app/webroot/files` into the backend container so
     instruction documents are available at `/files/<name>`.
 
