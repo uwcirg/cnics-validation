@@ -112,3 +112,10 @@ def test_auth_required_status_summary(mock_service):
     client = app_mod.app.test_client()
     res = client.get('/api/events/status_summary')
     assert res.status_code == 401
+
+
+def test_root_route():
+    client = app.test_client()
+    res = client.get('/')
+    assert res.status_code == 200
+    assert res.get_json() == {'status': 'ok'}
