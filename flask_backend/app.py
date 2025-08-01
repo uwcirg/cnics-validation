@@ -244,6 +244,12 @@ def get_file(filename: str):
 # Placeholder for OpenAPI generation scripts
 swagger = None
 
+# Optional root route for basic health check
+@app.route('/')
+def index():
+    """Simple health check route."""
+    return jsonify({'status': 'ok'})
+
 if __name__ == '__main__':
     port = int(os.getenv('PORT', '3000'))
     app.run(host='0.0.0.0', port=port)
