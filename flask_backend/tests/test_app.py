@@ -5,20 +5,20 @@ from unittest.mock import patch
 def test_get_table_route(mock_service):
     mock_service.return_value = [{'id': 1}]
     client = app.test_client()
-    res = client.get('/api/tables/events?limit=5')
+    res = client.get('/api/tables/events?limit=5&offset=10')
     assert res.status_code == 200
     assert res.get_json() == {'data': [{'id': 1}]}
-    mock_service.assert_called_with('events', 5)
+    mock_service.assert_called_with('events', 5, 10)
 
 
 @patch('flask_backend.table_service.get_events_need_packets')
 def test_get_need_packets_route(mock_service):
     mock_service.return_value = [{'ID': 1}]
     client = app.test_client()
-    res = client.get('/api/events/need_packets?limit=2')
+    res = client.get('/api/events/need_packets?limit=2&offset=5')
     assert res.status_code == 200
     assert res.get_json() == {'data': [{'ID': 1}]}
-    mock_service.assert_called_with(2)
+    mock_service.assert_called_with(2, 5)
 
 
 @patch("flask_backend.table_service.get_table_data")
@@ -50,10 +50,10 @@ def test_get_for_review_route(mock_service):
     app_mod = importlib.import_module('flask_backend.app')
     app_mod.keycloak_openid = None
     client = app_mod.app.test_client()
-    res = client.get('/api/events/for_review?limit=3')
+    res = client.get('/api/events/for_review?limit=3&offset=0')
     assert res.status_code == 200
     assert res.get_json() == {'data': [{'ID': 2}]}
-    mock_service.assert_called_with(3)
+    mock_service.assert_called_with(3, 0)
 
 
 @patch('flask_backend.table_service.get_events_for_review')
@@ -74,10 +74,10 @@ def test_get_for_reupload_route(mock_service):
     app_mod = importlib.import_module('flask_backend.app')
     app_mod.keycloak_openid = None
     client = app_mod.app.test_client()
-    res = client.get('/api/events/need_reupload?limit=4')
+    res = client.get('/api/events/need_reupload?limit=4&offset=0')
     assert res.status_code == 200
     assert res.get_json() == {'data': [{'ID': 3}]}
-    mock_service.assert_called_with(4)
+    mock_service.assert_called_with(4, 0)
 
 
 @patch('flask_backend.table_service.get_events_for_reupload')
@@ -112,3 +112,10 @@ def test_auth_required_status_summary(mock_service):
     client = app_mod.app.test_client()
     res = client.get('/api/events/status_summary')
     assert res.status_code == 401
+
+
+def test_root_route():
+    client = app.test_client()
+    res = client.get('/')
+    assert res.status_code == 200
+    assert res.get_json() == {'status': 'ok'}

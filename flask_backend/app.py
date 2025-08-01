@@ -11,7 +11,10 @@ from . import table_service
 app = Flask(__name__)
 
 # Enable CORS only for requests coming from the frontend
-allowed_origin = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
+allowed_origin = os.getenv(
+    "FRONTEND_ORIGIN",
+    "https://frontend.cnics-validation.pm.ssingh20.dev.cirg.uw.edu",
+)
 CORS(
     app,
     resources={r"/api/*": {"origins": allowed_origin}},
@@ -36,6 +39,14 @@ def get_limit(default: int = 100) -> int:
     """Return the integer limit requested by the client."""
     try:
         return int(request.args.get("limit", default))
+    except (TypeError, ValueError):
+        return default
+
+
+def get_offset(default: int = 0) -> int:
+    """Return the integer offset requested by the client."""
+    try:
+        return int(request.args.get("offset", default))
     except (TypeError, ValueError):
         return default
 
@@ -118,8 +129,9 @@ def get_table(name):
                 type: object
     """
     limit = get_limit()
+    offset = get_offset()
     try:
-        rows = table_service.get_table_data(name, limit)
+        rows = table_service.get_table_data(name, limit, offset)
         return jsonify({'data': rows})
     except Exception:
         app.logger.exception("Failed to fetch table data")
@@ -143,8 +155,9 @@ def events_need_packets():
                 type: object
     """
     limit = get_limit()
+    offset = get_offset()
     try:
-        rows = table_service.get_events_need_packets(limit)
+        rows = table_service.get_events_need_packets(limit, offset)
         return jsonify({'data': rows})
     except Exception:
         app.logger.exception("Failed to fetch table data")
@@ -168,8 +181,9 @@ def events_for_review():
                 type: object
     """
     limit = get_limit()
+    offset = get_offset()
     try:
-        rows = table_service.get_events_for_review(limit)
+        rows = table_service.get_events_for_review(limit, offset)
         return jsonify({'data': rows})
     except Exception:
         app.logger.exception("Failed to fetch table data")
@@ -180,8 +194,9 @@ def events_for_review():
 @requires_auth
 def events_need_reupload():
     limit = get_limit()
+    offset = get_offset()
     try:
-        rows = table_service.get_events_for_reupload(limit)
+        rows = table_service.get_events_for_reupload(limit, offset)
         return jsonify({'data': rows})
     except Exception:
         app.logger.exception("Failed to fetch table data")
@@ -228,6 +243,12 @@ def get_file(filename: str):
 
 # Placeholder for OpenAPI generation scripts
 swagger = None
+
+# Optional root route for basic health check
+@app.route('/')
+def index():
+    """Simple health check route."""
+    return jsonify({'status': 'ok'})
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', '3000'))
