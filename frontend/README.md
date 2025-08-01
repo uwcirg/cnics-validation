@@ -40,7 +40,7 @@ docker-compose up web
 ```
 
 When the override file is present the frontend will be available at
-<http://localhost:3000/>.
+<https://frontend.cnics-validation.pm.ssingh20.dev.cirg.uw.edu/>.
 
 You can override the `VITE_API_URL` environment variable in the compose file to
 point the frontend to a different backend API.
