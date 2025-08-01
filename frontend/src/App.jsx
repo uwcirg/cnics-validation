@@ -27,7 +27,7 @@ function App() {
   const auth = { admin: true, uploader: true, reviewer: true, username: 'demo' }
 
   return (
-    <Router basename="/validation-ssingh20">
+    <Router>
       <BaseLayout auth={auth}>
         <Routes>
           <Route path="/" element={<Home />} />
