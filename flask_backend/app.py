@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request, abort, send_from_directory
 from flask_cors import CORS
 import os
+from typing import Optional
 from docx import Document
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
@@ -35,10 +36,11 @@ if not FILES_DIR:
 os.makedirs(FILES_DIR, exist_ok=True)
 
 
-def get_limit(default: int = 100) -> int:
+def get_limit(default: Optional[int] = None) -> Optional[int]:
     """Return the integer limit requested by the client."""
+    value = request.args.get("limit", default)
     try:
-        return int(request.args.get("limit", default))
+        return int(value) if value is not None else None
     except (TypeError, ValueError):
         return default
 

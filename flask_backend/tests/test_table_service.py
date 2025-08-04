@@ -19,6 +19,23 @@ def test_get_table_data(mock_get_session):
 
 
 @patch('flask_backend.table_service.models.get_session')
+def test_get_table_data_no_limit(mock_get_session):
+    mock_session = MagicMock()
+    mock_session.execute.return_value.mappings.return_value.all.return_value = [
+        {'id': 1},
+    ]
+    mock_get_session.return_value = mock_session
+
+    rows = ts.get_table_data('events', None, 0)
+
+    query = str(mock_session.execute.call_args.args[0])
+    params = mock_session.execute.call_args.args[1]
+    assert 'LIMIT' not in query.upper()
+    assert params == {}
+    assert rows == [{'id': 1}]
+
+
+@patch('flask_backend.table_service.models.get_session')
 def test_get_events_need_packets(mock_get_session):
     mock_session = MagicMock()
     mock_session.execute.return_value.mappings.return_value.all.return_value = [
@@ -33,6 +50,23 @@ def test_get_events_need_packets(mock_get_session):
     assert "GROUP BY events.id" in str(query)
     assert "JOIN patients" in str(query)
     assert mock_session.execute.call_args.args[1] == {'status': 'created', 'limit': 5, 'offset': 0}
+    assert rows == [{'ID': 1}]
+
+
+@patch('flask_backend.table_service.models.get_session')
+def test_get_events_need_packets_no_limit(mock_get_session):
+    mock_session = MagicMock()
+    mock_session.execute.return_value.mappings.return_value.all.return_value = [
+        {'ID': 1},
+    ]
+    mock_get_session.return_value = mock_session
+
+    rows = ts.get_events_need_packets(None, 0)
+
+    query = str(mock_session.execute.call_args.args[0])
+    params = mock_session.execute.call_args.args[1]
+    assert 'LIMIT' not in query.upper()
+    assert params == {'status': 'created'}
     assert rows == [{'ID': 1}]
 
 
