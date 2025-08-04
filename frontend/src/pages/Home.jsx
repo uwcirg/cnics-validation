@@ -50,6 +50,7 @@ function Home() {
       .catch(() => {})
   }, [])
 
+  // eslint-disable-next-line no-unused-vars
   const filteredRows = rows.filter((row) =>
     Object.values(row).some((v) =>
       String(v).toLowerCase().includes(search.toLowerCase())
