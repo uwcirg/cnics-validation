@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from typing import Optional
 from sqlalchemy import text, bindparam
 import logging
 
@@ -15,20 +16,39 @@ def get_session():
     return models.get_session()
 
 
-def get_table_data(name: str, limit: int = 100, offset: int = 0):
-    """Return rows from ``name`` with ``limit`` and ``offset``."""
-    logger.debug("Fetching up to %d rows from table %s starting at %d", limit, name, offset)
+def get_table_data(name: str, limit: Optional[int] = None, offset: int = 0):
+    """Return rows from ``name`` with optional ``limit`` and ``offset``."""
+    logger.debug(
+        "Fetching %srows from table %s starting at %d",
+        f"up to {limit} " if limit is not None else "all ",
+        name,
+        offset,
+    )
     session = get_session()
-    stmt = text(f"SELECT * FROM {name} LIMIT :limit OFFSET :offset")
-    rows = session.execute(stmt, {"limit": limit, "offset": offset}).mappings().all()
+    stmt = f"SELECT * FROM {name}"
+    params = {}
+    if limit is not None:
+        stmt += " LIMIT :limit"
+        params["limit"] = limit
+        stmt += " OFFSET :offset"
+        params["offset"] = offset
+    elif offset:
+        stmt += " LIMIT 18446744073709551615 OFFSET :offset"
+        params["offset"] = offset
+    rows = session.execute(text(stmt), params).mappings().all()
     logger.debug("Fetched %d rows from table %s", len(rows), name)
     session.close()
     return [dict(r) for r in rows]
 
 
-def get_events_by_status(status: str, limit: int = 100, offset: int = 0):
-    """Return events filtered by status with pagination."""
-    logger.debug("Fetching up to %d events with status %s starting at %d", limit, status, offset)
+def get_events_by_status(status: str, limit: Optional[int] = None, offset: int = 0):
+    """Return events filtered by status with optional pagination."""
+    logger.debug(
+        "Fetching %sevents with status %s starting at %d",
+        f"up to {limit} " if limit is not None else "all ",
+        status,
+        offset,
+    )
     session = get_session()
     query = (
         "SELECT events.id AS `ID`, events.patient_id AS `Patient ID`, "
@@ -38,25 +58,32 @@ def get_events_by_status(status: str, limit: int = 100, offset: int = 0):
         "JOIN criterias ON events.id = criterias.event_id "
         "JOIN patients ON events.patient_id = patients.id "
         "WHERE events.status = :status "
-        "GROUP BY events.id, events.patient_id, events.event_date LIMIT :limit OFFSET :offset"
+        "GROUP BY events.id, events.patient_id, events.event_date"
     )
-    rows = session.execute(text(query), {"status": status, "limit": limit, "offset": offset}).mappings().all()
+    params = {"status": status}
+    if limit is not None:
+        query += " LIMIT :limit OFFSET :offset"
+        params.update({"limit": limit, "offset": offset})
+    elif offset:
+        query += " LIMIT 18446744073709551615 OFFSET :offset"
+        params["offset"] = offset
+    rows = session.execute(text(query), params).mappings().all()
     logger.debug("Fetched %d events with status %s", len(rows), status)
     session.close()
     return [dict(r) for r in rows]
 
 
-def get_events_need_packets(limit: int = 100, offset: int = 0):
+def get_events_need_packets(limit: Optional[int] = None, offset: int = 0):
     """Return events that still require packet uploads."""
     return get_events_by_status("created", limit, offset)
 
 
-def get_events_for_review(limit: int = 100, offset: int = 0):
+def get_events_for_review(limit: Optional[int] = None, offset: int = 0):
     """Return events with uploaded packets awaiting review."""
     return get_events_by_status("uploaded", limit, offset)
 
 
-def get_events_for_reupload(limit: int = 100, offset: int = 0):
+def get_events_for_reupload(limit: Optional[int] = None, offset: int = 0):
     """Return events that were rejected and need reupload."""
     return get_events_by_status("rejected", limit, offset)
 
@@ -76,7 +103,7 @@ def get_events_with_patient_site():
     """Return events with site info from the external database."""
     logger.debug("Fetching events with patient site information")
     session = get_session()
-    rows = session.execute(text("SELECT id, patient_id FROM events LIMIT 100")).mappings().all()
+    rows = session.execute(text("SELECT id, patient_id FROM events")).mappings().all()
     session.close()
     rows = [dict(r) for r in rows]
 
