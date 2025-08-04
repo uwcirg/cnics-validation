@@ -59,17 +59,9 @@ Override these values in your copied `.env` file as needed.
 
 See [docs/development.md](docs/development.md) for instructions on running the application with Docker.
 
-## Generating PDF copies of instruction files
-
-Some pages link to `.pdf` versions of the documents under `app/webroot/files/`.
-When running via Docker Compose this directory is mounted read-only, so the
-backend cannot create PDF files on the fly. Run `python generate_pdfs.py` from
-the project root **before** starting the containers to generate the PDF copies
-locally.
-
-
 
 ## Backend API
+
 
 The Flask backend under `flask_backend/` exposes REST endpoints that the React frontend fetches. Docker Compose runs a `backend` service alongside the `web` frontend service. The frontend reads the API base URL from the `VITE_API_URL` environment variable.
 
