@@ -1,0 +1,7 @@
+services:
+  web:
+    build:
+        target: development_build
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public

@@ -24,3 +24,9 @@ COPY --from=build /app/dist ./dist
 
 EXPOSE 3000
 CMD ["serve", "-s", "dist", "-l", "3000", "--single"]
+
+FROM build AS development_build
+WORKDIR /app
+
+EXPOSE 3000
+CMD ["npm", "run", "dev"]
