@@ -35,6 +35,7 @@ services:
   web:
     build:
       context: ./frontend
+      target: serve
     env_file:
       - ./frontend/.env
     depends_on:
