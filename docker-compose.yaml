@@ -35,12 +35,8 @@ services:
   web:
     build:
       context: ./frontend
-      args:
-        VITE_API_URL: ${VITE_API_URL}
-        VITE_BASE_PATH: ${VITE_BASE_PATH}
-    environment:
-      VITE_API_URL: ${VITE_API_URL}
-      VITE_BASE_PATH: ${VITE_BASE_PATH}
+    env_file:
+      - ./frontend/.env
     depends_on:
       - backend
     ports:
