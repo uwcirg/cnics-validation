@@ -2,6 +2,8 @@ services:
   web:
     build:
         target: development_build
+    environment:
+      HOT_RELOAD: 1
     volumes:
       - ./frontend/src:/app/src
       - ./frontend/public:/app/public
