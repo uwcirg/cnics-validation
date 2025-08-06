@@ -22,8 +22,8 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       DB_NAME: ${DB_NAME}
       FILES_DIR: /files
-      PORT: 3000
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN}
+      PORT: 3000
     depends_on:
       - mariadb
     ports:
@@ -36,16 +36,13 @@ services:
   web:
     build:
       context: ./frontend
-      args:
-        VITE_API_URL: ${VITE_API_URL}
-        VITE_BASE_PATH: ${VITE_BASE_PATH}
-    environment:
-      VITE_API_URL: ${VITE_API_URL}
-      VITE_BASE_PATH: ${VITE_BASE_PATH}
+      target: serve
+    env_file:
+      - ./frontend/.env
     depends_on:
       - backend
     ports:
-      - "3000:3000"
+      - "127.0.0.1:${EXTERNAL_PORT:-3000}:3000"
     networks:
       - internal
       
