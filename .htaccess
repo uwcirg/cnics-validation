@@ -1,9 +1,12 @@
 # Managed in https://gitlab.cirg.washington.edu/
 
 <IfModule mod_rewrite.c>
-   RewriteEngine on
-   RewriteRule    ^$ app/webroot/    [L]
-   RewriteRule    (.*) app/webroot/$1 [L]
+  RewriteEngine On
+  RewriteBase /validation-ssingh20/
+  RewriteRule ^index\.html$ - [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . /validation-ssingh20/index.html [L]
 </IfModule>
 SSLRequireSSL
 ErrorDocument 403 "You must use SSL.
