@@ -54,6 +54,7 @@ paths:
                 type: object
                 additionalProperties:
                   type: integer
+  /api/users: {}
 info:
   title: CNICS Validation API
   version: 1.0.0

@@ -229,6 +229,19 @@ def events_status_summary():
         return jsonify({'error': 'Failed to fetch table data'}), 500
 
 
+@app.route('/api/users', methods=['POST'])
+@requires_auth
+def add_user():
+    """Create a new user."""
+    data = request.get_json() or {}
+    try:
+        user = table_service.create_user(data)
+        return jsonify({'data': user}), 201
+    except Exception:
+        app.logger.exception("Failed to create user")
+        return jsonify({'error': 'Failed to create user'}), 500
+
+
 @app.route('/files/<path:filename>')
 def get_file(filename: str):
     file_path = os.path.join(FILES_DIR, filename)

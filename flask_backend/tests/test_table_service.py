@@ -137,3 +137,53 @@ def test_get_events_with_patient_site(mock_get_session, mock_get_external_sessio
     mock_get_session.assert_called()
     mock_get_external_session.assert_called()
     assert rows == [{'id': 1, 'patient_id': 10, 'site': 'UW'}]
+
+
+@patch('flask_backend.table_service.models.Users')
+@patch('flask_backend.table_service.models.get_session')
+def test_create_user(mock_get_session, mock_users):
+    mock_session = MagicMock()
+    mock_get_session.return_value = mock_session
+    user_instance = MagicMock()
+    user_instance.id = 1
+    user_instance.username = 'u'
+    user_instance.login = 'l'
+    user_instance.first_name = 'f'
+    user_instance.last_name = 'l'
+    user_instance.site = 's'
+    user_instance.uploader_flag = 1
+    user_instance.reviewer_flag = 0
+    user_instance.third_reviewer_flag = 0
+    user_instance.admin_flag = 1
+    mock_users.return_value = user_instance
+
+    data = {
+        'username': 'u',
+        'login': 'l',
+        'first_name': 'f',
+        'last_name': 'l',
+        'site': 's',
+        'uploader': True,
+        'reviewer': False,
+        'third_reviewer': False,
+        'admin': True,
+    }
+
+    result = ts.create_user(data)
+
+    mock_get_session.assert_called()
+    mock_session.add.assert_called_with(user_instance)
+    mock_session.commit.assert_called()
+    mock_session.close.assert_called()
+    mock_users.assert_called_with(
+        username='u',
+        login='l',
+        first_name='f',
+        last_name='l',
+        site='s',
+        uploader_flag=1,
+        reviewer_flag=0,
+        third_reviewer_flag=0,
+        admin_flag=1,
+    )
+    assert result['id'] == 1

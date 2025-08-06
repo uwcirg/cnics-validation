@@ -124,3 +124,35 @@ def get_events_with_patient_site():
     for r in rows:
         r["site"] = lookup.get(r["patient_id"])
     return rows
+
+
+def create_user(data: dict) -> dict:
+    """Create a new user record and return the saved fields."""
+    session = get_session()
+    user = models.Users(
+        username=data.get("username"),
+        login=data.get("login"),
+        first_name=data.get("first_name"),
+        last_name=data.get("last_name"),
+        site=data.get("site"),
+        uploader_flag=1 if data.get("uploader") else 0,
+        reviewer_flag=1 if data.get("reviewer") else 0,
+        third_reviewer_flag=1 if data.get("third_reviewer") else 0,
+        admin_flag=1 if data.get("admin") else 0,
+    )
+    session.add(user)
+    session.commit()
+    result = {
+        "id": user.id,
+        "username": user.username,
+        "login": user.login,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "site": user.site,
+        "uploader_flag": user.uploader_flag,
+        "reviewer_flag": user.reviewer_flag,
+        "third_reviewer_flag": user.third_reviewer_flag,
+        "admin_flag": user.admin_flag,
+    }
+    session.close()
+    return result

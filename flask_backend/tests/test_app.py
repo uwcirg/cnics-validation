@@ -119,3 +119,27 @@ def test_root_route():
     res = client.get('/')
     assert res.status_code == 200
     assert res.get_json() == {'status': 'ok'}
+
+
+@patch('flask_backend.table_service.create_user')
+def test_add_user_route(mock_service):
+    mock_service.return_value = {'id': 1}
+    import importlib
+    app_mod = importlib.import_module('flask_backend.app')
+    app_mod.keycloak_openid = None
+    client = app_mod.app.test_client()
+    res = client.post('/api/users', json={'username': 'alice'})
+    assert res.status_code == 201
+    assert res.get_json() == {'data': {'id': 1}}
+    mock_service.assert_called_with({'username': 'alice'})
+
+
+@patch('flask_backend.table_service.create_user')
+def test_auth_required_add_user(mock_service):
+    mock_service.return_value = {}
+    import importlib
+    app_mod = importlib.import_module('flask_backend.app')
+    app_mod.keycloak_openid = object()
+    client = app_mod.app.test_client()
+    res = client.post('/api/users', json={})
+    assert res.status_code == 401
