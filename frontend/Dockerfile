@@ -8,7 +8,8 @@ RUN npm install --production=false \
 COPY . .
 
 # Set base path for Vite build
-ARG VITE_BASE_PATH=/validation-ssingh20/
+ARG VITE_BASE_PATH
+ARG VITE_API_URL
 ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 ENV VITE_API_URL=${VITE_API_URL}
 

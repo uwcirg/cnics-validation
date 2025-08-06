@@ -23,6 +23,7 @@ services:
       DB_NAME: ${DB_NAME}
       FILES_DIR: /files
       PORT: 3000
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN}
     depends_on:
       - mariadb
     ports:
