@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from typing import Optional
 from sqlalchemy import text, bindparam
 import logging
+import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +137,61 @@ def get_events_with_patient_site(limit: Optional[int] = None, offset: int = 0):
     for r in rows:
         r["site"] = lookup.get(r["patient_id"])
     return rows
+
+
+def create_event(data: dict) -> dict:
+    """Create a new event and associated criteria."""
+    session = get_session()
+    ext_session = models.get_external_session()
+    try:
+        site_patient_id = data.get("site_patient_id")
+        site = data.get("site")
+        patient = (
+            ext_session.query(models.Patients)
+            .filter_by(site_patient_id=site_patient_id, site=site)
+            .first()
+        )
+        if not patient:
+            patient = models.Patients(site_patient_id=site_patient_id, site=site)
+            ext_session.add(patient)
+            ext_session.commit()
+        patient_id = patient.id
+
+        event_date_str = data.get("event_date")
+        event_date = None
+        if event_date_str:
+            try:
+                event_date = datetime.date.fromisoformat(event_date_str)
+            except ValueError:
+                event_date = None
+
+        event = models.Events(
+            patient_id=patient_id,
+            creator_id=data.get("creator_id", 1),
+            event_date=event_date,
+            add_date=datetime.date.today(),
+        )
+        session.add(event)
+        session.commit()
+
+        if data.get("criterion_name") and data.get("criterion_value"):
+            crit = models.Criterias(
+                event_id=event.id,
+                name=data["criterion_name"],
+                value=data["criterion_value"],
+            )
+            session.add(crit)
+            session.commit()
+
+        result = {
+            "id": event.id,
+            "patient_id": patient_id,
+            "event_date": event.event_date.isoformat() if event.event_date else None,
+        }
+        return result
+    finally:
+        session.close()
+        ext_session.close()
 
 
 def create_user(data: dict) -> dict:
