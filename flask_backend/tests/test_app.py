@@ -11,6 +11,31 @@ def test_get_table_route(mock_service):
     mock_service.assert_called_with('events', 5, 10)
 
 
+@patch('flask_backend.table_service.get_events_with_patient_site')
+def test_get_events_route(mock_service):
+    mock_service.return_value = [{'id': 1}]
+    import importlib
+    app_mod = importlib.import_module('flask_backend.app')
+    app_mod.keycloak_openid = None
+    client = app_mod.app.test_client()
+    res = client.get('/api/events?limit=2&offset=0')
+    assert res.status_code == 200
+    assert res.get_json() == {'data': [{'id': 1}]}
+    mock_service.assert_called_with(2, 0)
+
+
+@patch('flask_backend.table_service.get_events_with_patient_site')
+def test_auth_required_events(mock_service):
+    mock_service.return_value = []
+    import importlib
+    app_mod = importlib.import_module('flask_backend.app')
+    app_mod.keycloak_openid = object()
+    client = app_mod.app.test_client()
+    res = client.get('/api/events')
+    assert res.status_code == 401
+    app_mod.keycloak_openid = None
+
+
 @patch('flask_backend.table_service.get_events_need_packets')
 def test_get_need_packets_route(mock_service):
     mock_service.return_value = [{'ID': 1}]

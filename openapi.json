@@ -17,6 +17,18 @@ paths:
                 type: array
                 items:
                   type: object
+  /api/events:
+    get:
+      responses:
+        '200':
+          description: Event rows
+          schema:
+            type: object
+            properties:
+              data:
+                type: array
+                items:
+                  type: object
   /api/events/need_packets:
     get:
       responses:
