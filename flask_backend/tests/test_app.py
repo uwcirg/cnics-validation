@@ -36,6 +36,18 @@ def test_auth_required_events(mock_service):
     app_mod.keycloak_openid = None
 
 
+@patch('flask_backend.table_service.get_events_with_patient_site')
+def test_options_request_bypasses_auth(mock_service):
+    import importlib
+    app_mod = importlib.import_module('flask_backend.app')
+    app_mod.keycloak_openid = object()
+    client = app_mod.app.test_client()
+    res = client.options('/api/events')
+    assert res.status_code == 200
+    mock_service.assert_not_called()
+    app_mod.keycloak_openid = None
+
+
 @patch('flask_backend.table_service.get_events_need_packets')
 def test_get_need_packets_route(mock_service):
     mock_service.return_value = [{'ID': 1}]
