@@ -29,6 +29,15 @@ paths:
                 type: array
                 items:
                   type: object
+    post:
+      responses:
+        '201':
+          description: Created event
+          schema:
+            type: object
+            properties:
+              data:
+                type: object
   /api/events/need_packets:
     get:
       responses:

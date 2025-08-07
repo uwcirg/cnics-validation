@@ -158,6 +158,31 @@ def test_root_route():
     assert res.get_json() == {'status': 'ok'}
 
 
+@patch('flask_backend.table_service.create_event')
+def test_add_event_route(mock_service):
+    mock_service.return_value = {'id': 1}
+    import importlib
+    app_mod = importlib.import_module('flask_backend.app')
+    app_mod.keycloak_openid = None
+    client = app_mod.app.test_client()
+    res = client.post('/api/events', json={'site': 'A'})
+    assert res.status_code == 201
+    assert res.get_json() == {'data': {'id': 1}}
+    mock_service.assert_called_with({'site': 'A'})
+
+
+@patch('flask_backend.table_service.create_event')
+def test_auth_required_add_event(mock_service):
+    mock_service.return_value = {}
+    import importlib
+    app_mod = importlib.import_module('flask_backend.app')
+    app_mod.keycloak_openid = object()
+    client = app_mod.app.test_client()
+    res = client.post('/api/events', json={})
+    assert res.status_code == 401
+    app_mod.keycloak_openid = None
+
+
 @patch('flask_backend.table_service.create_user')
 def test_add_user_route(mock_service):
     mock_service.return_value = {'id': 1}
