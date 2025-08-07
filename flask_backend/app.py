@@ -140,6 +140,32 @@ def get_table(name):
         return jsonify({'error': 'Failed to fetch table data'}), 500
 
 
+@app.route('/api/events')
+@requires_auth
+def get_events():
+    """Events with associated patient site information.
+    ---
+    responses:
+      200:
+        description: Event rows
+        schema:
+          type: object
+          properties:
+            data:
+              type: array
+              items:
+                type: object
+    """
+    limit = get_limit()
+    offset = get_offset()
+    try:
+        rows = table_service.get_events_with_patient_site(limit, offset)
+        return jsonify({'data': rows})
+    except Exception:
+        app.logger.exception("Failed to fetch event data")
+        return jsonify({'error': 'Failed to fetch event data'}), 500
+
+
 @app.route('/api/events/need_packets')
 @requires_auth
 def events_need_packets():

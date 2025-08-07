@@ -70,6 +70,7 @@ See [docs/separation_of_duties.md](docs/separation_of_duties.md) for details on 
 -### Available Endpoints
 
 - `/api/tables/<name>` – return rows from a database table.
+- `/api/events` – events with patient site information.
 - `/api/events/need_packets` – events awaiting packet uploads.
 - `/api/events/for_review` – events with packets ready for review.
 - `/api/events/need_reupload` – events requiring packet re-upload.

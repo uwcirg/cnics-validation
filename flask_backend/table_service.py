@@ -99,11 +99,23 @@ def get_event_status_summary():
     return {row[0]: row[1] for row in rows}
 
 
-def get_events_with_patient_site():
+def get_events_with_patient_site(limit: Optional[int] = None, offset: int = 0):
     """Return events with site info from the external database."""
-    logger.debug("Fetching events with patient site information")
+    logger.debug(
+        "Fetching %sevents with patient site information starting at %d",
+        f"up to {limit} " if limit is not None else "all ",
+        offset,
+    )
     session = get_session()
-    rows = session.execute(text("SELECT id, patient_id FROM events")).mappings().all()
+    stmt = "SELECT id, patient_id FROM events"
+    params = {}
+    if limit is not None:
+        stmt += " LIMIT :limit OFFSET :offset"
+        params.update({"limit": limit, "offset": offset})
+    elif offset:
+        stmt += " LIMIT 18446744073709551615 OFFSET :offset"
+        params["offset"] = offset
+    rows = session.execute(text(stmt), params).mappings().all()
     session.close()
     rows = [dict(r) for r in rows]
 
