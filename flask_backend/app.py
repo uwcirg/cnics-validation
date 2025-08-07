@@ -93,6 +93,8 @@ def requires_auth(func):
     """Decorator that enforces Keycloak authentication if configured."""
 
     def wrapper(*args, **kwargs):
+        if request.method == "OPTIONS":
+            return "", 204
         if keycloak_openid:
             auth = request.headers.get("Authorization", "")
             if not auth.startswith("Bearer "):
