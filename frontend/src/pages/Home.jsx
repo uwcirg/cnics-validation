@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import DataTable from '../components/DataTable'
 import './Home.css'
 
@@ -67,6 +67,36 @@ function Home() {
         instructions on the right about how to properly assemble a review
         packet.
       </p>
+
+      <section>
+        <h3>Administrative Tools</h3>
+        <div>
+          <h4>Events</h4>
+          <ul>
+            <li>
+              <Link to="/events/viewAll">View all events</Link>
+            </li>
+            <li>
+              <Link to="/events/add">Add an event</Link>
+            </li>
+            <li>
+              <Link to="/events/addMany">Add multiple events from a CSV file</Link>
+            </li>
+            <li>
+              <a href={`${API_BASE}/api/events/export?format=csv`}>Export all events as CSV</a>
+            </li>
+          </ul>
+          <h4>Users</h4>
+          <ul>
+            <li>
+              <Link to="/users/add">Add a user</Link>
+            </li>
+            <li>
+              <Link to="/users/viewAll">Edit/Delete users</Link>
+            </li>
+          </ul>
+        </div>
+      </section>
 
 
       <section>
@@ -187,7 +217,6 @@ function Home() {
         </ul>
       </div>
 
-      {/* Dropdown menus are now available in the top navigation */}
     </div>
   )
 }
