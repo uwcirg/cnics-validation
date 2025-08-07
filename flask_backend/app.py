@@ -168,6 +168,19 @@ def get_events():
         return jsonify({'error': 'Failed to fetch event data'}), 500
 
 
+@app.route('/api/events', methods=['POST'])
+@requires_auth
+def add_event():
+    """Create a new event."""
+    data = request.get_json() or {}
+    try:
+        event = table_service.create_event(data)
+        return jsonify({'data': event}), 201
+    except Exception:
+        app.logger.exception("Failed to create event")
+        return jsonify({'error': 'Failed to create event'}), 500
+
+
 @app.route('/api/events/need_packets')
 @requires_auth
 def events_need_packets():
