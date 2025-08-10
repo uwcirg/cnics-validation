@@ -9,6 +9,7 @@ function EventAdd() {
     criterion_value: '',
   })
   const [status, setStatus] = useState(null)
+  const [error, setError] = useState('')
   const apiUrl = import.meta.env.VITE_API_URL || ''
 
   const handleChange = (e) => {
@@ -18,6 +19,12 @@ function EventAdd() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    setError('')
+    if (!formData.site_patient_id.trim() || !formData.site.trim() || !formData.event_date.trim()) {
+      setStatus('error')
+      setError('Please provide site_patient_id, site, and event_date (YYYY-MM-DD).')
+      return
+    }
     try {
       const res = await fetch(`${apiUrl}/api/events`, {
         method: 'POST',
@@ -34,11 +41,19 @@ function EventAdd() {
           criterion_name: '',
           criterion_value: '',
         })
+        setError('')
       } else {
         setStatus('error')
+        try {
+          const body = await res.json()
+          setError(body?.error || 'Failed to save event.')
+        } catch {
+          setError('Failed to save event.')
+        }
       }
     } catch {
       setStatus('error')
+      setError('Network error while saving event.')
     }
   }
 
@@ -54,13 +69,14 @@ function EventAdd() {
               name="site_patient_id"
               value={formData.site_patient_id}
               onChange={handleChange}
+              required
             />
           </label>
         </div>
         <div>
           <label>
             Site:
-            <input type="text" name="site" value={formData.site} onChange={handleChange} />
+            <input type="text" name="site" value={formData.site} onChange={handleChange} required />
           </label>
         </div>
         <div>
@@ -71,6 +87,7 @@ function EventAdd() {
               name="event_date"
               value={formData.event_date}
               onChange={handleChange}
+              required
             />
           </label>
         </div>
@@ -99,7 +116,7 @@ function EventAdd() {
         <button type="submit">Add</button>
       </form>
       {status === 'saved' && <p>Event saved.</p>}
-      {status === 'error' && <p>Failed to save event.</p>}
+      {status === 'error' && <p>{error || 'Failed to save event.'}</p>}
     </div>
   )
 }

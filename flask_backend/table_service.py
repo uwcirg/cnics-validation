@@ -12,6 +12,27 @@ except Exception:  # pragma: no cover - models may not be importable during test
     models = SimpleNamespace(get_session=lambda: None, get_external_session=lambda: None)
 
 
+class ValidationError(Exception):
+    """Raised when inputs are invalid or required resources are unavailable."""
+
+
+def _get_external_session_or_none():
+    """Return an external DB session if configured, else None.
+
+    This allows the service layer to gracefully fall back to the primary
+    database for patient lookups/creation when the external DB URL is not
+    configured or the external DB is unavailable.
+    """
+    try:
+        return models.get_external_session()
+    except Exception as exc:  # pragma: no cover - depends on env config
+        logger.warning(
+            "External DB not available; falling back to primary DB for patients: %s",
+            exc,
+        )
+        return None
+
+
 def get_session():
     """Lazily create a new SQLAlchemy session."""
     return models.get_session()
@@ -108,62 +129,80 @@ def get_events_with_patient_site(limit: Optional[int] = None, offset: int = 0):
         offset,
     )
     session = get_session()
-    stmt = "SELECT id, patient_id FROM events"
-    params = {}
-    if limit is not None:
-        stmt += " LIMIT :limit OFFSET :offset"
-        params.update({"limit": limit, "offset": offset})
-    elif offset:
-        stmt += " LIMIT 18446744073709551615 OFFSET :offset"
-        params["offset"] = offset
-    rows = session.execute(text(stmt), params).mappings().all()
-    session.close()
-    rows = [dict(r) for r in rows]
+    try:
+        stmt = "SELECT id, patient_id FROM events"
+        params = {}
+        if limit is not None:
+            stmt += " LIMIT :limit OFFSET :offset"
+            params.update({"limit": limit, "offset": offset})
+        elif offset:
+            stmt += " LIMIT 18446744073709551615 OFFSET :offset"
+            params["offset"] = offset
+        rows = session.execute(text(stmt), params).mappings().all()
+        rows = [dict(r) for r in rows]
 
-    patient_ids = [row["patient_id"] for row in rows]
-    ext_session = models.get_external_session()
-    if patient_ids:
-        stmt = text("SELECT id, site FROM patients WHERE id IN :ids").bindparams(
-            bindparam("ids", expanding=True)
-        )
-        ext_rows = ext_session.execute(stmt, {"ids": patient_ids}).mappings().all()
-        ext_rows = [dict(r) for r in ext_rows]
-        logger.debug("Fetched site info for %d patients", len(ext_rows))
-    else:
-        ext_rows = []
-    ext_session.close()
+        patient_ids = [row["patient_id"] for row in rows]
+        ext_session = _get_external_session_or_none()
+        if patient_ids:
+            stmt = text("SELECT id, site FROM patients WHERE id IN :ids").bindparams(
+                bindparam("ids", expanding=True)
+            )
+            if ext_session is not None:
+                ext_rows = ext_session.execute(stmt, {"ids": patient_ids}).mappings().all()
+                ext_rows = [dict(r) for r in ext_rows]
+            else:
+                ext_rows = session.execute(stmt, {"ids": patient_ids}).mappings().all()
+                ext_rows = [dict(r) for r in ext_rows]
+            logger.debug("Fetched site info for %d patients", len(ext_rows))
+        else:
+            ext_rows = []
+        if ext_session is not None:
+            ext_session.close()
 
-    lookup = {r["id"]: r["site"] for r in ext_rows}
-    for r in rows:
-        r["site"] = lookup.get(r["patient_id"])
-    return rows
+        lookup = {r["id"]: r["site"] for r in ext_rows}
+        for r in rows:
+            r["site"] = lookup.get(r["patient_id"]) 
+        return rows
+    finally:
+        session.close()
 
 
 def create_event(data: dict) -> dict:
     """Create a new event and associated criteria."""
     session = get_session()
-    ext_session = models.get_external_session()
+    ext_session = _get_external_session_or_none()
+    patients_session = ext_session or session
     try:
-        site_patient_id = data.get("site_patient_id")
-        site = data.get("site")
+        site_patient_id = (data.get("site_patient_id") or "").strip()
+        site = (data.get("site") or "").strip()
+        if not site_patient_id:
+            raise ValidationError("site_patient_id is required")
+        if not site:
+            raise ValidationError("site is required")
         patient = (
-            ext_session.query(models.Patients)
+            patients_session.query(models.Patients)
             .filter_by(site_patient_id=site_patient_id, site=site)
             .first()
         )
         if not patient:
+            if ext_session is None:
+                # Primary DB's patients table is not designed for writes; without
+                # the external DB, we cannot create a new patient safely.
+                raise ValidationError(
+                    "Patient not found and external patient DB is unavailable"
+                )
             patient = models.Patients(site_patient_id=site_patient_id, site=site)
-            ext_session.add(patient)
-            ext_session.commit()
+            patients_session.add(patient)
+            patients_session.commit()
         patient_id = patient.id
 
-        event_date_str = data.get("event_date")
-        event_date = None
-        if event_date_str:
-            try:
-                event_date = datetime.date.fromisoformat(event_date_str)
-            except ValueError:
-                event_date = None
+        event_date_str = (data.get("event_date") or "").strip()
+        if not event_date_str:
+            raise ValidationError("event_date is required (YYYY-MM-DD)")
+        try:
+            event_date = datetime.date.fromisoformat(event_date_str)
+        except ValueError:
+            raise ValidationError("event_date must be in YYYY-MM-DD format")
 
         event = models.Events(
             patient_id=patient_id,
@@ -191,7 +230,8 @@ def create_event(data: dict) -> dict:
         return result
     finally:
         session.close()
-        ext_session.close()
+        if ext_session is not None:
+            ext_session.close()
 
 
 def create_user(data: dict) -> dict:

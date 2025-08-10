@@ -176,6 +176,9 @@ def add_event():
     try:
         event = table_service.create_event(data)
         return jsonify({'data': event}), 201
+    except table_service.ValidationError as ve:
+        app.logger.warning("Validation error when creating event: %s", ve)
+        return jsonify({'error': str(ve)}), 400
     except Exception:
         app.logger.exception("Failed to create event")
         return jsonify({'error': 'Failed to create event'}), 500

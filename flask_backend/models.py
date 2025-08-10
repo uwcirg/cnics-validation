@@ -21,7 +21,7 @@ class Criterias(Base):
     event_id: Mapped[int] = mapped_column(INTEGER(11), ForeignKey("events.id"), comment='foreign key in events table')
     name: Mapped[str] = mapped_column(String(50))
     value: Mapped[str] = mapped_column(String(100))
-    event = relationship("Events")
+    event = relationship("Events", back_populates="criterias")
 
 class EventDerivedDatas(Base):
     __tablename__ = 'event_derived_datas'
@@ -33,7 +33,7 @@ class EventDerivedDatas(Base):
     false_positive_event: Mapped[Optional[int]] = mapped_column(TINYINT(1))
     secondary_cause: Mapped[Optional[str]] = mapped_column(Enum('MVA', 'Overdose', 'Anaphlaxis', 'GI bleed', 'Sepsis/bacteremia', 'Procedure related', 'Arrhythmia', 'Cocaine or other illicit drug induced vasospasm', 'Hypertensive urgency/emergency', 'Hypoxia', 'Hypotension', 'Other', 'NC'))
     secondary_cause_other: Mapped[Optional[str]] = mapped_column(String(100))
-    event = relationship("Events")
+    event = relationship("Events", back_populates="derived_data")
     false_positive_reason: Mapped[Optional[str]] = mapped_column(Enum('Congestive heart failure', 'Myocarditis', 'Pericarditis', 'Pulmonary embolism', 'Renal failure', 'Severe sepsis/shock', 'Other'))
     ci: Mapped[Optional[int]] = mapped_column(TINYINT(1))
     ci_type: Mapped[Optional[str]] = mapped_column(Enum('CABG/Surgery', 'PCI/Angioplasty', 'Stent', 'Unknown', 'NC'))
@@ -78,10 +78,10 @@ class Events(Base):
     review2_date: Mapped[Optional[datetime.date]] = mapped_column(Date)
     assign3rd_date: Mapped[Optional[datetime.date]] = mapped_column(Date)
     review3_date: Mapped[Optional[datetime.date]] = mapped_column(Date)
-    criterias = relationship("Criterias")
-    derived_data = relationship("EventDerivedDatas", uselist=False)
-    reviews = relationship("Reviews")
-    solicitations = relationship("Solicitations")
+    criterias = relationship("Criterias", back_populates="event")
+    derived_data = relationship("EventDerivedDatas", back_populates="event", uselist=False)
+    reviews = relationship("Reviews", back_populates="event")
+    solicitations = relationship("Solicitations", back_populates="event")
     creator = relationship("Users", foreign_keys=[creator_id])
     uploader = relationship("Users", foreign_keys=[uploader_id])
 
@@ -102,7 +102,7 @@ class Reviews(Base):
 
     id: Mapped[int] = mapped_column(INTEGER(11), primary_key=True)
     event_id: Mapped[int] = mapped_column(INTEGER(11), ForeignKey("events.id"))
-    reviewer_id: Mapped[int] = mapped_column(INTEGER(11))
+    reviewer_id: Mapped[int] = mapped_column(INTEGER(11), ForeignKey("users.id"))
     mci: Mapped[str] = mapped_column(Enum('Definite', 'Probable', 'No', 'No [resuscitated cardiac arrest]'))
     cardiac_cath: Mapped[int] = mapped_column(TINYINT(1))
     abnormal_ce_values_flag: Mapped[Optional[int]] = mapped_column(TINYINT(1), comment='abnormal cardiac enzyme values')
@@ -123,7 +123,7 @@ class Reviews(Base):
     family_history_flag: Mapped[Optional[int]] = mapped_column(TINYINT(1))
     ci_type: Mapped[Optional[str]] = mapped_column(Enum('CABG/Surgery', 'PCI/Angioplasty', 'Stent', 'Unknown'))
     ecg_type: Mapped[Optional[str]] = mapped_column(Enum('STEMI', 'non-STEMI', 'Other/Uninterpretable', 'New LBBB', 'Normal', 'No EKG'))
-    event = relationship("Events")
+    event = relationship("Events", back_populates="reviews")
     reviewer = relationship("Users", foreign_keys=[reviewer_id])
 class Solicitations(Base):
     __tablename__ = "solicitations"
@@ -133,7 +133,7 @@ class Solicitations(Base):
     date: Mapped[datetime.date] = mapped_column(Date)
     contact: Mapped[str] = mapped_column(String(200))
 
-    event = relationship("Events")
+    event = relationship("Events", back_populates="solicitations")
 
 class Users(Base):
     __tablename__ = 'users'
