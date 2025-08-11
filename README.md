@@ -94,3 +94,25 @@ the corresponding `Criterias.event` attribute unless done manually. The new
 file is included for future experimentation and has no effect on the running
 code.
 ---
+
+### Try it out: demo scripts
+
+Two small scripts illustrate the difference:
+
+- `scripts/demo_back_populates.py` – uses `flask_backend.models` (with `back_populates`).
+- `scripts/demo_no_back_populates.py` – uses `flask_backend.models2` (without `back_populates`).
+
+Run them after your database is up (e.g., with Docker Compose):
+
+```bash
+docker-compose up -d mariadb
+export DB_USER=root
+export DB_PASSWORD=${DB_ROOT_PASSWORD}
+export DB_HOST=127.0.0.1
+export DB_NAME=cnics
+
+python3 scripts/demo_back_populates.py
+python3 scripts/demo_no_back_populates.py
+```
+
+The first script will show that the child object's `.event` is synchronized in-memory upon append, while the second script will not.
