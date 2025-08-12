@@ -60,6 +60,8 @@ function Home() {
 
   return (
     <div className="home-container">
+      {/* Top-right CNICS logo */}
+      <img className="cnics-logo" src={`${API_BASE}/files/CNICS-logo.png`} alt="CNICS" />
       <h1>CNICS Validation</h1>
       <p>Welcome to the CNICS Validation application.</p>
       <p>
