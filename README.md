@@ -94,3 +94,40 @@ the corresponding `Criterias.event` attribute unless done manually. The new
 file is included for future experimentation and has no effect on the running
 code.
 ---
+
+### Try it out: demo scripts
+
+Two small scripts illustrate the difference:
+
+- `scripts/demo_back_populates.py` – uses `flask_backend.models` (with `back_populates`).
+- `scripts/demo_no_back_populates.py` – uses `flask_backend.models2` (without `back_populates`).
+
+Run them after your database is up (e.g., with Docker Compose). If running directly, ensure the project root is on `PYTHONPATH` or run via `python -m` from the repo root:
+
+```bash
+docker-compose up -d mariadb
+export DB_USER=root
+export DB_PASSWORD=${DB_ROOT_PASSWORD}
+export DB_HOST=127.0.0.1
+export DB_NAME=cnics
+
+# Option 1: run scripts directly (they add the repo root to sys.path)
+python3 scripts/demo_back_populates.py
+python3 scripts/demo_no_back_populates.py
+
+# Option 2: run as modules
+python3 -m scripts.demo_back_populates
+python3 -m scripts.demo_no_back_populates
+
+To switch which models the backend uses globally, set `SQLA_MODELS`:
+
+```bash
+# Use standard models with back_populates (default)
+export SQLA_MODELS=models
+
+# Or use the alternate one-way models
+export SQLA_MODELS=models2
+```
+```
+
+The first script will show that the child object's `.event` is synchronized in-memory upon append, while the second script will not.

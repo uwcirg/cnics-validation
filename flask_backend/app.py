@@ -6,7 +6,6 @@ from docx import Document
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from dotenv import load_dotenv
-from keycloak import KeycloakOpenID
 from . import table_service
 
 app = Flask(__name__)
@@ -81,12 +80,16 @@ def ensure_pdf(doc_path: str, pdf_path: str) -> None:
 # Optional Keycloak configuration mirroring the Express backend
 keycloak_openid = None
 if os.getenv("KEYCLOAK_REALM"):
-    keycloak_openid = KeycloakOpenID(
-        server_url=os.getenv("KEYCLOAK_URL", "http://localhost:8080/"),
-        realm_name=os.getenv("KEYCLOAK_REALM"),
-        client_id=os.getenv("KEYCLOAK_CLIENT_ID"),
-        client_secret_key=os.getenv("KEYCLOAK_CLIENT_SECRET"),
-    )
+    try:
+        from keycloak import KeycloakOpenID  # defer import
+        keycloak_openid = KeycloakOpenID(
+            server_url=os.getenv("KEYCLOAK_URL", "http://localhost:8080/"),
+            realm_name=os.getenv("KEYCLOAK_REALM"),
+            client_id=os.getenv("KEYCLOAK_CLIENT_ID"),
+            client_secret_key=os.getenv("KEYCLOAK_CLIENT_SECRET"),
+        )
+    except Exception:
+        keycloak_openid = None
 
 
 def requires_auth(func):
