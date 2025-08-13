@@ -45,6 +45,18 @@ services:
       - "127.0.0.1:${EXTERNAL_PORT:-3000}:3000"
     networks:
       - internal
+  
+  apache:
+    build: ./apache
+    depends_on:
+      - web
+      - backend
+    ports:
+      - "8080:80"
+    networks:
+      - internal
+    volumes:
+      - ./apache/.htpasswd:/usr/local/apache2/conf/.htpasswd:ro
       
 
 volumes:

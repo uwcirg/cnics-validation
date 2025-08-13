@@ -32,8 +32,7 @@ This repository includes a lightweight Docker configuration based on the setup u
     docker-compose up
     ```
 
-    The frontend will be served on <https://frontend.cnics-validation.pm.ssingh20.dev.cirg.uw.edu/> and the backend API
-    on <https://backend.cnics-validation.pm.ssingh20.dev.cirg.uw.edu/>.
+    The app can be accessed via Apache reverse proxy with Basic Auth at <http://localhost:8080/> (if using the included proxy service). The proxy forwards to the frontend and backend services.
     The compose file mounts `app/webroot/files` into the backend container so
     instruction documents are available at `/files/<name>`.
 
@@ -52,6 +51,20 @@ services are built or started. The template defines the following variables:
 - `FHIR_SERVER` – URL of the FHIR server used by the application.
 - `FILES_DIR` – directory containing instruction files served by the backend.
 - `EXTERNAL_DB_URL` – optional SQLAlchemy URL for a secondary database.
+ 
+### Authentication via Apache (Basic Auth)
+
+This repository includes an Apache reverse proxy service that protects the entire UI and API using HTTP Basic Authentication.
+
+- The proxy service is defined in `docker-compose.yaml` under `apache` and listens on `8080`.
+- Default credentials are defined in `apache/.htpasswd` (username `admin`, password `changeme`). Update this file using `htpasswd` or `openssl passwd -apr1`.
+- The frontend default `VITE_API_URL` points to `http://localhost:8080` so browser requests use the same origin and share auth.
+
+To change credentials:
+
+```bash
+docker run --rm httpd:2.4 htpasswd -nbB admin 'newpassword' > apache/.htpasswd
+```
 
 Override these values in your copied `.env` file as needed.
 
