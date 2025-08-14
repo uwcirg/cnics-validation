@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
-import MenuBar from './MenuBar'
 import './BaseLayout.css'
+import MenuBar from './MenuBar'
 
 function BaseLayout({ children, auth }) {
   const { admin = false, uploader = false, reviewer = false, username } = auth || {}
@@ -9,7 +9,7 @@ function BaseLayout({ children, auth }) {
       <header className="header">
         <div id="title">
           <Link to="/" className="brand">
-            <img src="/cnics-logo.svg" alt="CNICS logo" />
+            <img src="/files/cnics_logo.png" alt="CNICS logo" />
             <span>CNICS Validation</span>
           </Link>
         </div>
