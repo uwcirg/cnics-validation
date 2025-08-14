@@ -6,8 +6,7 @@ import './Home.css'
 // Base URL for the backend API. When running under Docker Compose the
 // environment variable is provided by the compose file. Fallback to a
 // relative path so the frontend can be served without configuration.
-//const API_BASE = import.meta.env.VITE_API_URL || ''
-const API_BASE = "https://backend.cnics-validation.pm.ssingh20.dev.cirg.uw.edu"
+const API_BASE = import.meta.env.VITE_API_URL || ''
 const PAGE_SIZE = 20
 
 function TableWrapper({ endpoint }) {

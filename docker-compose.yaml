@@ -26,8 +26,7 @@ services:
       PORT: 3000
     depends_on:
       - mariadb
-    ports:
-      - "3001:3000"
+    # Do not expose backend directly; all access goes through apache
     networks:
       - internal
     volumes:
@@ -37,12 +36,12 @@ services:
     build:
       context: ./frontend
       target: serve
+      # Build without injecting API URL; frontend will use same-origin
     env_file:
       - ./frontend/.env
     depends_on:
       - backend
-    ports:
-      - "127.0.0.1:${EXTERNAL_PORT:-3000}:3000"
+    # Do not expose web directly; apache proxies to it
     networks:
       - internal
   
@@ -52,7 +51,7 @@ services:
       - web
       - backend
     ports:
-      - "8080:80"
+      - "127.0.0.1:${APACHE_PORT:-8080}:80"
     networks:
       - internal
     volumes:
