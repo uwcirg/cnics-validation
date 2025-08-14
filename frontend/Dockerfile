@@ -7,6 +7,10 @@ RUN npm install --production=false \
 
 COPY . .
 
+# Allow overriding API base URL at build time so the generated bundle points at the proxy
+ARG VITE_API_URL
+ENV VITE_API_URL=${VITE_API_URL}
+
 RUN npm run build
 
 # Final stage: serve the app
