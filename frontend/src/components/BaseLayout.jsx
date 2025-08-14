@@ -8,7 +8,10 @@ function BaseLayout({ children, auth }) {
     <div className="layout">
       <header className="header">
         <div id="title">
-          <Link to="/">CNICS Validation</Link>
+          <Link to="/" className="brand">
+            <img src="/cnics-logo.svg" alt="CNICS logo" />
+            <span>CNICS Validation</span>
+          </Link>
         </div>
         <div id="login">
           {username ? (

@@ -16,6 +16,21 @@
   align-items: center;
 }
 
+#title .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-decoration: none;
+  color: inherit;
+  font-weight: 600;
+}
+
+#title .brand img {
+  height: 28px;
+  width: auto;
+  display: block;
+}
+
 main {
   flex: 1;
   padding: 1rem;
