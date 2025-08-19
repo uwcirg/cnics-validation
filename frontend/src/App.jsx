@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Route, BrowserRouter as Router, Routes } from 'react-router-dom'
 import BaseLayout from './components/BaseLayout'
 import CriteriaAdd from './pages/CriteriaAdd'
@@ -24,7 +25,29 @@ import UserLogout from './pages/UserLogout'
 import UsersViewAll from './pages/UsersViewAll'
 
 function App() {
-  const auth = { admin: true, uploader: true, reviewer: true, username: 'demo' }
+  const [auth, setAuth] = useState({})
+  const apiUrl = import.meta.env.VITE_API_URL || ''
+
+  useEffect(() => {
+    let cancelled = false
+    async function fetchMe() {
+      try {
+        const res = await fetch(`${apiUrl}/api/auth/me`, { credentials: 'include' })
+        if (!cancelled && res.ok) {
+          const json = await res.json()
+          setAuth(json.data || {})
+        } else if (!cancelled) {
+          setAuth({})
+        }
+      } catch {
+        if (!cancelled) setAuth({})
+      }
+    }
+    fetchMe()
+    return () => {
+      cancelled = true
+    }
+  }, [apiUrl])
 
   return (
     <Router>
