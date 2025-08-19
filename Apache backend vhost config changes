@@ -1,0 +1,34 @@
+# Ensure these modules are enabled: headers, authz_core, auth_basic, authnz_ldap
+# a2enmod headers authz_core auth_basic authnz_ldap
+
+<VirtualHost *:443>
+  ServerName backend.cnics-validation.pm.ssingh20.dev.cirg.uw.edu
+  # ... existing SSL, ProxyPass/ProxyPassReverse, LDAP auth, etc. ...
+
+  # CORS: reflect the exact frontend origin
+  Header always set Access-Control-Allow-Origin "https://frontend.cnics-validation.pm.ssingh20.dev.cirg.uw.edu"
+  Header always set Access-Control-Allow-Credentials "true"
+  Header always set Access-Control-Allow-Headers "Content-Type, Authorization"
+  Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+  Header always set Vary "Origin"
+
+  # Protect API paths with Basic/LDAP, but allow OPTIONS preflight through
+  <Location "/api/">
+    # Replace with your existing LDAP config
+    AuthType Basic
+    AuthName "UW-ONLY CNICS (CIRG LDAP)"
+    AuthBasicProvider ldap
+    AuthLDAPURL "ldaps://ldap1.cirg.washington.edu ldap2.cirg.washington.edu/ou=cnics,ou=projects,ou=Clinical Informatics Research Group,dc=cirg,dc=us"
+
+    # Allow OPTIONS without auth; require valid-user for everything else
+    <RequireAny>
+      Require expr "%{REQUEST_METHOD} == 'OPTIONS'"
+      Require valid-user
+    </RequireAny>
+
+    # Pass the authenticated username to Flask
+    RequestHeader set X-Remote-User %{REMOTE_USER}e
+  </Location>
+
+  # ... rest of vhost ...
+</VirtualHost>
