@@ -15,9 +15,12 @@ function DataTable({ rows, onRowClick, onPageChange, totalCount }) {
   if (!rows.length) return <p>No data found.</p>
 
   const totalPages = totalCount ? Math.ceil(totalCount / pageSize) : null
-  const headers = ['ID', 'Patient ID', 'Date', 'Criteria'].filter(
+  let headers = ['ID', 'Patient ID', 'Date', 'Criteria'].filter(
     (h) => h in rows[0]
   )
+  if (headers.length === 0) {
+    headers = Object.keys(rows[0])
+  }
   const pageRows = rows
 
   const goPrev = () => {

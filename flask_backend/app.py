@@ -160,17 +160,41 @@ def requires_auth(func):
             _load_user_from_remote_header()
             return func(*args, **kwargs)
 
-        # # Fallback to Keycloak if configured
-        # if keycloak_openid:
-        #     auth = request.headers.get("Authorization", "")
-        #     if not auth.startswith("Bearer "):
-        #         abort(401)
-        #     token = auth.split(" ", 1)[1]
-        #     try:
-        #         keycloak_openid.userinfo(token)
-        #     except Exception:
-        #         abort(401)
-        #     return func(*args, **kwargs)
+        # Dev-only override: allow a header to set login directly when enabled
+        # Set ALLOW_DEV_HEADER=1 to enable; use header X-Dev-User: <login>
+        if os.getenv("ALLOW_DEV_HEADER") == "1":
+            dev_login = request.headers.get("X-Dev-User")
+            if dev_login:
+                # Reuse the same logic as header-based auth but with explicit login
+                session = models.get_session()
+                try:
+                    user = session.query(models.Users).filter_by(login=dev_login).first()
+                    if user is None:
+                        abort(403)
+                    g.auth_user = {
+                        "id": user.id,
+                        "username": user.username,
+                        "admin": bool(user.admin_flag),
+                        "uploader": bool(user.uploader_flag),
+                        "reviewer": bool(user.reviewer_flag),
+                        "third_reviewer": bool(user.third_reviewer_flag),
+                        "site": user.site,
+                    }
+                finally:
+                    session.close()
+                return func(*args, **kwargs)
+
+        # Fallback to Keycloak if configured: require a valid Bearer token
+        if 'keycloak_openid' in globals() and keycloak_openid:
+            auth = request.headers.get("Authorization", "")
+            if not auth.startswith("Bearer "):
+                abort(401)
+            token = auth.split(" ", 1)[1]
+            try:
+                keycloak_openid.userinfo(token)
+            except Exception:
+                abort(401)
+            return func(*args, **kwargs)
 
         # No external auth configured - allow for local/dev
         return func(*args, **kwargs)
@@ -395,6 +419,41 @@ def events_status_summary():
         return jsonify({'data': summary})
     except Exception:
         app.logger.exception("Failed to fetch table data")
+        return jsonify({'error': 'Failed to fetch table data'}), 500
+
+
+# Generic endpoint to fetch events by status with pagination
+_ALLOWED_EVENT_STATUSES = {
+    'created',
+    'uploaded',
+    'scrubbed',
+    'screened',
+    'assigned',
+    'sent',
+    'reviewer1_done',
+    'reviewer2_done',
+    'third_review_needed',
+    'third_review_assigned',
+    'done',
+    'rejected',
+    'no_packet_available',
+}
+
+
+@app.route('/api/events/by_status/<status>')
+@requires_auth
+@requires_any_role('reviewer', 'uploader', 'admin')
+def events_by_status(status: str):
+    status = (status or '').strip()
+    if status not in _ALLOWED_EVENT_STATUSES:
+        abort(400)
+    limit = get_limit()
+    offset = get_offset()
+    try:
+        rows = table_service.get_events_by_status(status, limit, offset)
+        return jsonify({'data': rows})
+    except Exception:
+        app.logger.exception("Failed to fetch events by status %s", status)
         return jsonify({'error': 'Failed to fetch table data'}), 500
 
 

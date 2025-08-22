@@ -13,11 +13,18 @@ const PAGE_SIZE = 20
 function TableWrapper({ endpoint }) {
   const navigate = useNavigate()
   const [rows, setRows] = useState([])
+  const [totalCount, setTotalCount] = useState(null)
 
   const fetchPage = (p) => {
-    fetch(`${API_BASE}${endpoint}?limit=${PAGE_SIZE}&offset=${(p - 1) * PAGE_SIZE}`)
+    fetch(`${API_BASE}${endpoint}?limit=${PAGE_SIZE}&offset=${(p - 1) * PAGE_SIZE}`, {
+      credentials: 'include',
+    })
       .then((res) => res.json())
-      .then((json) => setRows(json.data || []))
+      .then((json) => {
+        const payload = json || {}
+        setRows(payload.data || [])
+        if (typeof payload.total === 'number') setTotalCount(payload.total)
+      })
       .catch(() => {})
   }
 
@@ -30,7 +37,7 @@ function TableWrapper({ endpoint }) {
       `/events/upload?event_id=${row['ID']}&patient_id=${row['Patient ID']}&date=${row['Date']}&criteria=${encodeURIComponent(row['Criteria'])}`
     )
   }
-  return <DataTable rows={rows} onRowClick={handleClick} onPageChange={fetchPage} />
+  return <DataTable rows={rows} onRowClick={handleClick} onPageChange={fetchPage} totalCount={totalCount} />
 }
 
 function Home() {
@@ -39,12 +46,12 @@ function Home() {
   const [search, setSearch] = useState('')
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/tables/events`)
+    fetch(`${API_BASE}/api/tables/events`, { credentials: 'include' })
       .then((res) => res.json())
       .then((json) => setRows(json.data || []))
       .catch(() => {})
 
-    fetch(`${API_BASE}/api/events/status_summary`)
+    fetch(`${API_BASE}/api/events/status_summary`, { credentials: 'include' })
       .then((res) => res.json())
       .then((json) => setStatusSummary(json.data || null))
       .catch(() => {})
@@ -61,7 +68,7 @@ function Home() {
   return (
     <div className="home-container">
       {/* Top-right CNICS logo */}
-      <img className="cnics-logo" src={`${API_BASE}/files/CNICS-logo.png`} alt="CNICS" />
+      <img className="cnics-logo" src={`${API_BASE}/files/cnics_logo.png`} alt="CNICS" />
       <h1>CNICS Validation</h1>
       <p>Welcome to the CNICS Validation application.</p>
       <p>

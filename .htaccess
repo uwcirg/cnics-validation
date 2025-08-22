@@ -18,3 +18,18 @@ AuthBasicProvider ldap
 AuthLDAPURL "ldaps://ldap1.cirg.washington.edu ldap2.cirg.washington.edu/ou=cnics,ou=projects,ou=Clinical Informatics Research Group,dc=cirg,dc=us"
 
 require ldap-group cn=cnicsUpload,ou=groups,ou=cnics,ou=projects,ou="Clinical Informatics Research Group",dc=cirg,dc=us
+
+# CORS for frontend origin and preflight handling
+<IfModule mod_headers.c>
+  SetEnvIfNoCase Origin "^https://frontend\.cnics-validation\.pm\.ssingh20\.dev\.cirg\.uw\.edu$" ORIGIN_OK=$0
+  Header always set Access-Control-Allow-Origin "%{ORIGIN_OK}e" env=ORIGIN_OK
+  Header always set Access-Control-Allow-Credentials "true" env=ORIGIN_OK
+  Header always set Access-Control-Allow-Headers "Content-Type, Authorization" env=ORIGIN_OK
+  Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" env=ORIGIN_OK
+</IfModule>
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{REQUEST_METHOD} =OPTIONS
+  RewriteRule ^ - [R=204,L]
+</IfModule>

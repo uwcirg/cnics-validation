@@ -3,7 +3,10 @@ import { Route, BrowserRouter as Router, Routes } from 'react-router-dom'
 import BaseLayout from './components/BaseLayout'
 import CriteriaAdd from './pages/CriteriaAdd'
 import CriteriaDelete from './pages/CriteriaDelete'
+import ErrorLoginRequired from './pages/ErrorLoginRequired'
+import ErrorNoReviewAccess from './pages/ErrorNoReviewAccess'
 import ErrorNotAuthorized from './pages/ErrorNotAuthorized'
+import ErrorNoUserAdminAccess from './pages/ErrorNoUserAdminAccess'
 import ErrorUnknownUser from './pages/ErrorUnknownUser'
 import EventAdd from './pages/EventAdd'
 import EventAddMany from './pages/EventAddMany'
@@ -76,6 +79,9 @@ function App() {
           <Route path="/criteria/delete" element={<CriteriaDelete />} />
           <Route path="/error/notAuthorized" element={<ErrorNotAuthorized authUsername={auth.username} controller="" action="" />} />
           <Route path="/error/unknownUser" element={<ErrorUnknownUser authUsername={auth.username} />} />
+          <Route path="/error/loginRequired" element={<ErrorLoginRequired />} />
+          <Route path="/error/noReviewAccess" element={<ErrorNoReviewAccess />} />
+          <Route path="/error/noUserAdminAccess" element={<ErrorNoUserAdminAccess />} />
         </Routes>
       </BaseLayout>
     </Router>
