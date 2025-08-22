@@ -1,8 +1,12 @@
+import { useEffect, useState } from 'react'
 import { Route, BrowserRouter as Router, Routes } from 'react-router-dom'
 import BaseLayout from './components/BaseLayout'
 import CriteriaAdd from './pages/CriteriaAdd'
 import CriteriaDelete from './pages/CriteriaDelete'
+import ErrorLoginRequired from './pages/ErrorLoginRequired'
+import ErrorNoReviewAccess from './pages/ErrorNoReviewAccess'
 import ErrorNotAuthorized from './pages/ErrorNotAuthorized'
+import ErrorNoUserAdminAccess from './pages/ErrorNoUserAdminAccess'
 import ErrorUnknownUser from './pages/ErrorUnknownUser'
 import EventAdd from './pages/EventAdd'
 import EventAddMany from './pages/EventAddMany'
@@ -24,7 +28,29 @@ import UserLogout from './pages/UserLogout'
 import UsersViewAll from './pages/UsersViewAll'
 
 function App() {
-  const auth = { admin: true, uploader: true, reviewer: true, username: 'demo' }
+  const [auth, setAuth] = useState({})
+  const apiUrl = import.meta.env.VITE_API_URL || ''
+
+  useEffect(() => {
+    let cancelled = false
+    async function fetchMe() {
+      try {
+        const res = await fetch(`${apiUrl}/api/auth/me`, { credentials: 'include' })
+        if (!cancelled && res.ok) {
+          const json = await res.json()
+          setAuth(json.data || {})
+        } else if (!cancelled) {
+          setAuth({})
+        }
+      } catch {
+        if (!cancelled) setAuth({})
+      }
+    }
+    fetchMe()
+    return () => {
+      cancelled = true
+    }
+  }, [apiUrl])
 
   return (
     <Router>
@@ -53,6 +79,9 @@ function App() {
           <Route path="/criteria/delete" element={<CriteriaDelete />} />
           <Route path="/error/notAuthorized" element={<ErrorNotAuthorized authUsername={auth.username} controller="" action="" />} />
           <Route path="/error/unknownUser" element={<ErrorUnknownUser authUsername={auth.username} />} />
+          <Route path="/error/loginRequired" element={<ErrorLoginRequired />} />
+          <Route path="/error/noReviewAccess" element={<ErrorNoReviewAccess />} />
+          <Route path="/error/noUserAdminAccess" element={<ErrorNoUserAdminAccess />} />
         </Routes>
       </BaseLayout>
     </Router>

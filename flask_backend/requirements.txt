@@ -10,3 +10,4 @@ apispec
 apispec-webframeworks
 
 SQLAlchemy
+Flask-Authorize

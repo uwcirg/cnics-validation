@@ -76,6 +76,29 @@ See [docs/separation_of_duties.md](docs/separation_of_duties.md) for details on 
 - `/api/events/need_reupload` – events requiring packet re-upload.
 - `/api/events/status_summary` – counts of events grouped by status.
 
+### Authentication and Authorization
+
+The backend supports header-based authentication via an Apache/Ldap front-end that injects an `X-Remote-User` header. When this header is present, the app looks up the authenticated user in the `users` table by the `login` field and attaches a compact identity to the Flask request context. Role flags (`admin`, `uploader`, `reviewer`, `third_reviewer`) are enforced via decorators:
+
+- `@requires_auth` – required for all API endpoints; if `X-Remote-User` is present, the user must exist in the database or a 403 is returned.
+- `@requires_roles("role1", ...)` – require all named roles (enforced only when header auth is in use).
+- `@requires_any_role("role1", ...)` – require at least one of the named roles (enforced only when header auth is in use).
+
+Current role protections applied:
+
+- Admin only: `POST /api/events`, `GET /api/events/status_summary`, `POST /api/users`
+- Reviewer/uploader/admin: `GET /api/events/need_packets`, `GET /api/events/need_reupload`
+- Reviewer/admin: `GET /api/events/for_review`
+
+Frontend loads the current user via `GET /api/auth/me` and renders UI based on the returned flags.
+
+Outstanding next steps:
+
+- Confirm Apache is consistently sending `X-Remote-User` and decide on normalization (email vs. netid); ensure `users.login` values match.
+- Add/seed required users (e.g., Satinder) with `login` filled and appropriate role flags.
+- Review and refine per-endpoint role requirements; extend decorators where needed.
+- Decide whether to require header auth in all environments or keep the permissive dev/Keycloak fallback.
+
 ### OpenAPI Documentation
 
 Run `python scripts/generate_openapi.py` to generate `openapi.json` describing

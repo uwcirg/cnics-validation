@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, abort, send_from_directory
+from flask import Flask, jsonify, request, abort, send_from_directory, g
 from flask_cors import CORS
 import os
 from typing import Optional
@@ -7,19 +7,36 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from dotenv import load_dotenv
 from . import table_service
+from . import models
+try:
+    from flask_authorize import Authorize
+except Exception:
+    Authorize = None
 
 app = Flask(__name__)
 
 # Enable CORS only for requests coming from the frontend
-allowed_origin = os.getenv(
-    "FRONTEND_ORIGIN",
+# Support both the standard and auth vhosts by default, and merge any env-provided origins
+default_origins = [
     "https://frontend.cnics-validation.pm.ssingh20.dev.cirg.uw.edu",
-)
-CORS(
-    app,
-    resources={r"/api/*": {"origins": allowed_origin}},
-    supports_credentials=True,
-)
+    "https://frontend.auth.cnics-validation.pm.ssingh20.dev.cirg.uw.edu",
+]
+origins_env = os.getenv("FRONTEND_ORIGIN")
+allowed_origins = list(default_origins)
+if origins_env:
+    parsed = [o.strip() for o in origins_env.split(",") if o.strip()]
+    allowed_origins.extend(parsed)
+    # de-duplicate while preserving order
+    seen = set()
+    allowed_origins = [o for o in allowed_origins if not (o in seen or seen.add(o))]
+
+# Apply CORS globally so headers are set on all endpoints consistently
+CORS(app, origins=allowed_origins, supports_credentials=True)
+
+# Initialize Flask-Authorize if available
+authorize = None
+if Authorize is not None:
+    authorize = Authorize(app)
 
 
 load_dotenv()
@@ -92,13 +109,83 @@ if os.getenv("KEYCLOAK_REALM"):
         keycloak_openid = None
 
 
+def _load_user_from_remote_header() -> Optional[dict]:
+    """Return user dict from X-Remote-User header if present, else None.
+
+    When present, look up the user by `users.login`. If not found, abort 403.
+    Stores a lightweight user/roles dict on `flask.g.auth_user` for downstream use.
+    """
+    remote_user = request.headers.get("X-Remote-User")
+    if not remote_user:
+        return None
+    session = models.get_session()
+    try:
+        # Use the login column per application-level authorization rules
+        user = session.query(models.Users).filter_by(login=remote_user).first()
+        if user is None:
+            abort(403)
+        auth_user = {
+            "id": user.id,
+            "username": user.username,
+            "admin": bool(user.admin_flag),
+            "uploader": bool(user.uploader_flag),
+            "reviewer": bool(user.reviewer_flag),
+            "third_reviewer": bool(user.third_reviewer_flag),
+            "site": user.site,
+        }
+        g.auth_user = auth_user
+        return auth_user
+    finally:
+        session.close()
+
+    
+
+
 def requires_auth(func):
-    """Decorator that enforces Keycloak authentication if configured."""
+    """Decorator enforcing authentication.
+
+    Priority:
+    1) If `X-Remote-User` header is present, require user to exist in DB
+       and attach role flags to request context.
+    2) Else if Keycloak is configured, require a valid Bearer token.
+    3) Else allow (legacy/dev environments without external auth configured).
+    """
 
     def wrapper(*args, **kwargs):
         if request.method == "OPTIONS":
             return "", 204
-        if keycloak_openid:
+
+        # Header-based auth from fronting web server (apache vhost with LDAP)
+        if request.headers.get("X-Remote-User"):
+            _load_user_from_remote_header()
+            return func(*args, **kwargs)
+
+        # Dev-only override: allow a header to set login directly when enabled
+        # Set ALLOW_DEV_HEADER=1 to enable; use header X-Dev-User: <login>
+        if os.getenv("ALLOW_DEV_HEADER") == "1":
+            dev_login = request.headers.get("X-Dev-User")
+            if dev_login:
+                # Reuse the same logic as header-based auth but with explicit login
+                session = models.get_session()
+                try:
+                    user = session.query(models.Users).filter_by(login=dev_login).first()
+                    if user is None:
+                        abort(403)
+                    g.auth_user = {
+                        "id": user.id,
+                        "username": user.username,
+                        "admin": bool(user.admin_flag),
+                        "uploader": bool(user.uploader_flag),
+                        "reviewer": bool(user.reviewer_flag),
+                        "third_reviewer": bool(user.third_reviewer_flag),
+                        "site": user.site,
+                    }
+                finally:
+                    session.close()
+                return func(*args, **kwargs)
+
+        # Fallback to Keycloak if configured: require a valid Bearer token
+        if 'keycloak_openid' in globals() and keycloak_openid:
             auth = request.headers.get("Authorization", "")
             if not auth.startswith("Bearer "):
                 abort(401)
@@ -107,11 +194,65 @@ def requires_auth(func):
                 keycloak_openid.userinfo(token)
             except Exception:
                 abort(401)
+            return func(*args, **kwargs)
+
+        # No external auth configured - allow for local/dev
         return func(*args, **kwargs)
 
     wrapper.__name__ = func.__name__
     wrapper.__doc__ = func.__doc__
     return wrapper
+
+
+def requires_roles(*required_roles: str):
+    """Decorator enforcing that the authenticated user has ALL required roles.
+
+    Roles correspond to boolean flags placed on g.auth_user: 'admin', 'uploader',
+    'reviewer', 'third_reviewer'. This decorator should be stacked under
+    @requires_auth so that g.auth_user is populated for header-based auth.
+    """
+
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            # Allow preflight without role checks
+            if request.method == "OPTIONS":
+                return "", 204
+            auth_user = getattr(g, "auth_user", None)
+            # If no header-based auth user is present (e.g., dev or keycloak),
+            # do not enforce role checks here.
+            if not auth_user:
+                return func(*args, **kwargs)
+            missing = [r for r in required_roles if not bool(auth_user.get(r))]
+            if missing:
+                abort(403)
+            return func(*args, **kwargs)
+
+        wrapper.__name__ = func.__name__
+        wrapper.__doc__ = func.__doc__
+        return wrapper
+
+    return decorator
+
+
+def requires_any_role(*allowed_roles: str):
+    """Decorator enforcing the user has ANY of the allowed roles."""
+
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            if request.method == "OPTIONS":
+                return "", 204
+            auth_user = getattr(g, "auth_user", None)
+            if not auth_user:
+                return func(*args, **kwargs)
+            if not any(bool(auth_user.get(r)) for r in allowed_roles):
+                abort(403)
+            return func(*args, **kwargs)
+
+        wrapper.__name__ = func.__name__
+        wrapper.__doc__ = func.__doc__
+        return wrapper
+
+    return decorator
 
 @app.route('/api/tables/<name>')
 @requires_auth
@@ -173,6 +314,7 @@ def get_events():
 
 @app.route('/api/events', methods=['POST'])
 @requires_auth
+@requires_roles('admin')
 def add_event():
     """Create a new event."""
     data = request.get_json() or {}
@@ -189,6 +331,7 @@ def add_event():
 
 @app.route('/api/events/need_packets')
 @requires_auth
+@requires_any_role('reviewer', 'uploader', 'admin')
 def events_need_packets():
     """Events that require packet uploads.
     ---
@@ -215,6 +358,7 @@ def events_need_packets():
 
 @app.route('/api/events/for_review')
 @requires_auth
+@requires_any_role('reviewer', 'admin')
 def events_for_review():
     """Events with packets awaiting review.
     ---
@@ -241,6 +385,7 @@ def events_for_review():
 
 @app.route('/api/events/need_reupload')
 @requires_auth
+@requires_any_role('reviewer', 'uploader', 'admin')
 def events_need_reupload():
     limit = get_limit()
     offset = get_offset()
@@ -254,6 +399,7 @@ def events_need_reupload():
 
 @app.route('/api/events/status_summary')
 @requires_auth
+@requires_roles('admin')
 def events_status_summary():
     """Summary counts of events grouped by status.
     ---
@@ -276,8 +422,44 @@ def events_status_summary():
         return jsonify({'error': 'Failed to fetch table data'}), 500
 
 
+# Generic endpoint to fetch events by status with pagination
+_ALLOWED_EVENT_STATUSES = {
+    'created',
+    'uploaded',
+    'scrubbed',
+    'screened',
+    'assigned',
+    'sent',
+    'reviewer1_done',
+    'reviewer2_done',
+    'third_review_needed',
+    'third_review_assigned',
+    'done',
+    'rejected',
+    'no_packet_available',
+}
+
+
+@app.route('/api/events/by_status/<status>')
+@requires_auth
+@requires_any_role('reviewer', 'uploader', 'admin')
+def events_by_status(status: str):
+    status = (status or '').strip()
+    if status not in _ALLOWED_EVENT_STATUSES:
+        abort(400)
+    limit = get_limit()
+    offset = get_offset()
+    try:
+        rows = table_service.get_events_by_status(status, limit, offset)
+        return jsonify({'data': rows})
+    except Exception:
+        app.logger.exception("Failed to fetch events by status %s", status)
+        return jsonify({'error': 'Failed to fetch table data'}), 500
+
+
 @app.route('/api/users', methods=['POST'])
 @requires_auth
+@requires_roles('admin')
 def add_user():
     """Create a new user."""
     data = request.get_json() or {}
@@ -287,6 +469,21 @@ def add_user():
     except Exception:
         app.logger.exception("Failed to create user")
         return jsonify({'error': 'Failed to create user'}), 500
+
+
+@app.route('/api/auth/me')
+@requires_auth
+def auth_me():
+    """Return the authenticated user's identity and role flags.
+
+    Only header-based auth populates this endpoint. If no header auth is used
+    (e.g., Keycloak or dev without auth), this returns 401 because role mapping
+    requires a cnics user.
+    """
+    auth_user = getattr(g, 'auth_user', None)
+    if not auth_user:
+        abort(401)
+    return jsonify({"data": auth_user})
 
 
 @app.route('/files/<path:filename>')
