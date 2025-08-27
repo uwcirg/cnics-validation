@@ -51,6 +51,8 @@ services are built or started. The template defines the following variables:
 - `FRONTEND_ORIGIN` – allowed origin for CORS requests to the backend.
 - `FHIR_SERVER` – URL of the FHIR server used by the application.
 - `FILES_DIR` – directory containing instruction files served by the backend.
+- `DOWNLOADS_DIR` – writable directory where the backend saves generated/downloadable artifacts
+  (e.g., uploaded scrubbed ZIPs). Defaults to a subdirectory under `FILES_DIR` if not set.
 - `EXTERNAL_DB_URL` – optional SQLAlchemy URL for a secondary database.
 
 Override these values in your copied `.env` file as needed.
@@ -154,3 +156,49 @@ export SQLA_MODELS=models2
 ```
 
 The first script will show that the child object's `.event` is synchronized in-memory upon append, while the second script will not.
+
+## File handling and storage
+
+The backend uses two configurable directories for file operations:
+
+- `FILES_DIR`: read-only documents served to the frontend (e.g., instructions under `/files/<name>`).
+- `DOWNLOADS_DIR`: writable area for generated or uploaded artifacts (e.g., scrubbed ZIP files) served by `/api/events/download/<id>`.
+
+You can configure these via environment variables. If `DOWNLOADS_DIR` is not set, it falls back to `FILES_DIR/downloads`.
+
+For containerized deployments, choose one of the following:
+
+1) Bind-mount (convenient for development, visible on the host):
+
+```yaml
+services:
+  backend:
+    environment:
+      FILES_DIR: /files
+      DOWNLOADS_DIR: /downloads
+    volumes:
+      - ./app/webroot/files:/files:ro   # read-only docs
+      - ./downloads:/downloads          # writable artifacts
+```
+
+2) Named Docker volumes (isolated, easier lifecycle via `docker volume ls`):
+
+```yaml
+services:
+  backend:
+    environment:
+      FILES_DIR: /files
+      DOWNLOADS_DIR: /downloads
+    volumes:
+      - cnics-files:/files:ro
+      - cnics-downloads:/downloads
+
+volumes:
+  cnics-files:
+  cnics-downloads:
+```
+
+Notes:
+- If files do not need to be accessed by external host processes (confirmed), named volumes are a good default for production.
+- Ensure sufficient disk space on the VM hosting Docker; containers do not need their own disk allocation.
+- Keep the upload/download locations configurable via env so staging/prod can use different mounts.
