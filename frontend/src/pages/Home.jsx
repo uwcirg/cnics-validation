@@ -182,121 +182,124 @@ function Home() {
       <img className="cnics-logo" src={`${API_BASE}/files/cnics_logo.png`} alt="CNICS" />
       <h1>CNICS Validation</h1>
       <p>Welcome to the CNICS Validation application.</p>
-      
+      {/* Two-column layout: left main content, right sidebar */}
+      <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
+        {/* Left column */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <section>
+            <h3>Administrative Tools</h3>
+            <div>
+              <h4>Events</h4>
+              <ul>
+                <li>
+                  <Link to="/events/viewAll">View all events</Link>
+                </li>
+                <li>
+                  <Link to="/events/add">Add an event</Link>
+                </li>
+                <li>
+                  <Link to="/events/addMany">Add multiple events from a CSV file</Link>
+                </li>
+                <li>
+                  <a href={`${API_BASE}/api/events/export?format=csv`}>Export all events as CSV</a>
+                </li>
+              </ul>
+              <h4>Users</h4>
+              <ul>
+                <li>
+                  <Link to="/users/add">Add a user</Link>
+                </li>
+                <li>
+                  <Link to="/users/viewAll">Edit/Delete users</Link>
+                </li>
+              </ul>
+            </div>
+          </section>
 
-      <section>
-        <h3>Administrative Tools</h3>
-        <div>
-          <h4>Events</h4>
-          <ul>
-            <li>
-              <Link to="/events/viewAll">View all events</Link>
-            </li>
-            <li>
-              <Link to="/events/add">Add an event</Link>
-            </li>
-            <li>
-              <Link to="/events/addMany">Add multiple events from a CSV file</Link>
-            </li>
-            <li>
-              <a href={`${API_BASE}/api/events/export?format=csv`}>Export all events as CSV</a>
-            </li>
-          </ul>
-          <h4>Users</h4>
-          <ul>
-            <li>
-              <Link to="/users/add">Add a user</Link>
-            </li>
-            <li>
-              <Link to="/users/viewAll">Edit/Delete users</Link>
-            </li>
-          </ul>
+          <section>
+            <h3>Upload New Packets</h3>
+            <p>
+              Use this page to find an event and upload its packet. Please note the
+              instructions on the right about how to properly assemble a review
+              packet.
+            </p>
+          </section>
+
+          {/* Move Events That Need Packets above reviewer list */}
+          <section>
+            <h3>Events That Need Packets</h3>
+            <TableWrapper
+              endpoint="/api/events/by_status/created"
+              columns={['ID', 'Date', 'Created', 'Site']}
+              renderActions={(row) => (
+                <>
+                  <button onClick={(e) => { e.stopPropagation(); window.location.href = `/events/upload?event_id=${row['ID']}` }}>upload</button>
+                  {' '}
+                  |{' '}
+                  <button onClick={(e) => { e.stopPropagation(); window.location.href = `/events/edit?event_id=${row['ID']}` }}>edit</button>
+                </>
+              )}
+            />
+          </section>
+
+          <section>
+            <h3>Event Packets for Your Review</h3>
+            <p style={{ marginTop: '4px', color: '#444' }}>
+              These are events assigned to you and awaiting your review.
+            </p>
+            <div style={{ margin: '8px 0' }}>
+              <input
+                type="text"
+                placeholder="Quick search (Event ID or Date, e.g., 2024-01-15)"
+                value={reviewSearch}
+                onChange={(e) => setReviewSearch(e.target.value)}
+              />
+            </div>
+            <ReviewerList apiBase={API_BASE} q={reviewSearch} rows={reviewRows} setRows={setReviewRows} />
+          </section>
         </div>
-      </section>
 
-
-      <section>
-        <h3>Upload New Packets</h3>
-        <p>
-          Use this page to find an event and upload its packet. Please note the
-          instructions on the right about how to properly assemble a review
-          packet.
-        </p>
-      </section>
-
-
-
-      <section>
-        <h3>Event Packets for Your Review</h3>
-        <p style={{ marginTop: '4px', color: '#444' }}>
-          These are events assigned to you and awaiting your review.
-        </p>
-        <div style={{ margin: '8px 0' }}>
-          <input
-            type="text"
-            placeholder="Quick search (Event ID or Date, e.g., 2024-01-15)"
-            value={reviewSearch}
-            onChange={(e) => setReviewSearch(e.target.value)}
-          />
-        </div>
-        <ReviewerList apiBase={API_BASE} q={reviewSearch} rows={reviewRows} setRows={setReviewRows} />
-      </section>
-
-      <section>
-        <h3>Events That Need Packets</h3>
-        <TableWrapper
-          endpoint="/api/events/by_status/created"
-          columns={['ID', 'Date', 'Created', 'Site']}
-          renderActions={(row) => (
-            <>
-              <button onClick={(e) => { e.stopPropagation(); window.location.href = `/events/upload?event_id=${row['ID']}` }}>upload</button>
-              {' '}
+        {/* Right sidebar */}
+        <aside style={{ width: 340 }}>
+          <div className="infobox">
+            <h3>Review packets should contain:</h3>
+            <ol>
+              <li>Physician's notes closest to potential Event date</li>
+              <li>Outpatient cardiology consultations</li>
+              <li>In-patient cardiology notes or consults</li>
+              <li>Baseline ECG</li>
+              <li>First 2 ECGs after admission or in-hospital event</li>
+              <li>Related procedure and diagnostic test results</li>
+              <li>Related laboratory evidence</li>
+              <li>
+                Please redact the personal identifiers including name, birthday, and
+                hospital number
+              </li>
+            </ol>
+            <div>
+              Full instructions:{' '}
+              <a href={`${API_BASE}/files/CNICS MI Review packet assembly instructions.doc`} download>.doc</a>{' '}
               |{' '}
-              <button onClick={(e) => { e.stopPropagation(); window.location.href = `/events/edit?event_id=${row['ID']}` }}>edit</button>
-            </>
-          )}
-        />
-      </section>
+              <a
+                href={`${API_BASE}/files/CNICS MI Review packet assembly instructions.pdf`}
+                target="_blank"
+              >
+                .pdf
+              </a>
+            </div>
+          </div>
 
-      {/* Event Status Summary removed per request */}
-
-      <div className="infobox">
-        <h3>Review packets should contain:</h3>
-        <ol>
-          <li>Physician's notes closest to potential Event date</li>
-          <li>Outpatient cardiology consultations</li>
-          <li>In-patient cardiology notes or consults</li>
-          <li>Baseline ECG</li>
-          <li>First 2 ECGs after admission or in-hospital event</li>
-          <li>Related procedure and diagnostic test results</li>
-          <li>Related laboratory evidence</li>
-          <li>
-            Please redact the personal identifiers including name, birthday, and
-            hospital number
-          </li>
-        </ol>
-        <div>
-          Full instructions:{' '}
-          <a href={`${API_BASE}/files/CNICS MI Review packet assembly instructions.doc`} download>.doc</a>{' '}
-          |{' '}
-          <a
-            href={`${API_BASE}/files/CNICS MI Review packet assembly instructions.pdf`}
-            target="_blank"
-          >
-            .pdf
-          </a>
-        </div>
-      </div>
-
-      <div className="infobox">
-        <h3>Review Instructions:</h3>
-        <div>
-          View as:{' '}
-          <a href={`${API_BASE}/files/CNICS MI reviewer instructions.doc`} download>.doc</a> |{' '}
-          <a href={`${API_BASE}/files/CNICS MI reviewer instructions.pdf`} target="_blank">
-            .pdf
-          </a>
-        </div>
+          <div className="infobox" style={{ marginTop: 16 }}>
+            <h3>Review Instructions:</h3>
+            <div>
+              View as:{' '}
+              <a href={`${API_BASE}/files/CNICS MI reviewer instructions.doc`} download>.doc</a> |{' '}
+              <a href={`${API_BASE}/files/CNICS MI reviewer instructions.pdf`} target="_blank">
+                .pdf
+              </a>
+            </div>
+          </div>
+        </aside>
       </div>
 
       {/* Additional Documents removed for now */}
