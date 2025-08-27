@@ -91,7 +91,6 @@ function TableWrapper({ endpoint, columns, renderActions }) {
 function Home() {
   const [rows, setRows] = useState([])
   const [statusSummary, setStatusSummary] = useState(null)
-  const [search, setSearch] = useState('')
 
   useEffect(() => {
     fetch(`${API_BASE}/api/tables/events`, { credentials: 'include' })
@@ -119,12 +118,7 @@ function Home() {
       .catch(() => {})
   }, [])
 
-  // eslint-disable-next-line no-unused-vars
-  const filteredRows = rows.filter((row) =>
-    Object.values(row).some((v) =>
-      String(v).toLowerCase().includes(search.toLowerCase())
-    )
-  )
+  // Removed Quick Search; table-level search is provided in each section
 
 
   return (
@@ -173,17 +167,6 @@ function Home() {
           instructions on the right about how to properly assemble a review
           packet.
         </p>
-        <h3>Quick Search</h3>
-        <p style={{ marginTop: '4px', color: '#444' }}>
-          Search across all columns (ID, Event Date, Created/Uploaded/Scrubbed, Criteria, Site). Example: "UW" or "2024-01-15".
-        </p>
-        <input
-          className="quick-search"
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search"
-        />
       </section>
 
 
