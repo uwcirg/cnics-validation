@@ -6,20 +6,34 @@ import './Home.css'
 // Base URL for the backend API. When running under Docker Compose the
 // environment variable is provided by the compose file. Fallback to a
 // relative path so the frontend can be served without configuration.
-//const API_BASE = import.meta.env.VITE_API_URL || ''
-const API_BASE = "https://backend.cnics-validation.pm.ssingh20.dev.cirg.uw.edu"
+const API_BASE = import.meta.env.VITE_API_URL || ''
 const PAGE_SIZE = 20
 
-function TableWrapper({ endpoint }) {
+function TableWrapper({ endpoint, columns, renderActions }) {
   const navigate = useNavigate()
   const [rows, setRows] = useState([])
   const [totalCount, setTotalCount] = useState(null)
+  const [search, setSearch] = useState('')
+  const [siteFilter, setSiteFilter] = useState('')
 
   const fetchPage = (p) => {
-    fetch(`${API_BASE}${endpoint}?limit=${PAGE_SIZE}&offset=${(p - 1) * PAGE_SIZE}`, {
+    const params = new URLSearchParams({
+      limit: String(PAGE_SIZE),
+      offset: String((p - 1) * PAGE_SIZE),
+    })
+    if (search) params.set('q', search)
+    if (siteFilter) params.set('site', siteFilter)
+    fetch(`${API_BASE}${endpoint}?${params.toString()}`, {
       credentials: 'include',
     })
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) {
+          if (res.status === 401) alert('Login required');
+          else if (res.status === 403) alert('Not authorized');
+          throw new Error('auth');
+        }
+        return res.json()
+      })
       .then((json) => {
         const payload = json || {}
         setRows(payload.data || [])
@@ -32,12 +46,46 @@ function TableWrapper({ endpoint }) {
     fetchPage(1)
   }, [endpoint])
 
+  useEffect(() => {
+    fetchPage(1)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, siteFilter])
+
   const handleClick = (row) => {
     navigate(
       `/events/upload?event_id=${row['ID']}&patient_id=${row['Patient ID']}&date=${row['Date']}&criteria=${encodeURIComponent(row['Criteria'])}`
     )
   }
-  return <DataTable rows={rows} onRowClick={handleClick} onPageChange={fetchPage} totalCount={totalCount} />
+  const sites = Array.from(
+    new Set(rows.map((r) => r['Site'] || r['site']).filter(Boolean))
+  ).sort()
+  return (
+    <>
+      <div style={{ display: 'flex', gap: '8px', margin: '8px 0', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <input
+            type="text"
+            placeholder="Search this table"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {sites.length > 0 && (
+            <select value={siteFilter} onChange={(e) => setSiteFilter(e.target.value)}>
+              <option value="">All Sites</option>
+              {sites.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          )}
+        </div>
+        <div style={{ whiteSpace: 'nowrap', fontSize: '.9em', color: '#444' }}>
+          
+          {`Showing ${rows.length}${typeof totalCount === 'number' ? ` of ${totalCount}` : ''}`}
+        </div>
+      </div>
+      <DataTable rows={rows} onRowClick={handleClick} onPageChange={fetchPage} totalCount={totalCount} columns={columns} renderActions={renderActions} />
+    </>
+  )
 }
 
 function Home() {
@@ -47,12 +95,26 @@ function Home() {
 
   useEffect(() => {
     fetch(`${API_BASE}/api/tables/events`, { credentials: 'include' })
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) {
+          if (res.status === 401) alert('Login required');
+          else if (res.status === 403) alert('Not authorized');
+          throw new Error('auth');
+        }
+        return res.json()
+      })
       .then((json) => setRows(json.data || []))
       .catch(() => {})
 
     fetch(`${API_BASE}/api/events/status_summary`, { credentials: 'include' })
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) {
+          if (res.status === 401) alert('Login required');
+          else if (res.status === 403) alert('Not authorized');
+          throw new Error('auth');
+        }
+        return res.json()
+      })
       .then((json) => setStatusSummary(json.data || null))
       .catch(() => {})
   }, [])
@@ -71,11 +133,7 @@ function Home() {
       <img className="cnics-logo" src={`${API_BASE}/files/cnics_logo.png`} alt="CNICS" />
       <h1>CNICS Validation</h1>
       <p>Welcome to the CNICS Validation application.</p>
-      <p>
-        Use this page to find an event and upload its packet. Please note the
-        instructions on the right about how to properly assemble a review
-        packet.
-      </p>
+      
 
       <section>
         <h3>Administrative Tools</h3>
@@ -109,7 +167,16 @@ function Home() {
 
 
       <section>
+        <h3>Upload New Packets</h3>
+        <p>
+          Use this page to find an event and upload its packet. Please note the
+          instructions on the right about how to properly assemble a review
+          packet.
+        </p>
         <h3>Quick Search</h3>
+        <p style={{ marginTop: '4px', color: '#444' }}>
+          Search across all columns (ID, Event Date, Created/Uploaded/Scrubbed, Criteria, Site). Example: "UW" or "2024-01-15".
+        </p>
         <input
           className="quick-search"
           type="text"
@@ -123,35 +190,26 @@ function Home() {
 
       <section>
         <h3>Events That Need Packets</h3>
-        <TableWrapper endpoint="/api/events/need_packets" />
+        <TableWrapper
+          endpoint="/api/events/by_status/created"
+          columns={['ID', 'Date', 'Created', 'Site']}
+          renderActions={(row) => (
+            <>
+              <button onClick={(e) => { e.stopPropagation(); window.location.href = `/events/upload?event_id=${row['ID']}` }}>upload</button>
+              {' '}
+              |{' '}
+              <button onClick={(e) => { e.stopPropagation(); window.location.href = `/events/edit?event_id=${row['ID']}` }}>edit</button>
+            </>
+          )}
+        />
       </section>
 
       <section>
         <h3>Event Packets for Your Review</h3>
-        <TableWrapper endpoint="/api/events/for_review" />
+        <TableWrapper endpoint="/api/events/by_status/sent" />
       </section>
 
-      {statusSummary && (
-        <section>
-          <h3>Event Status Summary</h3>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Status</th>
-                <th>Count</th>
-              </tr>
-            </thead>
-            <tbody>
-              {Object.entries(statusSummary).map(([status, count]) => (
-                <tr key={status}>
-                  <td>{status}</td>
-                  <td>{count}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      )}
+      {/* Event Status Summary removed per request */}
 
       <div className="infobox">
         <h3>Review packets should contain:</h3>
@@ -192,39 +250,7 @@ function Home() {
         </div>
       </div>
 
-      <div className="infobox">
-        <h3>Additional Documents:</h3>
-        <ul>
-          <li>
-            <a href={`${API_BASE}/files/CNICS MI event scrubbing protocol.doc`} download>
-              Event Scrubbing Protocol
-            </a>
-            {' | '}
-            <a href={`${API_BASE}/files/CNICS MI event scrubbing protocol.pdf`} target="_blank">PDF</a>
-          </li>
-          <li>
-            <a href={`${API_BASE}/files/CNICS VTE Review packet assembly instructions.doc`} download>
-              VTE Packet Assembly Instructions
-            </a>
-            {' | '}
-            <a href={`${API_BASE}/files/CNICS VTE Review packet assembly instructions.pdf`} target="_blank">PDF</a>
-          </li>
-          <li>
-            <a href={`${API_BASE}/files/NA-ACCORD MI Review packet assembly instructions.doc`} download>
-              NA-ACCORD Packet Assembly Instructions
-            </a>
-            {' | '}
-            <a href={`${API_BASE}/files/NA-ACCORD MI Review packet assembly instructions.pdf`} target="_blank">PDF</a>
-          </li>
-          <li>
-            <a href={`${API_BASE}/files/NA-ACCORD MI reviewer instructions.doc`} download>
-              NA-ACCORD Reviewer Instructions
-            </a>
-            {' | '}
-            <a href={`${API_BASE}/files/NA-ACCORD MI reviewer instructions.pdf`} target="_blank">PDF</a>
-          </li>
-        </ul>
-      </div>
+      {/* Additional Documents removed for now */}
 
     </div>
   )
