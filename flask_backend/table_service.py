@@ -3,6 +3,7 @@ from typing import Optional
 from sqlalchemy import text, bindparam
 import logging
 import datetime
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,53 @@ def _get_external_session_or_none():
 def get_session():
     """Lazily create a new SQLAlchemy session."""
     return models.get_session()
+
+
+def _derive_date_like(q: Optional[str]) -> Optional[str]:
+    """Return a LIKE pattern for ISO date (YYYY-MM-DD) if q looks like a date.
+
+    Accepts common inputs:
+    - YYYY-MM-DD
+    - YYYY/MM/DD
+    - YYYYMMDD
+    - MM/DD/YYYY or M/D/YYYY
+    - MM-DD-YYYY or M-D-YYYY
+    - M/D/YY or MM/DD/YY (assumes 20YY)
+    """
+    if not q:
+        return None
+    s = q.strip()
+    # Try compact 8-digit YYYYMMDD
+    if re.fullmatch(r"\d{8}", s):
+        try:
+            dt = datetime.date(int(s[0:4]), int(s[4:6]), int(s[6:8]))
+            return f"%{dt.strftime('%Y-%m-%d')}%"
+        except Exception:
+            return None
+    # Normalize separators to '-'
+    s_norm = s.replace('/', '-').strip()
+    # Try YYYY-MM-DD
+    try:
+        dt = datetime.date.fromisoformat(s_norm)
+        return f"%{dt.strftime('%Y-%m-%d')}%"
+    except Exception:
+        pass
+    # Try MM-DD-YYYY
+    for fmt in ("%m-%d-%Y", "%m-%d-%y"):
+        try:
+            dt = datetime.datetime.strptime(s_norm, fmt).date()
+            # Assume 20YY for 2-digit years where needed (strptime already handles century logic)
+            return f"%{dt.strftime('%Y-%m-%d')}%"
+        except Exception:
+            continue
+    # Try with '/' formats
+    for fmt in ("%m/%d/%Y", "%m/%d/%y"):
+        try:
+            dt = datetime.datetime.strptime(s, fmt).date()
+            return f"%{dt.strftime('%Y-%m-%d')}%"
+        except Exception:
+            continue
+    return None
 
 
 def get_table_data(name: str, limit: Optional[int] = None, offset: int = 0):
@@ -84,6 +132,7 @@ def get_events_by_status_with_total(
     )
     session = get_session()
     like = f"%{q}%" if q else None
+    like_date = _derive_date_like(q)
     where = ["e.status = :status"]
     params = {"status": status}
     if site:
@@ -101,6 +150,11 @@ def get_events_by_status_with_total(
             "OR EXISTS (SELECT 1 FROM criterias c2 WHERE c2.event_id = e.id AND (c2.name LIKE :like OR c2.value LIKE :like)))"
         )
         params["like"] = like
+        if like_date:
+            where.append(
+                "(e.event_date LIKE :like_date OR e.add_date LIKE :like_date OR e.upload_date LIKE :like_date OR e.scrub_date LIKE :like_date)"
+            )
+            params["like_date"] = like_date
 
     where_sql = " AND ".join(where)
 
@@ -223,6 +277,7 @@ def get_events_with_patient_site_with_total(
     session = get_session()
     try:
         like = f"%{q}%" if q else None
+        like_date = _derive_date_like(q)
         where = ["1=1"]
         params = {}
         if site:
@@ -233,6 +288,9 @@ def get_events_with_patient_site_with_total(
                 "(CAST(e.id AS CHAR) LIKE :like OR CAST(e.patient_id AS CHAR) LIKE :like OR e.event_date LIKE :like OR p.site_patient_id LIKE :like OR EXISTS (SELECT 1 FROM criterias c2 WHERE c2.event_id = e.id AND (c2.name LIKE :like OR c2.value LIKE :like)))"
             )
             params["like"] = like
+            if like_date:
+                where.append("(e.event_date LIKE :like_date)")
+                params["like_date"] = like_date
         where_sql = " AND ".join(where)
 
         stmt = (
@@ -268,6 +326,7 @@ def _phase_rows_with_total(
     order_by: Optional[str] = None,
 ):
     like = f"%{q}%" if q else None
+    like_date = _derive_date_like(q)
     filt = []
     if site:
         filt.append("p.site = :site")
@@ -285,6 +344,11 @@ def _phase_rows_with_total(
             "OR EXISTS (SELECT 1 FROM criterias c2 WHERE c2.event_id = e.id AND (c2.name LIKE :like OR c2.value LIKE :like)))"
         )
         params["like"] = like
+        if like_date:
+            filt.append(
+                "(e.event_date LIKE :like_date OR e.add_date LIKE :like_date OR e.upload_date LIKE :like_date OR e.scrub_date LIKE :like_date)"
+            )
+            params["like_date"] = like_date
     where_sql = where_clause
     if filt:
         where_sql = f"{where_clause} AND {' AND '.join(filt)}"
@@ -541,6 +605,7 @@ def get_events_awaiting_review(user_id: int, q: Optional[str] = None) -> list[di
     session = get_session()
     try:
         like = f"%{q}%" if q else None
+        like_date = _derive_date_like(q)
         where_parts = [
             "(e.reviewer1_id = :uid AND e.send_date IS NOT NULL AND e.review1_date IS NULL)",
             "(e.reviewer2_id = :uid AND e.send_date IS NOT NULL AND e.review2_date IS NULL)",
@@ -550,8 +615,12 @@ def get_events_awaiting_review(user_id: int, q: Optional[str] = None) -> list[di
         where_sql = " OR ".join(where_parts)
         q_filter = ""
         if q:
-            q_filter = " AND (CAST(e.id AS CHAR) LIKE :like OR e.event_date LIKE :like)"
+            q_terms = ["CAST(e.id AS CHAR) LIKE :like", "e.event_date LIKE :like"]
             params["like"] = like
+            if like_date:
+                q_terms.append("e.event_date LIKE :like_date")
+                params["like_date"] = like_date
+            q_filter = " AND (" + " OR ".join(q_terms) + ")"
         stmt = text(
             "SELECT e.id AS id, e.event_date AS event_date, "
             "CASE "
