@@ -219,7 +219,15 @@ def get_engine():
         host = os.getenv("DB_HOST", "localhost")
         db = os.getenv("DB_NAME", "cnics")
         url = f"mysql+mysqlconnector://{user}:{pw}@{host}/{db}"
-        _engine = create_engine(url, pool_pre_ping=True)
+        _engine = create_engine(
+            url,
+            pool_pre_ping=True,
+            pool_recycle=280,
+            pool_size=int(os.getenv("DB_POOL_SIZE", "10")),
+            max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "20")),
+            pool_timeout=int(os.getenv("DB_POOL_TIMEOUT", "30")),
+            connect_args={"connection_timeout": int(os.getenv("DB_CONNECT_TIMEOUT", "10"))},
+        )
     return _engine
 
 
@@ -239,7 +247,7 @@ def get_external_engine():
         url = os.getenv("EXTERNAL_DB_URL")
         if not url:
             raise RuntimeError("EXTERNAL_DB_URL is not configured")
-        _external_engine = create_engine(url, pool_pre_ping=True)
+        _external_engine = create_engine(url, pool_pre_ping=True, pool_recycle=280)
     return _external_engine
 
 

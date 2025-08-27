@@ -1,0 +1,15 @@
+[mysqld]
+# Increase timeouts to reduce "Aborted connection" during slow/large queries
+wait_timeout=600
+interactive_timeout=600
+connect_timeout=30
+net_read_timeout=120
+net_write_timeout=120
+
+# Allow larger payloads for bulk operations/exports
+max_allowed_packet=64M
+
+# Optional: larger table definition cache for complex schemas
+table_definition_cache=400
+table_open_cache=400
+
