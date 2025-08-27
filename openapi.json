@@ -67,8 +67,19 @@ paths:
                 additionalProperties:
                   type: integer
   /api/events/by_status/{status}: {}
+  /api/events/{int:event_id}: {}
   /api/users: {}
   /api/auth/me: {}
+  /api/reviewer/awaiting: {}
+  /api/events/export: {}
+  /api/events/download/{int:event_id}: {}
+  /api/criteria: {}
+  /api/solicitations: {}
+  /api/events/{int:event_id}/screen: {}
+  /api/events/bulk: {}
+  /api/events/{int:event_id}/upload_scrubbed: {}
+  /api/events/assign_many: {}
+  /api/events/send_many: {}
 info:
   title: CNICS Validation API
   version: 1.0.0
