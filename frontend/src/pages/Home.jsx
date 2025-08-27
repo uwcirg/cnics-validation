@@ -88,9 +88,64 @@ function TableWrapper({ endpoint, columns, renderActions }) {
   )
 }
 
+function ReviewerList({ apiBase, q, rows, setRows }) {
+  const [loading, setLoading] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      try {
+        const url = new URL(`${apiBase}/api/reviewer/awaiting`)
+        if (q) url.searchParams.set('q', q)
+        const res = await fetch(url, { credentials: 'include' })
+        if (!cancelled && res.ok) {
+          const json = await res.json()
+          setRows(json.data || [])
+        }
+      } catch {}
+      if (!cancelled) setLoading(false)
+    }
+    load()
+    return () => { cancelled = true }
+  }, [apiBase, q, setRows])
+
+  const go = (r) => {
+    const slot = r.slot
+    if (!slot) return
+    const id = r.id
+    window.location.href = `/events/review?event_id=${id}&slot=${slot}`
+  }
+
+  if (loading && (!rows || rows.length === 0)) return <p>Loading…</p>
+  if (!rows || rows.length === 0) return <p>No events awaiting your review.</p>
+
+  return (
+    <table className="data-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr key={r.id} className="clickable" onClick={() => go(r)}>
+            <td>
+              <a href={`/events/review?event_id=${r.id}&slot=${r.slot}`} onClick={(e) => { e.preventDefault(); go(r) }}>Event {1000 + Number(r.id)}</a>
+            </td>
+            <td>{r.event_date || ''}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
 function Home() {
   const [rows, setRows] = useState([])
   const [statusSummary, setStatusSummary] = useState(null)
+  const [reviewRows, setReviewRows] = useState([])
+  const [reviewSearch, setReviewSearch] = useState('')
 
   useEffect(() => {
     fetch(`${API_BASE}/api/tables/events`, { credentials: 'include' })
@@ -172,6 +227,22 @@ function Home() {
 
 
       <section>
+        <h3>Event Packets for Your Review</h3>
+        <p style={{ marginTop: '4px', color: '#444' }}>
+          These are events assigned to you and awaiting your review.
+        </p>
+        <div style={{ margin: '8px 0' }}>
+          <input
+            type="text"
+            placeholder="Quick search (Event ID or Date, e.g., 2024-01-15)"
+            value={reviewSearch}
+            onChange={(e) => setReviewSearch(e.target.value)}
+          />
+        </div>
+        <ReviewerList apiBase={API_BASE} q={reviewSearch} rows={reviewRows} setRows={setReviewRows} />
+      </section>
+
+      <section>
         <h3>Events That Need Packets</h3>
         <TableWrapper
           endpoint="/api/events/by_status/created"
@@ -185,11 +256,6 @@ function Home() {
             </>
           )}
         />
-      </section>
-
-      <section>
-        <h3>Event Packets for Your Review</h3>
-        <TableWrapper endpoint="/api/events/by_status/sent" />
       </section>
 
       {/* Event Status Summary removed per request */}

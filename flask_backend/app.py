@@ -2,6 +2,7 @@ from flask import Flask, jsonify, request, abort, send_from_directory, g
 from flask_cors import CORS
 import os
 from typing import Optional
+import datetime
 from docx import Document
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
@@ -17,7 +18,9 @@ app = Flask(__name__)
 
 # Enable CORS only for requests coming from the frontend
 # Support both the standard and auth vhosts by default, and merge any env-provided origins
+# Default allowed origins; include unified domain
 default_origins = [
+    "https://cnics-validation.pm.ssingh20.dev.cirg.uw.edu",
     "https://frontend.cnics-validation.pm.ssingh20.dev.cirg.uw.edu",
     "https://frontend.auth.cnics-validation.pm.ssingh20.dev.cirg.uw.edu",
 ]
@@ -50,6 +53,17 @@ if not FILES_DIR:
         os.path.join(os.path.dirname(__file__), "..", "app", "webroot", "files")
     )
 os.makedirs(FILES_DIR, exist_ok=True)
+
+# Optional directory to serve downloadable event artifacts (e.g., chart zips)
+DOWNLOADS_DIR = os.getenv("DOWNLOADS_DIR")
+if not DOWNLOADS_DIR:
+    DOWNLOADS_DIR = os.path.join(FILES_DIR, "downloads")
+try:
+    os.makedirs(DOWNLOADS_DIR, exist_ok=True)
+except OSError:
+    # Directory may be on a read-only volume (e.g., /files mounted ro). We'll
+    # still attempt to serve from existing paths without creating directories.
+    pass
 
 
 def get_limit(default: Optional[int] = None) -> Optional[int]:
@@ -304,9 +318,11 @@ def get_events():
     """
     limit = get_limit()
     offset = get_offset()
+    q = request.args.get('q') or None
+    site = request.args.get('site') or None
     try:
-        rows = table_service.get_events_with_patient_site(limit, offset)
-        return jsonify({'data': rows})
+        rows, total = table_service.get_events_with_patient_site_with_total(limit, offset, q, site)
+        return jsonify({'data': rows, 'total': total})
     except Exception:
         app.logger.exception("Failed to fetch event data")
         return jsonify({'error': 'Failed to fetch event data'}), 500
@@ -350,6 +366,7 @@ def events_need_packets():
     offset = get_offset()
     try:
         rows = table_service.get_events_need_packets(limit, offset)
+        # Optional: add total if we later add filtering here as well
         return jsonify({'data': rows})
     except Exception:
         app.logger.exception("Failed to fetch table data")
@@ -445,16 +462,42 @@ _ALLOWED_EVENT_STATUSES = {
 @requires_any_role('reviewer', 'uploader', 'admin')
 def events_by_status(status: str):
     status = (status or '').strip()
-    if status not in _ALLOWED_EVENT_STATUSES:
-        abort(400)
     limit = get_limit()
     offset = get_offset()
+    q = request.args.get('q') or None
+    site = request.args.get('site') or None
     try:
-        rows = table_service.get_events_by_status(status, limit, offset)
-        return jsonify({'data': rows})
+        if status == 'uploaded':
+            rows, total = table_service.get_to_be_scrubbed_with_total(limit, offset, q, site)
+        elif status == 'scrubbed':
+            rows, total = table_service.get_to_be_screened_with_total(limit, offset, q, site)
+        elif status == 'screened':
+            rows, total = table_service.get_to_be_assigned_with_total(limit, offset, q, site)
+        elif status == 'assigned':
+            rows, total = table_service.get_to_be_sent_with_total(limit, offset, q, site)
+        elif status == 'sent':
+            rows, total = table_service.get_to_be_reviewed_with_total(limit, offset, q, site)
+        else:
+            if status not in _ALLOWED_EVENT_STATUSES:
+                abort(400)
+            rows, total = table_service.get_events_by_status_with_total(status, limit, offset, q, site)
+        return jsonify({'data': rows, 'total': total})
     except Exception:
         app.logger.exception("Failed to fetch events by status %s", status)
         return jsonify({'error': 'Failed to fetch table data'}), 500
+
+
+@app.route('/api/events/<int:event_id>')
+@requires_auth
+def get_event_details(event_id: int):
+    try:
+        details = table_service.get_event_details(event_id)
+        if not details:
+            abort(404)
+        return jsonify({'data': details})
+    except Exception:
+        app.logger.exception("Failed to fetch event details %d", event_id)
+        return jsonify({'error': 'Failed to fetch event details'}), 500
 
 
 @app.route('/api/users', methods=['POST'])
@@ -484,6 +527,349 @@ def auth_me():
     if not auth_user:
         abort(401)
     return jsonify({"data": auth_user})
+
+
+@app.route('/api/reviewer/awaiting')
+@requires_auth
+@requires_any_role('reviewer', 'third_reviewer', 'admin')
+def reviewer_awaiting():
+    """Return events awaiting the logged-in reviewer's action (minimal fields)."""
+    try:
+        q = request.args.get('q') or None
+        auth_user = getattr(g, 'auth_user', None) or {}
+        uid = auth_user.get('id')
+        if not uid:
+            abort(401)
+        rows = table_service.get_events_awaiting_review(int(uid), q)
+        return jsonify({'data': rows})
+    except Exception:
+        app.logger.exception("Failed to fetch reviewer awaiting list")
+        return jsonify({'error': 'Failed to fetch reviewer awaiting list'}), 500
+
+
+@app.route('/api/events/export')
+@requires_auth
+@requires_roles('admin')
+def events_export():
+    """Export events as CSV with detailed fields.
+
+    Query param format=csv defaults to CSV. Response is text/csv.
+    """
+    try:
+        rows = table_service.get_events_export_rows()
+        # Build CSV
+        import csv
+        import io
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+        # Headings (reduced example; expand as needed)
+        headings = [
+            'MI', 'Patient ID', 'Patient Site', 'Site Patient ID', 'Event Date', 'Status', 'Creator',
+            'Criteria: MI Dx', 'Criteria: CKMB_Q', 'Criteria: CKMB_M', 'Criteria: CKMB', 'Criteria: Troponin', 'Criteria: Other',
+            'Add Date', 'Uploader', 'Upload Date', 'Marker (no packet)', 'No Packet Reason', 'Two Attempts?',
+            'Prior Event Date', 'Prior Event Onsite?', 'Other Cause', 'Mark No Packet Date', 'Scrubber', 'Scrub Date',
+            'Screener', 'Screen Date', 'Rescrub Message', 'Reject Message', 'Assigner', 'Assign Date', 'Sender', 'Send Date',
+            'Reviewer 1', 'Review 1 MI', 'Review 1 Abnormal CE Values?', 'Review 1 CE Criteria', 'Review 1 Chest Pain?',
+            'Review 1 ECG Changes?', 'Review 1 LVM by Imaging?', 'Review 1 Clinical Intervention?', 'Review 1 Type',
+            'Review 1 Secondary Cause', 'Review 1 Other Cause', 'Review 1 False Positive?', 'Review 1 False Positive Reason',
+            'Review 1 False Positive Other Cause', 'Review 1 Current Tobacco Use?', 'Review 1 Past Tobacco Use?',
+            'Review 1 Cocaine Use?', 'Review 1 Family History?', 'Review 1 Date',
+            'Reviewer 2', 'Review 2 MI', 'Review 2 Abnormal CE Values?', 'Review 2 CE Criteria', 'Review 2 Chest Pain?',
+            'Review 2 ECG Changes?', 'Review 2 LVM by Imaging?', 'Review 2 Clinical Intervention?', 'Review 2 Type',
+            'Review 2 Secondary Cause', 'Review 2 Other Cause', 'Review 2 False Positive?', 'Review 2 False Positive Reason',
+            'Review 2 False Positive Other Cause', 'Review 2 Current Tobacco Use?', 'Review 2 Past Tobacco Use?',
+            'Review 2 Cocaine Use?', 'Review 2 Family History?', 'Review 2 Date',
+            '3rd Review Assigner', '3rd Review Assign Date', 'Reviewer 3', 'Review 3 MI', 'Review 3 Abnormal CE Values?',
+            'Review 3 CE Criteria', 'Review 3 Chest Pain?', 'Review 3 ECG Changes?', 'Review 3 LVM by Imaging?',
+            'Review 3 Clinical Intervention?', 'Review 3 Type', 'Review 3 Secondary Cause', 'Review 3 Other Cause',
+            'Review 3 False Positive?', 'Review 3 False Positive Reason', 'Review 3 False Positive Other Cause',
+            'Review 3 Current Tobacco Use?', 'Review 3 Past Tobacco Use?', 'Review 3 Cocaine Use?', 'Review 3 Family History?', 'Review 3 Date',
+            'Overall Outcome', 'Overall Primary vs. Secondary', 'Overall False Positive Event?', 'Overall Secondary Cause',
+            'Overall Secondary Cause Other', 'Overall False Positive Cause', 'Overall Cardiac Intervention?'
+        ]
+        writer.writerow(headings)
+        for r in rows:
+            writer.writerow([
+                (r['id'] + 1000) if r.get('id') is not None else '',
+                r.get('patient_id',''),
+                r.get('site',''),
+                r.get('site_patient_id',''),
+                r.get('event_date',''),
+                r.get('status',''),
+                r.get('creator',''),
+                r.get('mi_dx',''), r.get('ckmb_q',''), r.get('ckmb_m',''), r.get('ckmb',''), r.get('troponin',''), r.get('other',''),
+                r.get('add_date',''), r.get('uploader',''), r.get('upload_date',''), r.get('marker',''), r.get('no_packet_reason',''),
+                'Yes' if r.get('two_attempts_flag') else 'No' if r.get('two_attempts_flag') is not None else '',
+                r.get('prior_event_date',''), 'Yes' if r.get('prior_event_onsite_flag') else 'No' if r.get('prior_event_onsite_flag') is not None else '',
+                r.get('other_cause',''), r.get('markNoPacket_date',''), r.get('scrubber',''), r.get('scrub_date',''), r.get('screener',''), r.get('screen_date',''),
+                r.get('rescrub_message',''), r.get('reject_message',''), r.get('assigner',''), r.get('assign_date',''), r.get('sender',''), r.get('send_date',''),
+                r.get('reviewer1',''), r.get('review1_mci',''), r.get('review1_abnormal_ce',''), r.get('review1_ce_criteria',''), r.get('review1_chest_pain',''),
+                r.get('review1_ecg_changes',''), r.get('review1_lvm',''), r.get('review1_ci',''), r.get('review1_type',''),
+                r.get('review1_secondary_cause',''), r.get('review1_other_cause',''), r.get('review1_false_positive',''), r.get('review1_false_positive_reason',''),
+                r.get('review1_false_positive_other_cause',''), r.get('review1_current_tobacco',''), r.get('review1_past_tobacco',''), r.get('review1_cocaine',''), r.get('review1_family_history',''), r.get('review1_date',''),
+                r.get('reviewer2',''), r.get('review2_mci',''), r.get('review2_abnormal_ce',''), r.get('review2_ce_criteria',''), r.get('review2_chest_pain',''),
+                r.get('review2_ecg_changes',''), r.get('review2_lvm',''), r.get('review2_ci',''), r.get('review2_type',''),
+                r.get('review2_secondary_cause',''), r.get('review2_other_cause',''), r.get('review2_false_positive',''), r.get('review2_false_positive_reason',''),
+                r.get('review2_false_positive_other_cause',''), r.get('review2_current_tobacco',''), r.get('review2_past_tobacco',''), r.get('review2_cocaine',''), r.get('review2_family_history',''), r.get('review2_date',''),
+                r.get('assigner3rd',''), r.get('assign3rd_date',''), r.get('reviewer3',''), r.get('review3_mci',''), r.get('review3_abnormal_ce',''),
+                r.get('review3_ce_criteria',''), r.get('review3_chest_pain',''), r.get('review3_ecg_changes',''), r.get('review3_lvm',''), r.get('review3_ci',''), r.get('review3_type',''), r.get('review3_secondary_cause',''), r.get('review3_other_cause',''),
+                r.get('review3_false_positive',''), r.get('review3_false_positive_reason',''), r.get('review3_false_positive_other_cause',''), r.get('review3_current_tobacco',''), r.get('review3_past_tobacco',''), r.get('review3_cocaine',''), r.get('review3_family_history',''), r.get('review3_date',''),
+                r.get('overall_outcome',''), r.get('overall_primary_secondary',''), 'Yes' if r.get('overall_false_positive_event') else 'No' if r.get('overall_false_positive_event') is not None else '', r.get('overall_secondary_cause',''), r.get('overall_secondary_cause_other',''), r.get('overall_false_positive_reason',''), 'Yes' if r.get('overall_ci') else 'No' if r.get('overall_ci') is not None else ''
+            ])
+        output.seek(0)
+        from flask import Response
+        return Response(output.getvalue(), mimetype='text/csv', headers={'Content-Disposition': 'attachment; filename=event.csv'})
+    except Exception:
+        app.logger.exception("Failed to export events")
+        return jsonify({'error': 'Failed to export events'}), 500
+
+
+@app.route('/api/events/download/<int:event_id>')
+@requires_auth
+def events_download(event_id: int):
+    """Stream a downloadable artifact for an event (e.g., charts zip).
+
+    Looks for a file under DOWNLOADS_DIR named "<event_id>.zip" or
+    "event_<event_id>.zip" and streams it as an attachment.
+    """
+    # Try a couple of conventional filenames in both DOWNLOADS_DIR and FILES_DIR
+    candidates = [f"{event_id}.zip", f"event_{event_id}.zip"]
+    for base_dir in (DOWNLOADS_DIR, FILES_DIR):
+        for name in candidates:
+            path = os.path.join(base_dir, name)
+            if os.path.exists(path):
+                from flask import send_file
+                return send_file(path, as_attachment=True, download_name=name)
+    abort(404)
+
+
+# --- Write endpoints needed by the frontend ---------------------------------
+
+@app.route('/api/criteria', methods=['POST'])
+@requires_auth
+@requires_any_role('reviewer', 'uploader', 'admin')
+def criteria_create():
+    data = request.get_json() or {}
+    event_id = data.get('event_id')
+    name = (data.get('name') or '').strip()
+    value = (data.get('value') or '').strip()
+    if not event_id or not name:
+        return jsonify({'error': 'event_id and name are required'}), 400
+    session = models.get_session()
+    try:
+        crit = models.Criterias(event_id=int(event_id), name=name, value=value)
+        session.add(crit)
+        session.commit()
+        return jsonify({'data': {'id': crit.id}}), 201
+    except Exception:
+        session.rollback()
+        app.logger.exception('Failed to create criteria')
+        return jsonify({'error': 'Failed to create criteria'}), 500
+    finally:
+        session.close()
+
+
+@app.route('/api/solicitations', methods=['POST'])
+@requires_auth
+@requires_any_role('reviewer', 'uploader', 'admin')
+def solicitation_create():
+    data = request.get_json() or {}
+    event_id = data.get('event_id')
+    date = data.get('date')
+    contact = (data.get('contact') or '').strip()
+    if not event_id or not date or not contact:
+        return jsonify({'error': 'event_id, date, and contact are required'}), 400
+    try:
+        y, m, d = [int(x) for x in str(date).split('-')]
+        date_obj = datetime.date(y, m, d)
+    except Exception:
+        return jsonify({'error': 'date must be YYYY-MM-DD'}), 400
+    session = models.get_session()
+    try:
+        sol = models.Solicitations(event_id=int(event_id), date=date_obj, contact=contact)
+        session.add(sol)
+        session.commit()
+        return jsonify({'data': {'id': sol.id}}), 201
+    except Exception:
+        session.rollback()
+        app.logger.exception('Failed to create solicitation')
+        return jsonify({'error': 'Failed to create solicitation'}), 500
+    finally:
+        session.close()
+
+
+@app.route('/api/events/<int:event_id>', methods=['PUT'])
+@requires_auth
+@requires_roles('admin')
+def events_update(event_id: int):
+    data = request.get_json() or {}
+    site_patient_id = data.get('site_patient_id')
+    site = data.get('site')
+    event_date = data.get('event_date')
+    # Update fields on events and/or patients
+    session = models.get_session()
+    try:
+        e = session.query(models.Events).get(event_id)
+        if e is None:
+            return jsonify({'error': 'Event not found'}), 404
+        if event_date:
+            try:
+                y, m, d = [int(x) for x in str(event_date).split('-')]
+                e.event_date = datetime.date(y, m, d)
+            except Exception:
+                return jsonify({'error': 'event_date must be YYYY-MM-DD'}), 400
+        # Update patient fields
+        if site_patient_id or site:
+            p = session.query(models.Patients).get(e.patient_id)
+            if p is not None:
+                if site_patient_id is not None:
+                    p.site_patient_id = site_patient_id
+                if site is not None:
+                    p.site = site
+        session.commit()
+        return jsonify({'data': {'updated': True}})
+    except Exception:
+        session.rollback()
+        app.logger.exception('Failed to update event %d', event_id)
+        return jsonify({'error': 'Failed to update event'}), 500
+    finally:
+        session.close()
+
+
+@app.route('/api/events/<int:event_id>/screen', methods=['POST'])
+@requires_auth
+@requires_any_role('reviewer', 'admin')
+def events_screen(event_id: int):
+    data = request.get_json() or {}
+    decision = (data.get('decision') or '').strip()
+    message = (data.get('message') or '').strip()
+    if decision not in {'accept', 'rescrub', 'reject'}:
+        return jsonify({'error': 'decision must be one of: accept, rescrub, reject'}), 400
+    auth_user = getattr(g, 'auth_user', None) or {}
+    session = models.get_session()
+    try:
+        e = session.query(models.Events).get(event_id)
+        if e is None:
+            return jsonify({'error': 'Event not found'}), 404
+        today = datetime.date.today()
+        if decision == 'accept':
+            e.screener_id = int(auth_user.get('id') or 0)
+            e.screen_date = today
+            e.status = 'screened'
+        elif decision == 'rescrub':
+            e.rescrub_message = message
+            e.status = 'uploaded'
+            e.screen_date = None
+        else:  # reject
+            e.screener_id = int(auth_user.get('id') or 0)
+            e.screen_date = today
+            e.reject_message = message
+            e.status = 'rejected'
+        session.commit()
+        return jsonify({'data': {'updated': True}})
+    except Exception:
+        session.rollback()
+        app.logger.exception('Failed to screen event %d', event_id)
+        return jsonify({'error': 'Failed to update screening decision'}), 500
+    finally:
+        session.close()
+
+
+@app.route('/api/events/bulk', methods=['POST'])
+@requires_auth
+@requires_roles('admin')
+def events_bulk():
+    # Minimal placeholder: accept a CSV upload and return 201. Implement parsing later.
+    if 'events_csv' not in request.files:
+        return jsonify({'error': 'events_csv file is required'}), 400
+    # In a future improvement, parse CSV and create events via table_service.create_event
+    return jsonify({'data': {'imported': 0}}), 201
+
+@app.route('/api/events/<int:event_id>/upload_scrubbed', methods=['POST'])
+@requires_auth
+@requires_any_role('reviewer', 'uploader', 'admin')
+def events_upload_scrubbed(event_id: int):
+    """Accept a scrubbed charts upload and mark the event as scrubbed.
+
+    Expects multipart/form-data with field name 'scrubbed_file'. Saves the
+    uploaded file to DOWNLOADS_DIR using a conventional filename and updates
+    the event's scrubber, scrub_date, and status.
+    """
+    try:
+        file = request.files.get('scrubbed_file')
+        if not file or not file.filename:
+            return jsonify({'error': 'No file provided'}), 400
+
+        # Ensure downloads directory exists (may be a separate RW mount)
+        try:
+            os.makedirs(DOWNLOADS_DIR, exist_ok=True)
+        except OSError:
+            # If the directory is read-only, abort with a clear message
+            return jsonify({'error': 'Downloads directory is not writable'}), 500
+
+        # Save using standard name so the download endpoint can find it
+        out_path = os.path.join(DOWNLOADS_DIR, f"{event_id}.zip")
+        file.save(out_path)
+
+        # Update event metadata
+        session = models.get_session()
+        try:
+            e = session.query(models.Events).get(event_id)
+            if e is None:
+                return jsonify({'error': 'Event not found'}), 404
+            auth_user = getattr(g, 'auth_user', None) or {}
+            if auth_user.get('id'):
+                e.scrubber_id = int(auth_user['id'])
+            e.scrub_date = datetime.date.today()
+            e.status = 'scrubbed'
+            session.commit()
+        finally:
+            session.close()
+
+        return jsonify({'data': {'saved': True}})
+    except Exception:
+        app.logger.exception('Failed to upload scrubbed file for event %d', event_id)
+        return jsonify({'error': 'Failed to upload scrubbed file'}), 500
+
+@app.route('/api/events/assign_many', methods=['POST'])
+@requires_auth
+@requires_roles('admin')
+def events_assign_many():
+    data = request.get_json() or {}
+    event_ids = data.get('event_ids') or []
+    reviewer_id = data.get('reviewer_id')
+    slot = (data.get('slot') or '').strip()
+    if not isinstance(event_ids, list) or not reviewer_id or not slot:
+        return jsonify({'error': 'event_ids, reviewer_id, and slot are required'}), 400
+    auth_user = getattr(g, 'auth_user', None) or {}
+    assigner_id = auth_user.get('id') or 0
+    try:
+        result = table_service.assign_events(event_ids, int(reviewer_id), slot, int(assigner_id))
+        return jsonify({'data': result})
+    except table_service.ValidationError as ve:
+        return jsonify({'error': str(ve)}), 400
+    except Exception:
+        app.logger.exception('Failed to assign events')
+        return jsonify({'error': 'Failed to assign events'}), 500
+
+
+@app.route('/api/events/send_many', methods=['POST'])
+@requires_auth
+@requires_roles('admin')
+def events_send_many():
+    data = request.get_json() or {}
+    event_ids = data.get('event_ids') or []
+    if not isinstance(event_ids, list) or not event_ids:
+        return jsonify({'error': 'event_ids required'}), 400
+    auth_user = getattr(g, 'auth_user', None) or {}
+    sender_id = auth_user.get('id') or 0
+    try:
+        result = table_service.send_events(event_ids, int(sender_id))
+        return jsonify({'data': result})
+    except Exception:
+        app.logger.exception('Failed to send events')
+        return jsonify({'error': 'Failed to send events'}), 500
 
 
 @app.route('/files/<path:filename>')

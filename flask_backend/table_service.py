@@ -531,6 +531,44 @@ def get_events_export_rows() -> list[dict]:
         session.close()
 
 
+def get_events_awaiting_review(user_id: int, q: Optional[str] = None) -> list[dict]:
+    """Return events awaiting the logged-in reviewer's action.
+
+    - Reviewer 1: assigned to user, sent, and not yet reviewed by reviewer 1
+    - Reviewer 2: assigned to user, sent, and not yet reviewed by reviewer 2
+    - Reviewer 3: assigned to user and status 'third_review_assigned' and not reviewed yet
+    """
+    session = get_session()
+    try:
+        like = f"%{q}%" if q else None
+        where_parts = [
+            "(e.reviewer1_id = :uid AND e.send_date IS NOT NULL AND e.review1_date IS NULL)",
+            "(e.reviewer2_id = :uid AND e.send_date IS NOT NULL AND e.review2_date IS NULL)",
+            "(e.reviewer3_id = :uid AND e.status = 'third_review_assigned' AND e.review3_date IS NULL)",
+        ]
+        params = {"uid": int(user_id)}
+        where_sql = " OR ".join(where_parts)
+        q_filter = ""
+        if q:
+            q_filter = " AND (CAST(e.id AS CHAR) LIKE :like OR e.event_date LIKE :like)"
+            params["like"] = like
+        stmt = text(
+            "SELECT e.id AS id, e.event_date AS event_date, "
+            "CASE "
+            " WHEN (e.reviewer1_id = :uid AND e.send_date IS NOT NULL AND e.review1_date IS NULL) THEN 1 "
+            " WHEN (e.reviewer2_id = :uid AND e.send_date IS NOT NULL AND e.review2_date IS NULL) THEN 2 "
+            " WHEN (e.reviewer3_id = :uid AND e.status = 'third_review_assigned' AND e.review3_date IS NULL) THEN 3 "
+            " ELSE NULL END AS slot "
+            "FROM events e "
+            f"WHERE ({where_sql}){q_filter} "
+            "ORDER BY e.event_date DESC, e.id ASC"
+        )
+        rows = session.execute(stmt, params).mappings().all()
+        return [dict(r) for r in rows]
+    finally:
+        session.close()
+
+
 def assign_events(event_ids: list[int], reviewer_id: int, slot: str, assigner_id: int) -> dict:
     """Assign a reviewer to many events for the given slot (first|second|third).
 
