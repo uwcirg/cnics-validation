@@ -1,0 +1,4 @@
+MI,Patient ID,Site Patient ID,Patient Site,Event Date (YYYY-MM-DD),Criteria,Notes
+,12345,AB-123,uw,2024-12-31,"MI Dx; Troponin",Optional free-text notes
+
+

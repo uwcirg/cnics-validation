@@ -1,5 +1,6 @@
 from flask_backend.app import app
 from unittest.mock import patch
+import io
 
 @patch('flask_backend.table_service.get_table_data')
 def test_get_table_route(mock_service):
@@ -156,6 +157,23 @@ def test_root_route():
     res = client.get('/')
     assert res.status_code == 200
     assert res.get_json() == {'status': 'ok'}
+
+
+def test_bulk_csv_upload_does_not_persist_file(tmp_path, monkeypatch):
+    # Redirect FILES_DIR/DOWNLOADS_DIR away from real paths
+    import importlib
+    app_mod = importlib.import_module('flask_backend.app')
+    monkeypatch.setattr(app_mod, 'FILES_DIR', str(tmp_path))
+    monkeypatch.setattr(app_mod, 'DOWNLOADS_DIR', str(tmp_path))
+
+    client = app_mod.app.test_client()
+    data = {
+        'events_csv': (io.BytesIO(b"MI,Patient ID\n,123\n"), 'events.csv')
+    }
+    res = client.post('/api/events/bulk', data=data, content_type='multipart/form-data')
+    assert res.status_code == 201
+    # Ensure uploaded file is not saved on disk by endpoint (non-persistence)
+    assert not any(p.name == 'events.csv' for p in tmp_path.iterdir())
 
 
 @patch('flask_backend.table_service.create_event')

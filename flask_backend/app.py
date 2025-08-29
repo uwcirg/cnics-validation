@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, abort, send_from_directory, g
+from flask import Flask, jsonify, request, abort, send_from_directory, g, make_response
 from flask_cors import CORS
 import os
 from typing import Optional
@@ -21,8 +21,6 @@ app = Flask(__name__)
 # Default allowed origins; include unified domain
 default_origins = [
     "https://cnics-validation.pm.ssingh20.dev.cirg.uw.edu",
-    "https://frontend.cnics-validation.pm.ssingh20.dev.cirg.uw.edu",
-    "https://frontend.auth.cnics-validation.pm.ssingh20.dev.cirg.uw.edu",
 ]
 origins_env = os.getenv("FRONTEND_ORIGIN")
 allowed_origins = list(default_origins)
@@ -55,7 +53,8 @@ if not FILES_DIR:
 os.makedirs(FILES_DIR, exist_ok=True)
 
 # Optional directory to serve downloadable event artifacts (e.g., chart zips)
-DOWNLOADS_DIR = os.getenv("DOWNLOADS_DIR")
+# Prefer UPLOAD_DIR if provided (alias requested), then DOWNLOADS_DIR, else default under FILES_DIR
+DOWNLOADS_DIR = os.getenv("UPLOAD_DIR") or os.getenv("DOWNLOADS_DIR")
 if not DOWNLOADS_DIR:
     DOWNLOADS_DIR = os.path.join(FILES_DIR, "downloads")
 try:
@@ -198,6 +197,27 @@ def requires_auth(func):
                     session.close()
                 return func(*args, **kwargs)
 
+            # Dev cookie-based auth: allow a cookie to specify the login
+            cookie_login = request.cookies.get("dev_user")
+            if cookie_login:
+                session = models.get_session()
+                try:
+                    user = session.query(models.Users).filter_by(login=cookie_login).first()
+                    if user is None:
+                        abort(403)
+                    g.auth_user = {
+                        "id": user.id,
+                        "username": user.username,
+                        "admin": bool(user.admin_flag),
+                        "uploader": bool(user.uploader_flag),
+                        "reviewer": bool(user.reviewer_flag),
+                        "third_reviewer": bool(user.third_reviewer_flag),
+                        "site": user.site,
+                    }
+                finally:
+                    session.close()
+                return func(*args, **kwargs)
+
         # Fallback to Keycloak if configured: require a valid Bearer token
         if 'keycloak_openid' in globals() and keycloak_openid:
             auth = request.headers.get("Authorization", "")
@@ -320,8 +340,10 @@ def get_events():
     offset = get_offset()
     q = request.args.get('q') or None
     site = request.args.get('site') or None
+    sort_by = request.args.get('sort_by') or None
+    sort_dir = request.args.get('sort_dir') or None
     try:
-        rows, total = table_service.get_events_with_patient_site_with_total(limit, offset, q, site)
+        rows, total = table_service.get_events_with_patient_site_with_total(limit, offset, q, site, sort_by, sort_dir)
         return jsonify({'data': rows, 'total': total})
     except Exception:
         app.logger.exception("Failed to fetch event data")
@@ -466,21 +488,23 @@ def events_by_status(status: str):
     offset = get_offset()
     q = request.args.get('q') or None
     site = request.args.get('site') or None
+    sort_by = request.args.get('sort_by') or None
+    sort_dir = request.args.get('sort_dir') or None
     try:
         if status == 'uploaded':
-            rows, total = table_service.get_to_be_scrubbed_with_total(limit, offset, q, site)
+            rows, total = table_service.get_to_be_scrubbed_with_total(limit, offset, q, site, sort_by, sort_dir)
         elif status == 'scrubbed':
-            rows, total = table_service.get_to_be_screened_with_total(limit, offset, q, site)
+            rows, total = table_service.get_to_be_screened_with_total(limit, offset, q, site, sort_by, sort_dir)
         elif status == 'screened':
-            rows, total = table_service.get_to_be_assigned_with_total(limit, offset, q, site)
+            rows, total = table_service.get_to_be_assigned_with_total(limit, offset, q, site, sort_by, sort_dir)
         elif status == 'assigned':
-            rows, total = table_service.get_to_be_sent_with_total(limit, offset, q, site)
+            rows, total = table_service.get_to_be_sent_with_total(limit, offset, q, site, sort_by, sort_dir)
         elif status == 'sent':
-            rows, total = table_service.get_to_be_reviewed_with_total(limit, offset, q, site)
+            rows, total = table_service.get_to_be_reviewed_with_total(limit, offset, q, site, sort_by, sort_dir)
         else:
             if status not in _ALLOWED_EVENT_STATUSES:
                 abort(400)
-            rows, total = table_service.get_events_by_status_with_total(status, limit, offset, q, site)
+            rows, total = table_service.get_events_by_status_with_total(status, limit, offset, q, site, sort_by, sort_dir)
         return jsonify({'data': rows, 'total': total})
     except Exception:
         app.logger.exception("Failed to fetch events by status %s", status)
@@ -527,6 +551,58 @@ def auth_me():
     if not auth_user:
         abort(401)
     return jsonify({"data": auth_user})
+
+
+@app.route('/api/auth/dev_login', methods=['POST', 'GET'])
+def auth_dev_login():
+    """Dev-only helper to set a cookie specifying the acting user login.
+
+    Requires ALLOW_DEV_HEADER=1. Provide the user login via query param `login`
+    or JSON body {"login": "..."}. Sets a cross-site cookie so the frontend
+    on a different origin can include it with credentials.
+    """
+    if os.getenv("ALLOW_DEV_HEADER") != "1":
+        abort(404)
+    login = request.args.get("login")
+    if not login:
+        try:
+            data = request.get_json(silent=True) or {}
+        except Exception:
+            data = {}
+        login = (data.get("login") or "").strip()
+    if not login:
+        return jsonify({"error": "login is required"}), 400
+
+    # Validate the user exists to fail fast and avoid setting a bad cookie
+    session = models.get_session()
+    try:
+        user = session.query(models.Users).filter_by(login=login).first()
+        if user is None:
+            return jsonify({"error": "unknown login"}), 404
+    finally:
+        session.close()
+
+    resp = make_response(jsonify({"data": {"set": True}}))
+    # Cross-site cookie for backend.* used by frontend on different origin
+    resp.set_cookie(
+        "dev_user",
+        login,
+        secure=True,
+        httponly=True,
+        samesite="None",
+        path="/",
+        max_age=60 * 60 * 8,  # 8 hours
+    )
+    return resp
+
+
+@app.route('/api/auth/dev_logout', methods=['POST', 'GET'])
+def auth_dev_logout():
+    if os.getenv("ALLOW_DEV_HEADER") != "1":
+        abort(404)
+    resp = make_response(jsonify({"data": {"cleared": True}}))
+    resp.set_cookie("dev_user", "", expires=0, secure=True, httponly=True, samesite="None", path="/")
+    return resp
 
 
 @app.route('/api/reviewer/awaiting')

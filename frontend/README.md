@@ -39,11 +39,11 @@ and immediately see changes without rebuilding the image:
 docker-compose up web
 ```
 
-When the override file is present the frontend will be available at
-<https://frontend.cnics-validation.pm.ssingh20.dev.cirg.uw.edu/>.
+When the override file is present the application will be available at
+`https://cnics-validation.pm.ssingh20.dev.cirg.uw.edu/` and API calls should use same-origin paths like `/api/...`.
 
-You can override the `VITE_API_URL` environment variable in the compose file to
-point the frontend to a different backend API.
+You can override the `VITE_API_URL` environment variable to point the frontend
+to a different backend API, but for unified-domain deployments leave it empty to use same-origin.
 
 ## Building for production
 

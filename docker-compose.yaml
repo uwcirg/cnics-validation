@@ -10,6 +10,7 @@ services:
     volumes:
       - mariadb-data:/var/lib/mysql
       - logs-data:/var/log/mysql
+      - ./mariadb/conf.d:/etc/mysql/conf.d:ro
       - ./init:/docker-entrypoint-initdb.d
     networks:
       - internal
@@ -17,11 +18,13 @@ services:
   backend:
     build: ./flask_backend
     environment:
+      ALLOW_DEV_HEADER: "1"
       DB_HOST: mariadb
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
       DB_NAME: ${DB_NAME}
       FILES_DIR: /files
+      UPLOAD_DIR: /opt/backend/uploads
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN}
       PORT: 3000
     depends_on:
@@ -32,13 +35,14 @@ services:
       - internal
     volumes:
       - ${FILES_DIR:-./app/webroot/files}:/files:ro
+      - /opt/backend/uploads:/opt/backend/uploads
 
   web:
     build:
       context: ./frontend
       target: serve
     env_file:
-      - ./frontend/.env
+      - ./frontend/default.env
     depends_on:
       - backend
     ports:

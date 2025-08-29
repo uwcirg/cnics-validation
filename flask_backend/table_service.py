@@ -117,6 +117,8 @@ def get_events_by_status_with_total(
     offset: int = 0,
     q: Optional[str] = None,
     site: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    sort_dir: Optional[str] = None,
 ):
     """Return (rows, total) for events filtered by status, with friendly columns.
 
@@ -172,6 +174,21 @@ def get_events_by_status_with_total(
         f"WHERE {where_sql} "
         "GROUP BY e.id, e.event_date, e.add_date, e.upload_date, e.scrub_date, p.site "
     )
+    # Apply optional ORDER BY from whitelisted columns
+    order_clause = None
+    col_map = {
+        'ID': 'e.id',
+        'Date': 'e.event_date',
+        'Created': 'e.add_date',
+        'Uploaded': 'e.upload_date',
+        'Scrubbed': 'e.scrub_date',
+        'Site': 'p.site',
+    }
+    dir_sql = 'ASC' if (str(sort_dir or '').lower() == 'asc') else 'DESC'
+    if sort_by and sort_by in col_map and (sort_dir or '').lower() in {'asc', 'desc'}:
+        order_clause = f"ORDER BY {col_map[sort_by]} {dir_sql}, e.id ASC"
+    if order_clause:
+        query += order_clause + " "
     if limit is not None:
         query += " LIMIT :limit OFFSET :offset"
         params.update({"limit": limit, "offset": offset})
@@ -272,6 +289,8 @@ def get_events_with_patient_site_with_total(
     offset: int = 0,
     q: Optional[str] = None,
     site: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    sort_dir: Optional[str] = None,
 ):
     """Return (rows, total) for events with patient site, with optional filtering."""
     session = get_session()
@@ -297,6 +316,20 @@ def get_events_with_patient_site_with_total(
             "SELECT e.id, e.patient_id, p.site FROM events e JOIN patients p ON e.patient_id = p.id "
             f"WHERE {where_sql} "
         )
+        # Optional ORDER BY
+        # Only allow known columns to avoid SQL injection
+        col_map = {
+            'id': 'e.id',
+            'patient_id': 'e.patient_id',
+            'site': 'p.site',
+            'event_date': 'e.event_date',
+            'add_date': 'e.add_date',
+            'upload_date': 'e.upload_date',
+            'scrub_date': 'e.scrub_date',
+        }
+        if sort_by and sort_by in col_map and (str(sort_dir or '').lower() in {'asc', 'desc'}):
+            dir_sql = 'ASC' if str(sort_dir).lower() == 'asc' else 'DESC'
+            stmt += f"ORDER BY {col_map[sort_by]} {dir_sql}, e.id ASC "
         if limit is not None:
             stmt += " LIMIT :limit OFFSET :offset"
             params.update({"limit": limit, "offset": offset})
@@ -324,6 +357,8 @@ def _phase_rows_with_total(
     q: Optional[str],
     site: Optional[str],
     order_by: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    sort_dir: Optional[str] = None,
 ):
     like = f"%{q}%" if q else None
     like_date = _derive_date_like(q)
@@ -364,7 +399,22 @@ def _phase_rows_with_total(
             f"WHERE {where_sql} "
             "GROUP BY e.id, e.event_date, e.add_date, e.upload_date, e.scrub_date, p.site "
         )
-        if order_by:
+        # Determine ORDER BY: explicit sort_by overrides default order_by
+        dynamic_order = None
+        col_map = {
+            'ID': 'e.id',
+            'Date': 'e.event_date',
+            'Created': 'e.add_date',
+            'Uploaded': 'e.upload_date',
+            'Scrubbed': 'e.scrub_date',
+            'Site': 'p.site',
+        }
+        dir_sql = 'ASC' if (str(sort_dir or '').lower() == 'asc') else 'DESC'
+        if sort_by and sort_by in col_map and (sort_dir or '').lower() in {'asc', 'desc'}:
+            dynamic_order = f"ORDER BY {col_map[sort_by]} {dir_sql}, e.id ASC"
+        if dynamic_order:
+            query += dynamic_order + " "
+        elif order_by:
             query += order_by + " "
         if limit is not None:
             query += " LIMIT :limit OFFSET :offset"
@@ -384,7 +434,7 @@ def _phase_rows_with_total(
         session.close()
 
 
-def get_to_be_scrubbed_with_total(limit: Optional[int], offset: int, q: Optional[str], site: Optional[str]):
+def get_to_be_scrubbed_with_total(limit: Optional[int], offset: int, q: Optional[str], site: Optional[str], sort_by: Optional[str] = None, sort_dir: Optional[str] = None):
     # Uploaded but not scrubbed
     return _phase_rows_with_total(
         "e.upload_date IS NOT NULL AND e.scrub_date IS NULL",
@@ -394,10 +444,12 @@ def get_to_be_scrubbed_with_total(limit: Optional[int], offset: int, q: Optional
         q,
         site,
         "ORDER BY e.upload_date DESC, e.id ASC",
+        sort_by,
+        sort_dir,
     )
 
 
-def get_to_be_screened_with_total(limit: Optional[int], offset: int, q: Optional[str], site: Optional[str]):
+def get_to_be_screened_with_total(limit: Optional[int], offset: int, q: Optional[str], site: Optional[str], sort_by: Optional[str] = None, sort_dir: Optional[str] = None):
     # Scrubbed but not screened
     return _phase_rows_with_total(
         "e.scrub_date IS NOT NULL AND e.screen_date IS NULL",
@@ -407,10 +459,12 @@ def get_to_be_screened_with_total(limit: Optional[int], offset: int, q: Optional
         q,
         site,
         "ORDER BY e.scrub_date DESC, e.id ASC",
+        sort_by,
+        sort_dir,
     )
 
 
-def get_to_be_assigned_with_total(limit: Optional[int], offset: int, q: Optional[str], site: Optional[str]):
+def get_to_be_assigned_with_total(limit: Optional[int], offset: int, q: Optional[str], site: Optional[str], sort_by: Optional[str] = None, sort_dir: Optional[str] = None):
     # Screened but not assigned
     return _phase_rows_with_total(
         "e.screen_date IS NOT NULL AND e.assign_date IS NULL",
@@ -420,10 +474,12 @@ def get_to_be_assigned_with_total(limit: Optional[int], offset: int, q: Optional
         q,
         site,
         None,
+        sort_by,
+        sort_dir,
     )
 
 
-def get_to_be_sent_with_total(limit: Optional[int], offset: int, q: Optional[str], site: Optional[str]):
+def get_to_be_sent_with_total(limit: Optional[int], offset: int, q: Optional[str], site: Optional[str], sort_by: Optional[str] = None, sort_dir: Optional[str] = None):
     # Assigned but not sent
     return _phase_rows_with_total(
         "e.assign_date IS NOT NULL AND e.send_date IS NULL",
@@ -433,10 +489,12 @@ def get_to_be_sent_with_total(limit: Optional[int], offset: int, q: Optional[str
         q,
         site,
         None,
+        sort_by,
+        sort_dir,
     )
 
 
-def get_to_be_reviewed_with_total(limit: Optional[int], offset: int, q: Optional[str], site: Optional[str]):
+def get_to_be_reviewed_with_total(limit: Optional[int], offset: int, q: Optional[str], site: Optional[str], sort_by: Optional[str] = None, sort_dir: Optional[str] = None):
     # Sent but not yet fully reviewed (at least one reviewer pending)
     return _phase_rows_with_total(
         "e.send_date IS NOT NULL AND (e.review1_date IS NULL OR e.review2_date IS NULL)",
@@ -446,6 +504,8 @@ def get_to_be_reviewed_with_total(limit: Optional[int], offset: int, q: Optional
         q,
         site,
         None,
+        sort_by,
+        sort_dir,
     )
 
 

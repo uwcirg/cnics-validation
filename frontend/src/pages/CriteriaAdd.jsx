@@ -3,7 +3,7 @@ import { useState } from 'react'
 function CriteriaAdd() {
   const [formData, setFormData] = useState({ event_id: '', name: '', value: '' })
   const [status, setStatus] = useState(null)
-  const apiUrl = import.meta.env.VITE_API_URL || ''
+  const apiUrl = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || '')
 
   const handleChange = (e) => {
     const { name, value } = e.target

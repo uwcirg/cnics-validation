@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import DataTable from '../components/DataTable'
 
-const API_BASE = import.meta.env.VITE_API_URL || ''
+const API_BASE = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || '')
 const PAGE_SIZE = 20
 
 function TableSection({ title, endpoint, columns, renderActions, augmentRows, mergeEndpoints }) {
@@ -11,6 +11,8 @@ function TableSection({ title, endpoint, columns, renderActions, augmentRows, me
   const [search, setSearch] = useState('')
   const [siteFilter, setSiteFilter] = useState('')
   const [colFilters, setColFilters] = useState({})
+  const [sortKey, setSortKey] = useState(null)
+  const [sortDir, setSortDir] = useState('none') // 'none' | 'asc' | 'desc'
 
   const fetchPage = (p) => {
     const params = new URLSearchParams({
@@ -19,6 +21,10 @@ function TableSection({ title, endpoint, columns, renderActions, augmentRows, me
     })
     if (search) params.set('q', search)
     if (siteFilter) params.set('site', siteFilter)
+    if (sortKey && sortDir && sortDir !== 'none') {
+      params.set('sort_by', sortKey)
+      params.set('sort_dir', sortDir)
+    }
     const urlFor = (ep) => `${API_BASE}${ep}?${params.toString()}`
     const endpoints = [endpoint, ...(mergeEndpoints || [])]
     Promise.all(endpoints.map((ep) => fetch(urlFor(ep), { credentials: 'include' })))
@@ -72,7 +78,7 @@ function TableSection({ title, endpoint, columns, renderActions, augmentRows, me
   useEffect(() => {
     if (open) fetchPage(1)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [endpoint, search, siteFilter, open])
+  }, [endpoint, search, siteFilter, sortKey, sortDir, open])
 
   const headers = (columns && columns.length) ? columns : (rows[0] ? Object.keys(rows[0]) : [])
   const filteredByColumns = rows.filter((r) => {
@@ -125,6 +131,9 @@ function TableSection({ title, endpoint, columns, renderActions, augmentRows, me
             totalCount={totalCount}
             columns={columns}
             renderActions={renderActions}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onSortChange={(key, dir) => { setSortKey(key); setSortDir(dir) }}
           />
         </div>
       )}

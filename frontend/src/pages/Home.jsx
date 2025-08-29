@@ -6,7 +6,7 @@ import './Home.css'
 // Base URL for the backend API. When running under Docker Compose the
 // environment variable is provided by the compose file. Fallback to a
 // relative path so the frontend can be served without configuration.
-const API_BASE = import.meta.env.VITE_API_URL || ''
+const API_BASE = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || '')
 const PAGE_SIZE = 20
 
 function TableWrapper({ endpoint, columns, renderActions }) {
@@ -15,6 +15,8 @@ function TableWrapper({ endpoint, columns, renderActions }) {
   const [totalCount, setTotalCount] = useState(null)
   const [search, setSearch] = useState('')
   const [siteFilter, setSiteFilter] = useState('')
+  const [sortKey, setSortKey] = useState(null)
+  const [sortDir, setSortDir] = useState('none') // 'none' | 'asc' | 'desc'
 
   const fetchPage = (p) => {
     const params = new URLSearchParams({
@@ -23,6 +25,10 @@ function TableWrapper({ endpoint, columns, renderActions }) {
     })
     if (search) params.set('q', search)
     if (siteFilter) params.set('site', siteFilter)
+    if (sortKey && sortDir && sortDir !== 'none') {
+      params.set('sort_by', sortKey)
+      params.set('sort_dir', sortDir)
+    }
     fetch(`${API_BASE}${endpoint}?${params.toString()}`, {
       credentials: 'include',
     })
@@ -49,7 +55,7 @@ function TableWrapper({ endpoint, columns, renderActions }) {
   useEffect(() => {
     fetchPage(1)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, siteFilter])
+  }, [search, siteFilter, sortKey, sortDir])
 
   const handleClick = (row) => {
     navigate(
@@ -83,7 +89,17 @@ function TableWrapper({ endpoint, columns, renderActions }) {
           {`Showing ${rows.length}${typeof totalCount === 'number' ? ` of ${totalCount}` : ''}`}
         </div>
       </div>
-      <DataTable rows={rows} onRowClick={handleClick} onPageChange={fetchPage} totalCount={totalCount} columns={columns} renderActions={renderActions} />
+      <DataTable
+        rows={rows}
+        onRowClick={handleClick}
+        onPageChange={fetchPage}
+        totalCount={totalCount}
+        columns={columns}
+        renderActions={renderActions}
+        sortKey={sortKey}
+        sortDir={sortDir}
+        onSortChange={(key, dir) => { setSortKey(key); setSortDir(dir) }}
+      />
     </>
   )
 }
@@ -179,9 +195,9 @@ function Home() {
   return (
     <div className="home-container">
       {/* Top-right CNICS logo */}
-      <img className="cnics-logo" src={`${API_BASE}/files/cnics_logo.png`} alt="CNICS" />
-      <h1>CNICS Validation</h1>
-      <p>Welcome to the CNICS Validation application.</p>
+      <img className="cnics-logo" src="/scenics.svg" alt="CNICS" />
+      <h1>CNICS Myocardial Infarction Validation</h1>
+      <p>Welcome to the CNICS Myocardial Infarction Validation application.</p>
       {/* Two-column layout: left main content, right sidebar */}
       <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
         {/* Left column */}

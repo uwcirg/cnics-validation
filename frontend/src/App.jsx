@@ -3,19 +3,19 @@ import { Route, BrowserRouter as Router, Routes } from 'react-router-dom'
 import BaseLayout from './components/BaseLayout'
 import CriteriaAdd from './pages/CriteriaAdd'
 import CriteriaDelete from './pages/CriteriaDelete'
-import ErrorLoginRequired from './pages/ErrorLoginRequired'
-import ErrorNoReviewAccess from './pages/ErrorNoReviewAccess'
-import ErrorNotAuthorized from './pages/ErrorNotAuthorized'
-import ErrorNoUserAdminAccess from './pages/ErrorNoUserAdminAccess'
-import ErrorUnknownUser from './pages/ErrorUnknownUser'
 import EventAdd from './pages/EventAdd'
 import EventAddMany from './pages/EventAddMany'
 import EventAssignMany from './pages/EventAssignMany'
+import EventAssignThird from './pages/EventAssignThird'
+import EventDownload from './pages/EventDownload'
+import EventEdit from './pages/EventEdit'
+import EventExport from './pages/EventExport'
 import EventIndex from './pages/EventIndex'
 import EventReupload from './pages/EventReupload'
 import EventReview from './pages/EventReview'
 import EventScreen from './pages/EventScreen'
 import EventScrub from './pages/EventScrub'
+import EventSendMany from './pages/EventSendMany'
 import EventUpload from './pages/EventUpload'
 import EventViewAll from './pages/EventViewAll'
 import Home from './pages/Home'
@@ -29,7 +29,7 @@ import UsersViewAll from './pages/UsersViewAll'
 
 function App() {
   const [auth, setAuth] = useState({})
-  const apiUrl = import.meta.env.VITE_API_URL || ''
+  const apiUrl = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || '')
 
   useEffect(() => {
     let cancelled = false
@@ -66,7 +66,12 @@ function App() {
           <Route path="/events/review" element={<EventReview />} />
           <Route path="/events/screen" element={<EventScreen />} />
           <Route path="/events/scrub" element={<EventScrub />} />
+          <Route path="/events/edit" element={<EventEdit />} />
           <Route path="/events/viewAll" element={<EventViewAll />} />
+          <Route path="/events/assignThird" element={<EventAssignThird />} />
+          <Route path="/events/sendMany" element={<EventSendMany />} />
+          <Route path="/events/download" element={<EventDownload />} />
+          <Route path="/events/export" element={<EventExport />} />
           <Route path="/users/viewAll" element={<UsersViewAll />} />
           <Route path="/users/add" element={<UserAdd />} />
           <Route path="/users/edit" element={<UserEdit />} />
@@ -77,11 +82,6 @@ function App() {
           <Route path="/solicitations/delete" element={<SolicitationDelete />} />
           <Route path="/criteria/add" element={<CriteriaAdd />} />
           <Route path="/criteria/delete" element={<CriteriaDelete />} />
-          <Route path="/error/notAuthorized" element={<ErrorNotAuthorized authUsername={auth.username} controller="" action="" />} />
-          <Route path="/error/unknownUser" element={<ErrorUnknownUser authUsername={auth.username} />} />
-          <Route path="/error/loginRequired" element={<ErrorLoginRequired />} />
-          <Route path="/error/noReviewAccess" element={<ErrorNoReviewAccess />} />
-          <Route path="/error/noUserAdminAccess" element={<ErrorNoUserAdminAccess />} />
         </Routes>
       </BaseLayout>
     </Router>

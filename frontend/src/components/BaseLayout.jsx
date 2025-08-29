@@ -1,6 +1,10 @@
 import { Link } from 'react-router-dom'
-import MenuBar from './MenuBar'
 import './BaseLayout.css'
+import MenuBar from './MenuBar'
+
+function Toasts() {
+  return <div id="toast-root" style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 1000 }} />
+}
 
 function BaseLayout({ children, auth }) {
   const { admin = false, uploader = false, reviewer = false, username } = auth || {}
@@ -25,6 +29,7 @@ function BaseLayout({ children, auth }) {
           <Link to="/">Home page</Link>
         </footer>
       </main>
+      <Toasts />
     </div>
   )
 }

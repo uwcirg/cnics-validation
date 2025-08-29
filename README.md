@@ -1,4 +1,4 @@
-https://cnics.cirg.washington.edu/mci
+# https://cnics.cirg.washington.edu/mci
 
 SRC:
 
@@ -18,8 +18,7 @@ This repository includes a lightweight Docker configuration based on the setup u
 
 ### Build and Run
 
-1. Copy `.env.example` to `.env` and edit if necessary. `VITE_API_URL` should
-   point at the backend API (defaults to `https://backend.cnics-validation.pm.ssingh20.dev.cirg.uw.edu`).
+1. Copy `.env.example` to `.env` and edit if necessary. For unified-domain deployments, leave `VITE_API_URL` empty (same-origin) so the frontend calls `/api/...` on the same host.
 2. Build the Docker images:
 
    ```bash
@@ -32,8 +31,7 @@ This repository includes a lightweight Docker configuration based on the setup u
     docker-compose up
     ```
 
-    The frontend will be served on <https://frontend.cnics-validation.pm.ssingh20.dev.cirg.uw.edu/> and the backend API
-    on <https://backend.cnics-validation.pm.ssingh20.dev.cirg.uw.edu/>.
+    The application will be served on `https://cnics-validation.pm.ssingh20.dev.cirg.uw.edu/` and the API under the same origin at `/api/...`.
     The compose file mounts `app/webroot/files` into the backend container so
     instruction documents are available at `/files/<name>`.
 
@@ -47,7 +45,7 @@ services are built or started. The template defines the following variables:
 - `DB_NAME` – name of the application's database.
 - `DB_USER` – database user for the application.
 - `DB_PASSWORD` – password for `DB_USER`.
-- `VITE_API_URL` – base URL of the backend API consumed by the React frontend.
+- `VITE_API_URL` – base URL of the backend API consumed by the React frontend. For unified-domain deployments leave empty to use same-origin.
 - `FRONTEND_ORIGIN` – allowed origin for CORS requests to the backend.
 - `FHIR_SERVER` – URL of the FHIR server used by the application.
 - `FILES_DIR` – directory containing instruction files served by the backend.
@@ -65,7 +63,7 @@ See [docs/development.md](docs/development.md) for instructions on running the a
 ## Backend API
 
 
-The Flask backend under `flask_backend/` exposes REST endpoints that the React frontend fetches. Docker Compose runs a `backend` service alongside the `web` frontend service. The frontend reads the API base URL from the `VITE_API_URL` environment variable.
+The Flask backend under `flask_backend/` exposes REST endpoints that the React frontend fetches. Docker Compose runs a `backend` service alongside the `web` frontend service. The frontend reads the API base URL from the `VITE_API_URL` environment variable; if unset it uses same-origin.
 
 See [docs/separation_of_duties.md](docs/separation_of_duties.md) for details on the responsibilities of each component.
 

@@ -10,7 +10,7 @@ function EventAdd() {
   })
   const [status, setStatus] = useState(null)
   const [error, setError] = useState('')
-  const apiUrl = import.meta.env.VITE_API_URL || ''
+  const apiUrl = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || '')
 
   const handleChange = (e) => {
     const { name, value } = e.target
