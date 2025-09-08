@@ -83,7 +83,7 @@ def test_get_events_for_review(mock_get_session):
     mock_get_session.assert_called()
     query = mock_session.execute.call_args.args[0]
     assert 'events.status' in str(query)
-    assert mock_session.execute.call_args.args[1] == {'status': 'uploaded', 'limit': 6, 'offset': 0}
+    assert mock_session.execute.call_args.args[1] == {'status': 'sent', 'limit': 6, 'offset': 0}
     assert rows == [{'ID': 2}]
 
 

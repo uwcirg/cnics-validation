@@ -232,13 +232,30 @@ def get_events_need_packets(limit: Optional[int] = None, offset: int = 0, site: 
 
 
 def get_events_for_review(limit: Optional[int] = None, offset: int = 0):
-    """Return events with uploaded packets awaiting review."""
-    return get_events_by_status("uploaded", limit, offset)
+    """Return events with packets ready for reviewer action.
+
+    Align with main branch behavior: events are considered ready for review
+    when they have been sent to reviewers. This corresponds to status 'sent'.
+    """
+    return get_events_by_status("sent", limit, offset)
 
 
-def get_events_for_reupload(limit: Optional[int] = None, offset: int = 0):
-    """Return events that were rejected and need reupload."""
-    return get_events_by_status("rejected", limit, offset)
+def get_events_for_reupload(limit: Optional[int] = None, offset: int = 0, site: Optional[str] = None):
+    """Return events eligible for re-upload by the uploader's site.
+
+    Align with main branch: rows are events at the uploader's site with
+    status 'uploaded', ordered by ID ascending.
+    """
+    rows, _total = get_events_by_status_with_total(
+        status="uploaded",
+        limit=limit,
+        offset=offset,
+        q=None,
+        site=site,
+        sort_by='ID',
+        sort_dir='asc',
+    )
+    return rows
 
 
 def get_event_status_summary():
@@ -683,9 +700,13 @@ def get_events_awaiting_review(user_id: int, q: Optional[str] = None, site: Opti
         # Enforce stricter criteria to align with main branch expectations:
         # - Slots 1 & 2 require status 'sent' (in addition to send_date)
         # - Optional site filter via patients.site
+        # Match main behavior:
+        # - reviewer1: status in ('sent','reviewer2_done') and review1_date is null
+        # - reviewer2: status in ('sent','reviewer1_done') and review2_date is null
+        # - reviewer3: status 'third_review_assigned' and review3_date is null
         where_parts = [
-            "(e.reviewer1_id = :uid AND e.status = 'sent' AND e.send_date IS NOT NULL AND e.review1_date IS NULL)",
-            "(e.reviewer2_id = :uid AND e.status = 'sent' AND e.send_date IS NOT NULL AND e.review2_date IS NULL)",
+            "(e.reviewer1_id = :uid AND e.status IN ('sent','reviewer2_done') AND e.review1_date IS NULL)",
+            "(e.reviewer2_id = :uid AND e.status IN ('sent','reviewer1_done') AND e.review2_date IS NULL)",
             "(e.reviewer3_id = :uid AND e.status = 'third_review_assigned' AND e.review3_date IS NULL)",
         ]
         params = {"uid": int(user_id)}
@@ -705,13 +726,13 @@ def get_events_awaiting_review(user_id: int, q: Optional[str] = None, site: Opti
         stmt = text(
             "SELECT e.id AS id, e.event_date AS event_date, "
             "CASE "
-            " WHEN (e.reviewer1_id = :uid AND e.status = 'sent' AND e.send_date IS NOT NULL AND e.review1_date IS NULL) THEN 1 "
-            " WHEN (e.reviewer2_id = :uid AND e.status = 'sent' AND e.send_date IS NOT NULL AND e.review2_date IS NULL) THEN 2 "
+            " WHEN (e.reviewer1_id = :uid AND e.status IN ('sent','reviewer2_done') AND e.review1_date IS NULL) THEN 1 "
+            " WHEN (e.reviewer2_id = :uid AND e.status IN ('sent','reviewer1_done') AND e.review2_date IS NULL) THEN 2 "
             " WHEN (e.reviewer3_id = :uid AND e.status = 'third_review_assigned' AND e.review3_date IS NULL) THEN 3 "
             " ELSE NULL END AS slot "
             "FROM events e LEFT JOIN patients p ON p.id = e.patient_id "
             f"WHERE ({where_sql}){site_filter}{q_filter} "
-            "ORDER BY e.event_date DESC, e.id ASC"
+            "ORDER BY e.id ASC"
         )
         rows = session.execute(stmt, params).mappings().all()
         return [dict(r) for r in rows]

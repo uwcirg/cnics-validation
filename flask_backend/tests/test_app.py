@@ -115,7 +115,7 @@ def test_get_for_reupload_route(mock_service):
     res = client.get('/api/events/need_reupload?limit=4&offset=0')
     assert res.status_code == 200
     assert res.get_json() == {'data': [{'ID': 3}]}
-    mock_service.assert_called_with(4, 0)
+    mock_service.assert_called_with(4, 0, None)
 
 
 @patch('flask_backend.table_service.get_events_for_reupload')

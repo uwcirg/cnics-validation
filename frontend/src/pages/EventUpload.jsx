@@ -5,6 +5,88 @@ import './EventUpload.css'
 
 const PAGE_SIZE = 20
 
+// Shared table wrapper copied from Home to ensure identical behavior/columns
+function TableWrapper({ endpoint, columns, renderActions, pageSize = PAGE_SIZE }) {
+  const navigate = useNavigate()
+  const [rows, setRows] = useState([])
+  const [totalCount, setTotalCount] = useState(null)
+  const [search, setSearch] = useState('')
+  const [siteFilter, setSiteFilter] = useState('')
+
+  const API_BASE = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || '')
+
+  const fetchPage = (p) => {
+    const params = new URLSearchParams({
+      limit: String(pageSize),
+      offset: String((p - 1) * pageSize),
+    })
+    if (search) params.set('q', search)
+    if (siteFilter) params.set('site', siteFilter)
+    fetch(`${API_BASE}${endpoint}?${params.toString()}`, {
+      credentials: 'include',
+    })
+      .then((res) => {
+        if (!res.ok) {
+          if (res.status === 401) alert('Login required');
+          else if (res.status === 403) alert('Not authorized');
+          throw new Error('auth');
+        }
+        return res.json()
+      })
+      .then((json) => {
+        const payload = json || {}
+        setRows(payload.data || [])
+        if (typeof payload.total === 'number') setTotalCount(payload.total)
+      })
+      .catch(() => {})
+  }
+
+  useEffect(() => {
+    fetchPage(1)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [endpoint])
+
+  useEffect(() => {
+    fetchPage(1)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, siteFilter])
+
+  const handleClick = (row) => {
+    navigate(
+      `/events/upload?event_id=${row['ID']}&patient_id=${row['Patient ID']}&date=${row['Date']}&criteria=${encodeURIComponent(row['Criteria'])}`
+    )
+  }
+  const sites = Array.from(
+    new Set(rows.map((r) => r['Site'] || r['site']).filter(Boolean))
+  ).sort()
+  return (
+    <>
+      <div style={{ display: 'flex', gap: '8px', margin: '8px 0', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <input
+            type="text"
+            placeholder="Search this table"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {sites.length > 0 && (
+            <select value={siteFilter} onChange={(e) => setSiteFilter(e.target.value)}>
+              <option value="">All Sites</option>
+              {sites.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          )}
+        </div>
+        <div style={{ whiteSpace: 'nowrap', fontSize: '.9em', color: '#444' }}>
+          {`Showing ${rows.length}${typeof totalCount === 'number' ? ` of ${totalCount}` : ''}`}
+        </div>
+      </div>
+      <DataTable rows={rows} onRowClick={handleClick} onPageChange={fetchPage} totalCount={totalCount} columns={columns} renderActions={renderActions} />
+    </>
+  )
+}
+
 function EventUpload() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -12,12 +94,7 @@ function EventUpload() {
   const patientId = searchParams.get('patient_id')
   const date = searchParams.get('date')
   const criteria = searchParams.get('criteria')
-  const [rows, setRows] = useState([])
-  const [allEvents, setAllEvents] = useState([])
-  const [search, setSearch] = useState('')
-  const [tables, setTables] = useState({})
-  const [selectedTable, setSelectedTable] = useState('')
-  const [tableSearch, setTableSearch] = useState('')
+  // State for the upload UI only (search/table browsing removed to match Home)
   const [noPacketReason, setNoPacketReason] = useState('')
   const [priorEventDateKnown, setPriorEventDateKnown] = useState('')
   const [packetFile, setPacketFile] = useState(null)
@@ -38,94 +115,9 @@ function EventUpload() {
     noPacketReason === 'Ascertainment diagnosis referred to a prior event'
   const showOtherCause = noPacketReason === 'Other'
 
-  const fetchPage = (p) => {
-    fetch(`${API_BASE}/api/events/need_packets?limit=${PAGE_SIZE}&offset=${(p - 1) * PAGE_SIZE}`, { credentials: 'include' })
-      .then((res) => {
-        if (!res.ok) {
-          if (res.status === 401) alert('Login required')
-          else if (res.status === 403) alert('Not authorized')
-          throw new Error('auth')
-        }
-        return res.json()
-      })
-      .then((json) => setRows(json.data || []))
-      .catch(() => {})
-  }
+  // No homepage-style preloading or local search; use the shared TableWrapper instead
 
-  useEffect(() => {
-    fetchPage(1)
-    // Load ALL events for client-side search convenience (page through results)
-    ;(async () => {
-      try {
-        const pageSize = 1000
-        let offset = 0
-        let all = []
-        while (true) {
-          const res = await fetch(`${API_BASE}/api/events?limit=${pageSize}&offset=${offset}`,
-            { credentials: 'include' })
-          if (!res.ok) {
-            if (res.status === 401) alert('Login required')
-            else if (res.status === 403) alert('Not authorized')
-            throw new Error('auth')
-          }
-          const json = await res.json()
-          const batch = json.data || []
-          all = all.concat(batch)
-          const total = typeof json.total === 'number' ? json.total : all.length
-          if (all.length >= total || batch.length < pageSize) break
-          offset += pageSize
-        }
-        const normalized = all.map((r) => ({
-          ID: r['ID'] ?? r['id'],
-          'Patient ID': r['Patient ID'] ?? r['patient_id'],
-          Date: r['Date'] ?? r['date'] ?? r['event_date'],
-          Criteria: r['Criteria'] ?? r['criteria'],
-          Site: r['Site'] ?? r['site'],
-          Created: r['Created'] ?? r['created'] ?? r['add_date'],
-          Uploaded: r['Uploaded'] ?? r['uploaded'] ?? r['upload_date'],
-        }))
-        setAllEvents(normalized)
-      } catch {
-        // noop
-      }
-    })()
-
-    // Preload key data tables for search/browsing
-    const tableNames = [
-      'events',
-      'patients',
-      'users',
-      'criterias',
-      'reviews',
-      'solicitations',
-      'event_derived_datas',
-    ]
-    Promise.all(
-      tableNames.map((name) =>
-        fetch(`${API_BASE}/api/tables/${name}?limit=200`, { credentials: 'include' })
-          .then((res) => res.ok ? res.json() : Promise.reject(res))
-          .then((json) => [name, json.data || []])
-          .catch(() => [name, []])
-      )
-    ).then((entries) => {
-      const map = Object.fromEntries(entries)
-      setTables(map)
-    })
-  }, [API_BASE])
-
-  const allEventsFiltered = allEvents.filter((row) =>
-    Object.values(row).some((v) => String(v || '').toLowerCase().includes(search.toLowerCase()))
-  )
-  // Always use full allEvents for client-side pagination and search once loaded; fallback to first-page rows until loaded
-  const baseRows = allEvents.length > 0 ? allEvents : rows
-  const rowsToShow = (search ? baseRows : baseRows).filter((row) =>
-    Object.values(row).some((v) => String(v || '').toLowerCase().includes(search.toLowerCase()))
-  )
-
-  const selectedTableRows = selectedTable ? (tables[selectedTable] || []) : []
-  const filteredTableRows = selectedTableRows.filter((row) =>
-    Object.values(row || {}).some((v) => String(v || '').toLowerCase().includes(tableSearch.toLowerCase()))
-  )
+  // Removed client-side table browsing/filtering
 
   const handleUploadSubmit = async (e) => {
     e.preventDefault()
@@ -143,8 +135,8 @@ function EventUpload() {
     try {
       setUploadStatus('uploading')
       const form = new FormData()
-      form.append('scrubbed_file', packetFile)
-      const res = await fetch(`${API_BASE}/api/events/${encodeURIComponent(eventId)}/upload_scrubbed`, {
+      form.append('chart_file', packetFile)
+      const res = await fetch(`${API_BASE}/api/events/${encodeURIComponent(eventId)}/upload_raw`, {
         method: 'POST',
         credentials: 'include',
         body: form,
@@ -174,51 +166,21 @@ function EventUpload() {
       <h1>Upload Event Packet</h1>
 
       {!eventId && (
-        <>
-          <section>
-            <h3>Quick Search</h3>
-            <input
-              className="quick-search"
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search"
-            />
-          </section>
-          <section>
-            <h3>Browse Data Tables</h3>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
-              <select value={selectedTable} onChange={(e) => setSelectedTable(e.target.value)}>
-                <option value="">Select a table</option>
-                {Object.keys(tables).sort().map((name) => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </select>
-              <input
-                type="text"
-                placeholder="Search this table"
-                value={tableSearch}
-                onChange={(e) => setTableSearch(e.target.value)}
-                disabled={!selectedTable}
-              />
-            </div>
-            {selectedTable && (
-              <DataTable
-                rows={filteredTableRows}
-                onPageChange={undefined}
-              />
+        <section>
+          <h3>Events That Need Packets</h3>
+          <TableWrapper
+            endpoint="/api/events/need_packets"
+            columns={['ID', 'Date', 'Created', 'Site']}
+            renderActions={(row) => (
+              <>
+                <button onClick={(e) => { e.stopPropagation(); window.location.href = `/events/upload?event_id=${row['ID']}` }}>upload</button>
+                {' '}
+                |{' '}
+                <button onClick={(e) => { e.stopPropagation(); window.location.href = `/events/edit?event_id=${row['ID']}` }}>edit</button>
+              </>
             )}
-          </section>
-          <DataTable
-            rows={rowsToShow}
-            onRowClick={(row) =>
-              navigate(
-                `/events/upload?event_id=${row['ID']}&patient_id=${row['Patient ID']}&date=${row['Date']}&criteria=${encodeURIComponent(row['Criteria'])}`
-              )
-            }
-            onPageChange={undefined}
           />
-        </>
+        </section>
       )}
 
       {eventId && (
@@ -272,7 +234,7 @@ function EventUpload() {
                   Choose a file to upload:{' '}
                   <input
                     type="file"
-                    name="scrubbed_file"
+                    name="chart_file"
                     onChange={(e) => setPacketFile(e.target.files && e.target.files[0] ? e.target.files[0] : null)}
                   />
                 </label>
@@ -287,22 +249,7 @@ function EventUpload() {
               )}
               {uploadStatus === 'success' && (
                 <div style={{ color: 'green', paddingTop: '6px' }}>
-                  Upload successful.{' '}
-                  <a 
-                    href={`${API_BASE}/api/events/download/${encodeURIComponent(eventId)}`} 
-                    download=""
-                    style={{ 
-                      display: 'inline-block',
-                      padding: '6px 12px',
-                      backgroundColor: '#28a745',
-                      color: 'white',
-                      textDecoration: 'none',
-                      borderRadius: '4px',
-                      fontSize: '14px'
-                    }}
-                  >
-                    📥 Download Packet
-                  </a>
+                  Upload successful. Packet is now queued for scrubbing.
                 </div>
               )}
             </form>

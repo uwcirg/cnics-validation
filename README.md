@@ -18,7 +18,7 @@ This repository includes a lightweight Docker configuration based on the setup u
 
 ### Build and Run
 
-1. Copy `.env.example` to `.env` and edit if necessary. For unified-domain deployments, leave `VITE_API_URL` empty (same-origin) so the frontend calls `/api/...` on the same host.
+1. Copy `.env.example` to `.env` and edit if necessary. For unified-domain deployments, leave `VITE_API_URL` (API: Application Programming Interface) empty (same-origin) so the frontend calls `/api/...` on the same host.
 2. Build the Docker images:
 
    ```bash
@@ -31,7 +31,7 @@ This repository includes a lightweight Docker configuration based on the setup u
     docker-compose up
     ```
 
-    The application will be served on `https://cnics-validation.pm.ssingh20.dev.cirg.uw.edu/` and the API under the same origin at `/api/...`.
+    The application will be served on `https://cnics-validation.pm.ssingh20.dev.cirg.uw.edu/` and the API (Application Programming Interface) under the same origin at `/api/...`.
     The compose file mounts `app/webroot/files` into the backend container so
     instruction documents are available at `/files/<name>`.
 
@@ -45,9 +45,9 @@ services are built or started. The template defines the following variables:
 - `DB_NAME` – name of the application's database.
 - `DB_USER` – database user for the application.
 - `DB_PASSWORD` – password for `DB_USER`.
-- `VITE_API_URL` – base URL of the backend API consumed by the React frontend. For unified-domain deployments leave empty to use same-origin.
-- `FRONTEND_ORIGIN` – allowed origin for CORS requests to the backend.
-- `FHIR_SERVER` – URL of the FHIR server used by the application.
+- `VITE_API_URL` – base URL of the backend API (Application Programming Interface) consumed by the React frontend. For unified-domain deployments leave empty to use same-origin.
+- `FRONTEND_ORIGIN` – allowed origin for CORS (Cross‑Origin Resource Sharing) requests to the backend.
+- `FHIR_SERVER` – URL of the FHIR (Fast Healthcare Interoperability Resources) server used by the application.
 - `FILES_DIR` – directory containing instruction files served by the backend.
 - `DOWNLOADS_DIR` – writable directory where the backend saves generated/downloadable artifacts
   (e.g., uploaded scrubbed ZIPs). Defaults to a subdirectory under `FILES_DIR` if not set.

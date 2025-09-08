@@ -7,6 +7,7 @@ from docx import Document
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from dotenv import load_dotenv
+import random
 import time
 import uuid
 from .logging_config import configure_logging
@@ -481,7 +482,10 @@ def events_need_reupload():
     limit = get_limit()
     offset = get_offset()
     try:
-        rows = table_service.get_events_for_reupload(limit, offset)
+        # Filter by the uploader's site like legacy behavior
+        auth_user = getattr(g, 'auth_user', None) or {}
+        site = (auth_user.get('site') or '').strip() or None
+        rows = table_service.get_events_for_reupload(limit, offset, site)
         return jsonify({'data': rows})
     except Exception:
         app.logger.exception("Failed to fetch table data")
@@ -1143,6 +1147,78 @@ def events_upload_scrubbed(event_id: int):
     except Exception:
         app.logger.exception('Failed to upload scrubbed file for event %d', event_id)
         return jsonify({'error': 'Failed to upload scrubbed file'}), 500
+
+
+@app.route('/api/events/<int:event_id>/upload_raw', methods=['POST'])
+@requires_auth
+@requires_any_role('uploader', 'admin')
+def events_upload_raw(event_id: int):
+    """Accept a raw packet upload and mark the event as uploaded (pre-scrub).
+
+    Expects multipart/form-data with field name 'chart_file'. Saves the
+    uploaded file under DOWNLOADS_DIR using legacy-style name
+    "orig_<eventId>_<fileNumber>.<ext>", updates file_number, original_name,
+    uploader_id, upload_date, and sets status to 'uploaded'.
+
+    Upload is restricted to uploaders at the same site as the event's patient
+    (or admins).
+    """
+    try:
+        file = request.files.get('chart_file')
+        if not file or not file.filename:
+            return jsonify({'error': 'No file provided'}), 400
+
+        # Ensure downloads directory exists
+        try:
+            os.makedirs(DOWNLOADS_DIR, exist_ok=True)
+        except OSError:
+            return jsonify({'error': 'Uploads directory is not writable'}), 500
+
+        # Validate extension
+        _, ext = os.path.splitext(file.filename)
+        ext = (ext or '').lower()
+        if ext not in ALLOWED_PACKET_EXTENSIONS:
+            return jsonify({'error': 'Unsupported file type. Allowed: zip, pdf, doc, docx'}), 400
+
+        # Load event and enforce site restriction for uploaders
+        session = models.get_session()
+        try:
+            e = session.query(models.Events).get(event_id)
+            if e is None:
+                return jsonify({'error': 'Event not found'}), 404
+
+            auth_user = getattr(g, 'auth_user', None) or {}
+            is_admin = bool(auth_user.get('admin'))
+            if not is_admin:
+                # Enforce same-site rule for non-admin uploaders
+                patient = session.query(models.Patients).get(e.patient_id)
+                user_site = (auth_user.get('site') or '').strip()
+                event_site = (getattr(patient, 'site', None) or '').strip()
+                if not user_site or not event_site or user_site != event_site:
+                    return jsonify({'error': 'Uploader must match patient site'}), 403
+
+            # Generate file number (legacy behavior)
+            file_number = random.randint(1, 1_000_000_000)
+            original_name = file.filename
+            out_name = f"orig_{event_id}_{file_number}{ext}"
+            out_path = os.path.join(DOWNLOADS_DIR, out_name)
+            file.save(out_path)
+
+            # Update event metadata
+            if auth_user.get('id'):
+                e.uploader_id = int(auth_user['id'])
+            e.file_number = file_number
+            e.original_name = original_name
+            e.upload_date = datetime.date.today()
+            e.status = 'uploaded'
+            session.commit()
+        finally:
+            session.close()
+
+        return jsonify({'data': {'saved': True}})
+    except Exception:
+        app.logger.exception('Failed to upload raw file for event %d', event_id)
+        return jsonify({'error': 'Failed to upload raw file'}), 500
 
 @app.route('/api/events/assign_many', methods=['POST'])
 @requires_auth

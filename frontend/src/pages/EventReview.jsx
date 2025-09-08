@@ -25,6 +25,8 @@ function EventReview() {
   const [falsePositiveReason, setFalsePositiveReason] = useState('')
   const [falsePositiveOtherCause, setFalsePositiveOtherCause] = useState('')
 
+  const [ecgType, setEcgType] = useState('')
+
   const [currentTobacco, setCurrentTobacco] = useState('') // '1' | '0'
   const [pastTobacco, setPastTobacco] = useState('')
   const [cocaine, setCocaine] = useState('')
@@ -121,7 +123,7 @@ function EventReview() {
 
   return (
     <div>
-      <div className="infobox" style={{ width: '300px', fontSize: '.95em' }}>
+      <div className="boxright" style={{ width: '300px', fontSize: '.95em' }}>
         <h3>Review Instructions:</h3>
         <div style={{ marginTop: '8px' }}>
           View as: {" "}
@@ -282,7 +284,7 @@ function EventReview() {
                 <tr id="ecgType">
                   <th>ECG based type</th>
                   <td>
-                    <select id="ecgTypeSelect">
+                    <select id="ecgTypeSelect" value={ecgType} onChange={(e) => setEcgType(e.target.value)}>
                       <option value="">Select</option>
                       {ecgTypes.map((o) => <option key={o} value={o}>{o}</option>)}
                     </select>
