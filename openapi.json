@@ -70,6 +70,10 @@ paths:
   /api/events/{int:event_id}: {}
   /api/users: {}
   /api/auth/me: {}
+  /api/auth/dev_login: {}
+  /api/auth/dev_logout: {}
+  /api/auth/dev_set_roles: {}
+  /api/auth/dev_seed_users: {}
   /api/reviewer/awaiting: {}
   /api/events/export: {}
   /api/events/download/{int:event_id}: {}
@@ -78,6 +82,7 @@ paths:
   /api/events/{int:event_id}/screen: {}
   /api/events/bulk: {}
   /api/events/{int:event_id}/upload_scrubbed: {}
+  /api/events/{int:event_id}/upload_raw: {}
   /api/events/assign_many: {}
   /api/events/send_many: {}
 info:
