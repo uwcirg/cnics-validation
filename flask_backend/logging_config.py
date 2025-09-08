@@ -147,10 +147,23 @@ def configure_logging(app_name: Optional[str] = None) -> None:
 
     root.addHandler(handler)
 
-    # Reduce noisy default request logs; we'll emit structured access logs ourselves
-    logging.getLogger("werkzeug").setLevel(logging.WARNING)
-    # Align commonly used loggers with root level
-    logging.getLogger("flask.app").setLevel(level)
-    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+    # Ensure framework loggers propagate to root and do not keep their own handlers
+    for lname, lvl in (
+        ("flask", level),
+        ("flask.app", level),
+        ("werkzeug", logging.WARNING),
+    ):
+        lg = logging.getLogger(lname)
+        for h in list(lg.handlers):
+            lg.removeHandler(h)
+        lg.propagate = True
+        lg.setLevel(lvl)
+
+    # Reduce noisy SQL logs
+    sqla = logging.getLogger("sqlalchemy.engine")
+    for h in list(sqla.handlers):
+        sqla.removeHandler(h)
+    sqla.propagate = True
+    sqla.setLevel(logging.WARNING)
 
 
