@@ -9,26 +9,20 @@ import './Home.css'
 const API_BASE = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || '')
 const PAGE_SIZE = 20
 
-function TableWrapper({ endpoint, columns, renderActions }) {
+function TableWrapper({ endpoint, columns, renderActions, pageSize = PAGE_SIZE }) {
   const navigate = useNavigate()
   const [rows, setRows] = useState([])
   const [totalCount, setTotalCount] = useState(null)
   const [search, setSearch] = useState('')
   const [siteFilter, setSiteFilter] = useState('')
-  const [sortKey, setSortKey] = useState(null)
-  const [sortDir, setSortDir] = useState('none') // 'none' | 'asc' | 'desc'
 
   const fetchPage = (p) => {
     const params = new URLSearchParams({
-      limit: String(PAGE_SIZE),
-      offset: String((p - 1) * PAGE_SIZE),
+      limit: String(pageSize),
+      offset: String((p - 1) * pageSize),
     })
     if (search) params.set('q', search)
     if (siteFilter) params.set('site', siteFilter)
-    if (sortKey && sortDir && sortDir !== 'none') {
-      params.set('sort_by', sortKey)
-      params.set('sort_dir', sortDir)
-    }
     fetch(`${API_BASE}${endpoint}?${params.toString()}`, {
       credentials: 'include',
     })
@@ -55,7 +49,7 @@ function TableWrapper({ endpoint, columns, renderActions }) {
   useEffect(() => {
     fetchPage(1)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, siteFilter, sortKey, sortDir])
+  }, [search, siteFilter])
 
   const handleClick = (row) => {
     navigate(
@@ -89,79 +83,15 @@ function TableWrapper({ endpoint, columns, renderActions }) {
           {`Showing ${rows.length}${typeof totalCount === 'number' ? ` of ${totalCount}` : ''}`}
         </div>
       </div>
-      <DataTable
-        rows={rows}
-        onRowClick={handleClick}
-        onPageChange={fetchPage}
-        totalCount={totalCount}
-        columns={columns}
-        renderActions={renderActions}
-        sortKey={sortKey}
-        sortDir={sortDir}
-        onSortChange={(key, dir) => { setSortKey(key); setSortDir(dir) }}
-      />
+      <DataTable rows={rows} onRowClick={handleClick} onPageChange={fetchPage} totalCount={totalCount} columns={columns} renderActions={renderActions} />
     </>
   )
 }
 
-function ReviewerList({ apiBase, q, rows, setRows }) {
-  const [loading, setLoading] = useState(false)
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      setLoading(true)
-      try {
-        const url = new URL(`${apiBase}/api/reviewer/awaiting`)
-        if (q) url.searchParams.set('q', q)
-        const res = await fetch(url, { credentials: 'include' })
-        if (!cancelled && res.ok) {
-          const json = await res.json()
-          setRows(json.data || [])
-        }
-      } catch {}
-      if (!cancelled) setLoading(false)
-    }
-    load()
-    return () => { cancelled = true }
-  }, [apiBase, q, setRows])
-
-  const go = (r) => {
-    const slot = r.slot
-    if (!slot) return
-    const id = r.id
-    window.location.href = `/events/review?event_id=${id}&slot=${slot}`
-  }
-
-  if (loading && (!rows || rows.length === 0)) return <p>Loading…</p>
-  if (!rows || rows.length === 0) return <p>No events awaiting your review.</p>
-
-  return (
-    <table className="data-table">
-      <thead>
-        <tr>
-          <th>ID</th>
-          <th>Date</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r) => (
-          <tr key={r.id} className="clickable" onClick={() => go(r)}>
-            <td>
-              <a href={`/events/review?event_id=${r.id}&slot=${r.slot}`} onClick={(e) => { e.preventDefault(); go(r) }}>Event {1000 + Number(r.id)}</a>
-            </td>
-            <td>{r.event_date || ''}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  )
-}
-
-function Home() {
+function Home({ auth }) {
   const [rows, setRows] = useState([])
   const [statusSummary, setStatusSummary] = useState(null)
-  const [reviewRows, setReviewRows] = useState([])
-  const [reviewSearch, setReviewSearch] = useState('')
+  const [search, setSearch] = useState('')
 
   useEffect(() => {
     fetch(`${API_BASE}/api/tables/events`, { credentials: 'include' })
@@ -189,136 +119,100 @@ function Home() {
       .catch(() => {})
   }, [])
 
-  // Removed Quick Search; table-level search is provided in each section
+  // eslint-disable-next-line no-unused-vars
+  const filteredRows = rows.filter((row) =>
+    Object.values(row).some((v) =>
+      String(v).toLowerCase().includes(search.toLowerCase())
+    )
+  )
 
 
   return (
     <div className="home-container">
       {/* Top-right CNICS logo */}
-      <img className="cnics-logo" src="/scenics.svg" alt="CNICS" />
-      <h1>CNICS Myocardial Infarction Validation</h1>
-      <p>Welcome to the CNICS Myocardial Infarction Validation application.</p>
-      {/* Two-column layout: left main content, right sidebar */}
-      <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
-        {/* Left column */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <section>
-            <h3>Administrative Tools</h3>
-            <div>
-              <h4>Events</h4>
-              <ul>
-                <li>
-                  <Link to="/events/viewAll">View all events</Link>
-                </li>
-                <li>
-                  <Link to="/events/add">Add an event</Link>
-                </li>
-                <li>
-                  <Link to="/events/addMany">Add multiple events from a CSV file</Link>
-                </li>
-                <li>
-                  <a href={`${API_BASE}/api/events/export?format=csv`}>Export all events as CSV</a>
-                </li>
-              </ul>
-              <h4>Users</h4>
-              <ul>
-                <li>
-                  <Link to="/users/add">Add a user</Link>
-                </li>
-                <li>
-                  <Link to="/users/viewAll">Edit/Delete users</Link>
-                </li>
-              </ul>
-            </div>
-          </section>
+      <img className="cnics-logo" src="/cnics_logo.png" alt="CNICS" />
+      <h1>CNICS Validation</h1>
+      <p>Welcome to the CNICS Validation application.</p>
 
-          <section>
-            <h3>Upload New Packets</h3>
-            <p>
-              Use this page to find an event and upload its packet. Please note the
-              instructions on the right about how to properly assemble a review
-              packet.
-            </p>
-          </section>
-
-          {/* Move Events That Need Packets above reviewer list */}
-          <section>
-            <h3>Events That Need Packets</h3>
-            <TableWrapper
-              endpoint="/api/events/by_status/created"
-              columns={['ID', 'Date', 'Created', 'Site']}
-              renderActions={(row) => (
-                <>
-                  <button onClick={(e) => { e.stopPropagation(); window.location.href = `/events/upload?event_id=${row['ID']}` }}>upload</button>
-                  {' '}
-                  |{' '}
-                  <button onClick={(e) => { e.stopPropagation(); window.location.href = `/events/edit?event_id=${row['ID']}` }}>edit</button>
-                </>
-              )}
-            />
-          </section>
-
-          <section>
-            <h3>Event Packets for Your Review</h3>
-            <p style={{ marginTop: '4px', color: '#444' }}>
-              These are events assigned to you and awaiting your review.
-            </p>
-            <div style={{ margin: '8px 0' }}>
-              <input
-                type="text"
-                placeholder="Quick search (Event ID or Date, e.g., 2024-01-15)"
-                value={reviewSearch}
-                onChange={(e) => setReviewSearch(e.target.value)}
-              />
-            </div>
-            <ReviewerList apiBase={API_BASE} q={reviewSearch} rows={reviewRows} setRows={setReviewRows} />
-          </section>
-        </div>
-
-        {/* Right sidebar */}
-        <aside style={{ width: 340 }}>
-          <div className="infobox">
-            <h3>Review packets should contain:</h3>
-            <ol>
-              <li>Physician's notes closest to potential Event date</li>
-              <li>Outpatient cardiology consultations</li>
-              <li>In-patient cardiology notes or consults</li>
-              <li>Baseline ECG</li>
-              <li>First 2 ECGs after admission or in-hospital event</li>
-              <li>Related procedure and diagnostic test results</li>
-              <li>Related laboratory evidence</li>
+      {/* Four main sections */}
+      {auth && auth.admin && (
+        <section>
+          <h3>Admin Tools</h3>
+          <div>
+            <h4>Events</h4>
+            <ul>
               <li>
-                Please redact the personal identifiers including name, birthday, and
-                hospital number
+                <Link to="/events/viewAll">View all events</Link>
               </li>
-            </ol>
-            <div>
-              Full instructions:{' '}
-              <a href={`${API_BASE}/files/CNICS MI Review packet assembly instructions.doc`} download>.doc</a>{' '}
-              |{' '}
-              <a
-                href={`${API_BASE}/files/CNICS MI Review packet assembly instructions.pdf`}
-                target="_blank"
-              >
-                .pdf
-              </a>
-            </div>
+              <li>
+                <Link to="/events/add">Add an event</Link>
+              </li>
+              <li>
+                <Link to="/events/addMany">Add multiple events from a CSV file</Link>
+              </li>
+              <li>
+                <a href={`${API_BASE}/api/events/export?format=csv`}>Export all events as CSV</a>
+              </li>
+            </ul>
+            <h4>Users</h4>
+            <ul>
+              <li>
+                <Link to="/users/add">Add a user</Link>
+              </li>
+              <li>
+                <Link to="/users/viewAll">Edit/Delete users</Link>
+              </li>
+            </ul>
           </div>
+        </section>
+      )}
 
-          <div className="infobox" style={{ marginTop: 16 }}>
-            <h3>Review Instructions:</h3>
-            <div>
-              View as:{' '}
-              <a href={`${API_BASE}/files/CNICS MI reviewer instructions.doc`} download>.doc</a> |{' '}
-              <a href={`${API_BASE}/files/CNICS MI reviewer instructions.pdf`} target="_blank">
-                .pdf
-              </a>
-            </div>
-          </div>
-        </aside>
-      </div>
+      {(auth && (auth.uploader || auth.admin)) && (
+        <section>
+          <h3>Upload New Packets</h3>
+          <p>
+            Use this page to find an event and upload its packet. Please note the
+            instructions on the right about how to properly assemble a review
+            packet.
+          </p>
+          <h4>Quick Search</h4>
+          <p style={{ marginTop: '4px', color: '#444', fontSize: '14px' }}>
+            Search across all columns (ID, Event Date, Created/Uploaded/Scrubbed, Criteria, Site). Example: "UW" or "2024-01-15".
+          </p>
+          <input
+            className="quick-search"
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search"
+          />
+          
+          <h4>Events That Need Packets</h4>
+          <TableWrapper
+            endpoint="/api/events/need_packets"
+            columns={['ID', 'Date', 'Created', 'Site']}
+            renderActions={(row) => (
+              <>
+                <button onClick={(e) => { e.stopPropagation(); window.location.href = `/events/upload?event_id=${row['ID']}` }}>upload</button>
+                {' '}
+                |{' '}
+                <button onClick={(e) => { e.stopPropagation(); window.location.href = `/events/edit?event_id=${row['ID']}` }}>edit</button>
+              </>
+            )}
+          />
+        </section>
+      )}
 
-      {/* Additional Documents removed for now */}
+
+
+
+
+      {(auth && (auth.reviewer || auth.admin)) && (
+        <section>
+          <h3>Review Events</h3>
+          <TableWrapper endpoint="/api/reviewer/awaiting" pageSize={3} />
+        </section>
+      )}
 
     </div>
   )

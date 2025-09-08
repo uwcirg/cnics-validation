@@ -61,8 +61,20 @@ function EventScreen() {
       )}
 
       <p>
-        <a href={`${apiUrl}/api/events/download/${eventId}`} target="_blank" rel="noreferrer">
-          Download charts for the event
+        <a 
+          href={`${apiUrl}/api/events/download/${eventId}`} 
+          download=""
+          style={{ 
+            display: 'inline-block',
+            padding: '8px 16px',
+            backgroundColor: '#007bff',
+            color: 'white',
+            textDecoration: 'none',
+            borderRadius: '4px',
+            fontSize: '14px'
+          }}
+        >
+          📥 Download Charts
         </a>
       </p>
 

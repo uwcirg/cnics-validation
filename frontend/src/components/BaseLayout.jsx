@@ -7,7 +7,7 @@ function Toasts() {
 }
 
 function BaseLayout({ children, auth }) {
-  const { admin = false, uploader = false, reviewer = false, username } = auth || {}
+  const { admin = false, uploader = false, reviewer = false, third_reviewer = false, username } = auth || {}
   return (
     <div className="layout">
       <header className="header">
@@ -22,7 +22,7 @@ function BaseLayout({ children, auth }) {
           )}
         </div>
       </header>
-      <MenuBar admin={admin} uploader={uploader} reviewer={reviewer} />
+      <MenuBar admin={admin} uploader={uploader} reviewer={reviewer} third_reviewer={third_reviewer} />
       <main>
         {children}
         <footer>

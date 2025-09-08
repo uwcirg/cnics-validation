@@ -1,3 +1,29 @@
+## Logging
+
+The backend emits logs to stdout. You can toggle between plain text and JSON formats via environment variables.
+
+- LOG_FORMAT: JSON (default) or TEXT
+- LOG_LEVEL: INFO (default), DEBUG, WARNING, ERROR
+- APP_NAME: Name to include in log records (default: cnics-validation-backend)
+
+When LOG_FORMAT=JSON, logs conform to a consistent schema and can be shipped to a log server:
+
+- ts: ISO8601 timestamp in UTC
+- level: Log level name
+- logger: Logger name
+- msg: Message string
+- request_id: X-Request-ID or generated UUID
+- method: HTTP method
+- path: Request path (with query)
+- status: HTTP status code (on access logs)
+- duration_ms: Request duration in milliseconds (on access logs)
+- remote_ip: Client IP (respects X-Forwarded-For)
+- user_login: Authenticated username (if available)
+- site: User site (if available)
+- module, func, line: Call site information
+- app: Application name
+
+Access logs are emitted on every request in after_request.
 # Flask Backend
 
 This directory contains a minimal Flask implementation of the API used by the React frontend.

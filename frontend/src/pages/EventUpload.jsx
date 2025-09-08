@@ -20,6 +20,9 @@ function EventUpload() {
   const [tableSearch, setTableSearch] = useState('')
   const [noPacketReason, setNoPacketReason] = useState('')
   const [priorEventDateKnown, setPriorEventDateKnown] = useState('')
+  const [packetFile, setPacketFile] = useState(null)
+  const [uploadStatus, setUploadStatus] = useState('idle') // idle | uploading | success | error
+  const [uploadError, setUploadError] = useState('')
 
   const API_BASE = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || '')
 
@@ -124,6 +127,48 @@ function EventUpload() {
     Object.values(row || {}).some((v) => String(v || '').toLowerCase().includes(tableSearch.toLowerCase()))
   )
 
+  const handleUploadSubmit = async (e) => {
+    e.preventDefault()
+    setUploadError('')
+    if (!eventId) {
+      setUploadStatus('error')
+      setUploadError('No event selected.')
+      return
+    }
+    if (!packetFile) {
+      setUploadStatus('error')
+      setUploadError('Please choose a file first.')
+      return
+    }
+    try {
+      setUploadStatus('uploading')
+      const form = new FormData()
+      form.append('scrubbed_file', packetFile)
+      const res = await fetch(`${API_BASE}/api/events/${encodeURIComponent(eventId)}/upload_scrubbed`, {
+        method: 'POST',
+        credentials: 'include',
+        body: form,
+      })
+      if (!res.ok) {
+        let msg = 'Upload failed.'
+        try {
+          const j = await res.json()
+          if (j && j.error) msg = j.error
+        } catch {}
+        setUploadStatus('error')
+        setUploadError(msg)
+        return
+      }
+      setUploadStatus('success')
+      setPacketFile(null)
+      // Clear the file input element
+      try { e.target.reset() } catch {}
+    } catch (err) {
+      setUploadStatus('error')
+      setUploadError('Network or server error while uploading.')
+    }
+  }
+
   return (
     <div>
       <h1>Upload Event Packet</h1>
@@ -221,13 +266,45 @@ function EventUpload() {
             If packet is available:
           </h2>
           <div className="indent2">
-            <form>
+            <form onSubmit={handleUploadSubmit}>
               <div>
                 <label>
-                  Choose a file to upload: <input type="file" name="packet" />
+                  Choose a file to upload:{' '}
+                  <input
+                    type="file"
+                    name="scrubbed_file"
+                    onChange={(e) => setPacketFile(e.target.files && e.target.files[0] ? e.target.files[0] : null)}
+                  />
                 </label>
               </div>
-              <button type="submit">Upload</button>
+              <div style={{ paddingTop: '6px' }}>
+                <button type="submit" disabled={uploadStatus === 'uploading'}>
+                  {uploadStatus === 'uploading' ? 'Uploading…' : 'Upload'}
+                </button>
+              </div>
+              {uploadStatus === 'error' && uploadError && (
+                <div style={{ color: 'red', paddingTop: '6px' }}>{uploadError}</div>
+              )}
+              {uploadStatus === 'success' && (
+                <div style={{ color: 'green', paddingTop: '6px' }}>
+                  Upload successful.{' '}
+                  <a 
+                    href={`${API_BASE}/api/events/download/${encodeURIComponent(eventId)}`} 
+                    download=""
+                    style={{ 
+                      display: 'inline-block',
+                      padding: '6px 12px',
+                      backgroundColor: '#28a745',
+                      color: 'white',
+                      textDecoration: 'none',
+                      borderRadius: '4px',
+                      fontSize: '14px'
+                    }}
+                  >
+                    📥 Download Packet
+                  </a>
+                </div>
+              )}
             </form>
           </div>
 

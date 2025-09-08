@@ -141,7 +141,21 @@ function EventReview() {
         <p>Review the packet for this event:</p>
         <ul>
           <li>
-            <a href={`${apiUrl}/api/events/download/${eventId}`} target="_blank" rel="noreferrer">Download charts</a>
+            <a 
+              href={`${apiUrl}/api/events/download/${eventId}`} 
+              download=""
+              style={{ 
+                display: 'inline-block',
+                padding: '6px 12px',
+                backgroundColor: '#007bff',
+                color: 'white',
+                textDecoration: 'none',
+                borderRadius: '4px',
+                fontSize: '14px'
+              }}
+            >
+              📥 Download Charts
+            </a>
           </li>
         </ul>
 

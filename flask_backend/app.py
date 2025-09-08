@@ -7,6 +7,9 @@ from docx import Document
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from dotenv import load_dotenv
+import time
+import uuid
+from .logging_config import configure_logging
 from . import table_service
 from . import models
 try:
@@ -41,6 +44,39 @@ if Authorize is not None:
 
 
 load_dotenv()
+configure_logging()
+
+# Request lifecycle hooks for structured access logging
+@app.before_request
+def _before_request_logging():
+    try:
+        g.request_start = time.monotonic()
+        # Prefer upstream-provided request id; otherwise generate one
+        req_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        g.request_id = req_id
+    except Exception:
+        # Never raise from hooks
+        pass
+
+
+@app.after_request
+def _after_request_logging(response):
+    try:
+        start = getattr(g, "request_start", None)
+        duration_ms = None
+        if isinstance(start, (int, float)):
+            duration_ms = int((time.monotonic() - start) * 1000)
+        app.logger.info(
+            "access",
+            extra={
+                "status": getattr(response, "status_code", None),
+                "duration_ms": duration_ms,
+            },
+        )
+    except Exception:
+        # Do not break response on logging errors
+        pass
+    return response
 
 # Directory containing static instruction files. When running in Docker the
 # path can be overridden with the ``FILES_DIR`` environment variable so the
@@ -63,6 +99,20 @@ except OSError:
     # Directory may be on a read-only volume (e.g., /files mounted ro). We'll
     # still attempt to serve from existing paths without creating directories.
     pass
+
+
+# Allowed file extensions for uploaded/served event packets
+ALLOWED_PACKET_EXTENSIONS = {
+    '.zip', '.pdf', '.doc', '.docx'
+}
+
+# MIME type mapping for file extensions
+MIME_TYPE_MAP = {
+    '.zip': 'application/zip',
+    '.pdf': 'application/pdf',
+    '.doc': 'application/msword',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+}
 
 
 def get_limit(default: Optional[int] = None) -> Optional[int]:
@@ -252,10 +302,9 @@ def requires_roles(*required_roles: str):
             if request.method == "OPTIONS":
                 return "", 204
             auth_user = getattr(g, "auth_user", None)
-            # If no header-based auth user is present (e.g., dev or keycloak),
-            # do not enforce role checks here.
+            # If no authenticated user context is present, reject access
             if not auth_user:
-                return func(*args, **kwargs)
+                abort(401)
             missing = [r for r in required_roles if not bool(auth_user.get(r))]
             if missing:
                 abort(403)
@@ -277,7 +326,7 @@ def requires_any_role(*allowed_roles: str):
                 return "", 204
             auth_user = getattr(g, "auth_user", None)
             if not auth_user:
-                return func(*args, **kwargs)
+                abort(401)
             if not any(bool(auth_user.get(r)) for r in allowed_roles):
                 abort(403)
             return func(*args, **kwargs)
@@ -386,8 +435,11 @@ def events_need_packets():
     """
     limit = get_limit()
     offset = get_offset()
+    # Filter by the uploader's site as per legacy behavior
+    auth_user = getattr(g, 'auth_user', None) or {}
+    site = (auth_user.get('site') or '').strip() or None
     try:
-        rows = table_service.get_events_need_packets(limit, offset)
+        rows = table_service.get_events_need_packets(limit, offset, site)
         # Optional: add total if we later add filtering here as well
         return jsonify({'data': rows})
     except Exception:
@@ -583,13 +635,15 @@ def auth_dev_login():
         session.close()
 
     resp = make_response(jsonify({"data": {"set": True}}))
-    # Cross-site cookie for backend.* used by frontend on different origin
+    # Determine secure/samesite based on environment: allow HTTP in local dev
+    is_https = (request.scheme == 'https') or (os.getenv('FORCE_SECURE_COOKIES') == '1')
+    same_site = 'None' if is_https else 'Lax'
     resp.set_cookie(
         "dev_user",
         login,
-        secure=True,
+        secure=is_https,
         httponly=True,
-        samesite="None",
+        samesite=same_site,
         path="/",
         max_age=60 * 60 * 8,  # 8 hours
     )
@@ -601,8 +655,158 @@ def auth_dev_logout():
     if os.getenv("ALLOW_DEV_HEADER") != "1":
         abort(404)
     resp = make_response(jsonify({"data": {"cleared": True}}))
-    resp.set_cookie("dev_user", "", expires=0, secure=True, httponly=True, samesite="None", path="/")
+    is_https = (request.scheme == 'https') or (os.getenv('FORCE_SECURE_COOKIES') == '1')
+    same_site = 'None' if is_https else 'Lax'
+    resp.set_cookie("dev_user", "", expires=0, secure=is_https, httponly=True, samesite=same_site, path="/")
     return resp
+
+
+@app.route('/api/auth/dev_set_roles', methods=['POST'])
+def auth_dev_set_roles():
+    """Dev-only: update role flags for a given login.
+
+    Requires ALLOW_DEV_HEADER=1. Body: { login, admin?, uploader?, reviewer?, third_reviewer? }
+    Returns updated lightweight user dict.
+    """
+    if os.getenv("ALLOW_DEV_HEADER") != "1":
+        abort(404)
+    data = request.get_json(silent=True) or {}
+    login = (data.get("login") or "").strip()
+    if not login:
+        return jsonify({"error": "login is required"}), 400
+
+    session = models.get_session()
+    try:
+        user = session.query(models.Users).filter_by(login=login).first()
+        if user is None:
+            return jsonify({"error": "user not found"}), 404
+
+        # Only update flags that are provided (allow partial updates)
+        if "admin" in data:
+            user.admin_flag = 1 if bool(data.get("admin")) else 0
+        if "uploader" in data:
+            user.uploader_flag = 1 if bool(data.get("uploader")) else 0
+        if "reviewer" in data:
+            user.reviewer_flag = 1 if bool(data.get("reviewer")) else 0
+        if "third_reviewer" in data:
+            user.third_reviewer_flag = 1 if bool(data.get("third_reviewer")) else 0
+
+        session.commit()
+        auth_user = {
+            "id": user.id,
+            "username": user.username,
+            "login": user.login,
+            "admin": bool(user.admin_flag),
+            "uploader": bool(user.uploader_flag),
+            "reviewer": bool(user.reviewer_flag),
+            "third_reviewer": bool(user.third_reviewer_flag),
+            "site": user.site,
+        }
+        return jsonify({"data": auth_user})
+    except Exception:
+        session.rollback()
+        app.logger.exception("Failed to set roles for %s", login)
+        return jsonify({"error": "failed to update roles"}), 500
+    finally:
+        session.close()
+
+
+@app.route('/api/auth/dev_seed_users', methods=['POST', 'GET'])
+def auth_dev_seed_users():
+    """Dev-only helper to create standard test users for each role combination.
+
+    Requires ALLOW_DEV_HEADER=1. Idempotent: skips users that already exist.
+    Returns lists of created and skipped logins.
+    """
+    if os.getenv("ALLOW_DEV_HEADER") != "1":
+        abort(404)
+
+    test_users = [
+        {
+            "username": "Admin User",
+            "login": "admin_test",
+            "first_name": "Admin",
+            "last_name": "Test",
+            "site": "TEST",
+            "admin": True,
+            "uploader": True,
+            "reviewer": True,
+            "third_reviewer": False,
+        },
+        {
+            "username": "Uploader Test",
+            "login": "uploader_test",
+            "first_name": "Uploader",
+            "last_name": "Test",
+            "site": "TEST",
+            "admin": False,
+            "uploader": True,
+            "reviewer": False,
+            "third_reviewer": False,
+        },
+        {
+            "username": "Reviewer Test",
+            "login": "reviewer_test",
+            "first_name": "Reviewer",
+            "last_name": "Test",
+            "site": "TEST",
+            "admin": False,
+            "uploader": False,
+            "reviewer": True,
+            "third_reviewer": False,
+        },
+        {
+            "username": "Third Reviewer Test",
+            "login": "third_reviewer_test",
+            "first_name": "Third",
+            "last_name": "Reviewer",
+            "site": "TEST",
+            "admin": False,
+            "uploader": False,
+            "reviewer": True,
+            "third_reviewer": True,
+        },
+        {
+            "username": "Multi Role Test",
+            "login": "multi_role_test",
+            "first_name": "Multi",
+            "last_name": "Role",
+            "site": "TEST",
+            "admin": False,
+            "uploader": True,
+            "reviewer": True,
+            "third_reviewer": False,
+        },
+        {
+            "username": "Basic Test",
+            "login": "basic_test",
+            "first_name": "Basic",
+            "last_name": "Test",
+            "site": "TEST",
+            "admin": False,
+            "uploader": False,
+            "reviewer": False,
+            "third_reviewer": False,
+        },
+    ]
+
+    created = []
+    skipped = []
+    session = models.get_session()
+    try:
+        for u in test_users:
+            exists = session.query(models.Users).filter_by(login=u["login"]).first()
+            if exists is not None:
+                skipped.append(u["login"])
+                continue
+            try:
+                table_service.create_user(u)
+                created.append(u["login"])
+            except Exception:
+                app.logger.exception("Failed to seed user %s", u["login"])
+        return jsonify({"data": {"created": created, "skipped": skipped}})
+    finally:
+        session.close()
 
 
 @app.route('/api/reviewer/awaiting')
@@ -612,11 +816,12 @@ def reviewer_awaiting():
     """Return events awaiting the logged-in reviewer's action (minimal fields)."""
     try:
         q = request.args.get('q') or None
+        site = request.args.get('site') or None
         auth_user = getattr(g, 'auth_user', None) or {}
         uid = auth_user.get('id')
         if not uid:
             abort(401)
-        rows = table_service.get_events_awaiting_review(int(uid), q)
+        rows = table_service.get_events_awaiting_review(int(uid), q, site)
         return jsonify({'data': rows})
     except Exception:
         app.logger.exception("Failed to fetch reviewer awaiting list")
@@ -709,14 +914,38 @@ def events_download(event_id: int):
     Looks for a file under DOWNLOADS_DIR named "<event_id>.zip" or
     "event_<event_id>.zip" and streams it as an attachment.
     """
-    # Try a couple of conventional filenames in both DOWNLOADS_DIR and FILES_DIR
-    candidates = [f"{event_id}.zip", f"event_{event_id}.zip"]
+    # Try conventional names across allowed extensions and legacy patterns
+    candidates = []
+    # Current convention: <event_id><ext>
+    for ext in ALLOWED_PACKET_EXTENSIONS:
+        candidates.append(f"{event_id}{ext}")
+    # Legacy convention: event_<event_id>.zip
+    candidates.append(f"event_{event_id}.zip")
+
     for base_dir in (DOWNLOADS_DIR, FILES_DIR):
         for name in candidates:
             path = os.path.join(base_dir, name)
             if os.path.exists(path):
                 from flask import send_file
-                return send_file(path, as_attachment=True, download_name=name)
+                # Determine MIME type based on file extension
+                _, ext = os.path.splitext(name)
+                mime_type = MIME_TYPE_MAP.get(ext.lower(), 'application/octet-stream')
+                
+                # Set appropriate headers for file download
+                response = send_file(
+                    path, 
+                    as_attachment=True, 
+                    download_name=name,
+                    mimetype=mime_type
+                )
+                
+                # Add additional headers for better browser handling
+                response.headers['Content-Disposition'] = f'attachment; filename="{name}"'
+                response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                response.headers['Pragma'] = 'no-cache'
+                response.headers['Expires'] = '0'
+                
+                return response
     abort(404)
 
 
@@ -884,8 +1113,15 @@ def events_upload_scrubbed(event_id: int):
             # If the directory is read-only, abort with a clear message
             return jsonify({'error': 'Downloads directory is not writable'}), 500
 
-        # Save using standard name so the download endpoint can find it
-        out_path = os.path.join(DOWNLOADS_DIR, f"{event_id}.zip")
+        # Determine a safe extension from the original filename
+        _, ext = os.path.splitext(file.filename)
+        ext = (ext or '').lower()
+        if ext not in ALLOWED_PACKET_EXTENSIONS:
+            return jsonify({'error': 'Unsupported file type. Allowed: zip, pdf, doc, docx'}), 400
+
+        # Save using <event_id><ext> so the download endpoint can find it
+        out_name = f"{event_id}{ext}"
+        out_path = os.path.join(DOWNLOADS_DIR, out_name)
         file.save(out_path)
 
         # Update event metadata

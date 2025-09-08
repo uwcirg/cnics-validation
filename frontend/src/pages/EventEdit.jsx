@@ -151,7 +151,21 @@ function EventEdit() {
 
       {details && (
         <p>
-          <a href={`${apiUrl}/api/events/download/${eventId}`} target="_blank" rel="noreferrer">Download charts for this event</a>
+          <a 
+            href={`${apiUrl}/api/events/download/${eventId}`} 
+            download=""
+            style={{ 
+              display: 'inline-block',
+              padding: '8px 16px',
+              backgroundColor: '#007bff',
+              color: 'white',
+              textDecoration: 'none',
+              borderRadius: '4px',
+              fontSize: '14px'
+            }}
+          >
+            📥 Download Charts
+          </a>
         </p>
       )}
 

@@ -57,7 +57,7 @@ Override these values in your copied `.env` file as needed.
 
 ## Local Development
 
-See [docs/development.md](docs/development.md) for instructions on running the application with Docker.
+See [docs/development.md](docs/development.md) for instructions on running the application with Docker. For a full end‑to‑end overview of setup, auth, data, and file flows, read [docs/WORKFLOW.md](docs/WORKFLOW.md).
 
 
 ## Backend API

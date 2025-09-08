@@ -10,4 +10,6 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.
 # can locate the module correctly.
 COPY . /app/flask_backend
 
+ENV PYTHONUNBUFFERED=1
+
 CMD ["python", "-m", "flask_backend.app"]

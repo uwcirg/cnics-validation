@@ -27,6 +27,10 @@ services:
       UPLOAD_DIR: /opt/backend/uploads
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN}
       PORT: 3000
+      # Structured logging configuration
+      LOG_FORMAT: ${LOG_FORMAT:-JSON}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      APP_NAME: ${APP_NAME:-cnics-validation-backend}
     depends_on:
       - mariadb
     ports:
@@ -35,12 +39,12 @@ services:
       - internal
     volumes:
       - ${FILES_DIR:-./app/webroot/files}:/files:ro
-      - /opt/backend/uploads:/opt/backend/uploads
+      - ./downloads:/opt/backend/uploads
 
   web:
     build:
       context: ./frontend
-      target: serve
+      target: development_build
     env_file:
       - ./frontend/default.env
     depends_on:

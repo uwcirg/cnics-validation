@@ -169,7 +169,7 @@ def get_events_by_status_with_total(
         "GROUP_CONCAT(c.name ORDER BY c.name SEPARATOR ', ') AS `Criteria`, "
         "p.site AS `Site` "
         "FROM events e "
-        "JOIN patients p ON e.patient_id = p.id "
+        "LEFT JOIN patients p ON e.patient_id = p.id "
         "LEFT JOIN criterias c ON e.id = c.event_id "
         f"WHERE {where_sql} "
         "GROUP BY e.id, e.event_date, e.add_date, e.upload_date, e.scrub_date, p.site "
@@ -198,7 +198,7 @@ def get_events_by_status_with_total(
     rows = session.execute(text(query), params).mappings().all()
 
     count_q = text(
-        "SELECT COUNT(DISTINCT e.id) FROM events e JOIN patients p ON e.patient_id = p.id "
+        "SELECT COUNT(DISTINCT e.id) FROM events e LEFT JOIN patients p ON e.patient_id = p.id "
         f"WHERE {where_sql}"
     )
     total = session.execute(count_q, params).scalar() or 0
@@ -212,9 +212,23 @@ def get_events_by_status(status: str, limit: Optional[int] = None, offset: int =
     return rows
 
 
-def get_events_need_packets(limit: Optional[int] = None, offset: int = 0):
-    """Return events that still require packet uploads."""
-    return get_events_by_status("created", limit, offset)
+def get_events_need_packets(limit: Optional[int] = None, offset: int = 0, site: Optional[str] = None):
+    """Return events that still require packet uploads for the uploader's site.
+
+    Legacy behavior: events joined to patients where patients.site = <uploader site>
+    and events.status = 'created', ordered by events.id ASC.
+    """
+    # Reuse the more general helper but enforce site filter and ordering by ID ASC
+    rows, _total = get_events_by_status_with_total(
+        status="created",
+        limit=limit,
+        offset=offset,
+        q=None,
+        site=site,
+        sort_by='ID',
+        sort_dir='asc',
+    )
+    return rows
 
 
 def get_events_for_review(limit: Optional[int] = None, offset: int = 0):
@@ -313,7 +327,7 @@ def get_events_with_patient_site_with_total(
         where_sql = " AND ".join(where)
 
         stmt = (
-            "SELECT e.id, e.patient_id, p.site FROM events e JOIN patients p ON e.patient_id = p.id "
+            "SELECT e.id, e.patient_id, p.site FROM events e LEFT JOIN patients p ON e.patient_id = p.id "
             f"WHERE {where_sql} "
         )
         # Optional ORDER BY
@@ -340,7 +354,7 @@ def get_events_with_patient_site_with_total(
         rows = [dict(r) for r in rows]
 
         count_q = text(
-            "SELECT COUNT(*) FROM events e JOIN patients p ON e.patient_id = p.id "
+            "SELECT COUNT(*) FROM events e LEFT JOIN patients p ON e.patient_id = p.id "
             f"WHERE {where_sql}"
         )
         total = session.execute(count_q, params).scalar() or 0
@@ -394,7 +408,7 @@ def _phase_rows_with_total(
             "SELECT e.id AS `ID`, e.event_date AS `Date`, e.add_date AS `Created`, "
             "e.upload_date AS `Uploaded`, e.scrub_date AS `Scrubbed`, "
             "GROUP_CONCAT(c.name ORDER BY c.name SEPARATOR ', ') AS `Criteria`, p.site AS `Site` "
-            "FROM events e JOIN patients p ON e.patient_id = p.id "
+            "FROM events e LEFT JOIN patients p ON e.patient_id = p.id "
             "LEFT JOIN criterias c ON e.id = c.event_id "
             f"WHERE {where_sql} "
             "GROUP BY e.id, e.event_date, e.add_date, e.upload_date, e.scrub_date, p.site "
@@ -425,7 +439,7 @@ def _phase_rows_with_total(
         rows = session.execute(text(query), params).mappings().all()
 
         count_q = text(
-            "SELECT COUNT(DISTINCT e.id) FROM events e JOIN patients p ON e.patient_id = p.id "
+            "SELECT COUNT(DISTINCT e.id) FROM events e LEFT JOIN patients p ON e.patient_id = p.id "
             f"WHERE {where_sql}"
         )
         total = session.execute(count_q, params).scalar() or 0
@@ -655,7 +669,7 @@ def get_events_export_rows() -> list[dict]:
         session.close()
 
 
-def get_events_awaiting_review(user_id: int, q: Optional[str] = None) -> list[dict]:
+def get_events_awaiting_review(user_id: int, q: Optional[str] = None, site: Optional[str] = None) -> list[dict]:
     """Return events awaiting the logged-in reviewer's action.
 
     - Reviewer 1: assigned to user, sent, and not yet reviewed by reviewer 1
@@ -666,13 +680,20 @@ def get_events_awaiting_review(user_id: int, q: Optional[str] = None) -> list[di
     try:
         like = f"%{q}%" if q else None
         like_date = _derive_date_like(q)
+        # Enforce stricter criteria to align with main branch expectations:
+        # - Slots 1 & 2 require status 'sent' (in addition to send_date)
+        # - Optional site filter via patients.site
         where_parts = [
-            "(e.reviewer1_id = :uid AND e.send_date IS NOT NULL AND e.review1_date IS NULL)",
-            "(e.reviewer2_id = :uid AND e.send_date IS NOT NULL AND e.review2_date IS NULL)",
+            "(e.reviewer1_id = :uid AND e.status = 'sent' AND e.send_date IS NOT NULL AND e.review1_date IS NULL)",
+            "(e.reviewer2_id = :uid AND e.status = 'sent' AND e.send_date IS NOT NULL AND e.review2_date IS NULL)",
             "(e.reviewer3_id = :uid AND e.status = 'third_review_assigned' AND e.review3_date IS NULL)",
         ]
         params = {"uid": int(user_id)}
         where_sql = " OR ".join(where_parts)
+        site_filter = ""
+        if site:
+            site_filter = " AND p.site = :site"
+            params["site"] = site
         q_filter = ""
         if q:
             q_terms = ["CAST(e.id AS CHAR) LIKE :like", "e.event_date LIKE :like"]
@@ -684,12 +705,12 @@ def get_events_awaiting_review(user_id: int, q: Optional[str] = None) -> list[di
         stmt = text(
             "SELECT e.id AS id, e.event_date AS event_date, "
             "CASE "
-            " WHEN (e.reviewer1_id = :uid AND e.send_date IS NOT NULL AND e.review1_date IS NULL) THEN 1 "
-            " WHEN (e.reviewer2_id = :uid AND e.send_date IS NOT NULL AND e.review2_date IS NULL) THEN 2 "
+            " WHEN (e.reviewer1_id = :uid AND e.status = 'sent' AND e.send_date IS NOT NULL AND e.review1_date IS NULL) THEN 1 "
+            " WHEN (e.reviewer2_id = :uid AND e.status = 'sent' AND e.send_date IS NOT NULL AND e.review2_date IS NULL) THEN 2 "
             " WHEN (e.reviewer3_id = :uid AND e.status = 'third_review_assigned' AND e.review3_date IS NULL) THEN 3 "
             " ELSE NULL END AS slot "
-            "FROM events e "
-            f"WHERE ({where_sql}){q_filter} "
+            "FROM events e LEFT JOIN patients p ON p.id = e.patient_id "
+            f"WHERE ({where_sql}){site_filter}{q_filter} "
             "ORDER BY e.event_date DESC, e.id ASC"
         )
         rows = session.execute(stmt, params).mappings().all()
@@ -739,9 +760,12 @@ def assign_events(event_ids: list[int], reviewer_id: int, slot: str, assigner_id
 
 
 def send_events(event_ids: list[int], sender_id: int) -> dict:
-    """Mark many events as sent to reviewers, setting sender and send_date."""
+    """Mark many events as sent and send assignment emails to reviewers.
+
+    Returns a dict with DB update count and email sending summary.
+    """
     if not event_ids:
-        return {"updated": 0}
+        return {"updated": 0, "email": {"attempted": 0, "sent": 0, "skipped": 0, "errors": []}}
     session = get_session()
     try:
         now = datetime.date.today()
@@ -756,7 +780,15 @@ def send_events(event_ids: list[int], sender_id: int) -> dict:
             e.send_date = now
             updated += 1
         session.commit()
-        return {"updated": updated}
+
+        # Defer import to avoid circulars at module import time
+        try:
+            from . import emailer  # type: ignore
+            email_result = emailer.send_assignment_emails_for_event_ids([int(e.id) for e in events])
+        except Exception as exc:
+            email_result = {"attempted": 0, "sent": 0, "skipped": 0, "errors": [str(exc)]}
+
+        return {"updated": updated, "email": email_result}
     finally:
         session.close()
 

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
-function UserEdit() {
+function UserEdit({ auth }) {
   const [searchParams] = useSearchParams()
   const userId = searchParams.get('id')
   const [formData, setFormData] = useState({
@@ -97,12 +97,14 @@ function UserEdit() {
             <input type="checkbox" name="third_reviewer" checked={formData.third_reviewer} onChange={handleChange} />
           </label>
         </div>
-        <div>
-          <label>
-            Admin?
-            <input type="checkbox" name="admin" checked={formData.admin} onChange={handleChange} />
-          </label>
-        </div>
+        {auth && auth.admin && (
+          <div>
+            <label>
+              Admin?
+              <input type="checkbox" name="admin" checked={formData.admin} onChange={handleChange} />
+            </label>
+          </div>
+        )}
         <button type="submit">Submit</button>
       </form>
       {status === 'saved' && <p>User updated.</p>}

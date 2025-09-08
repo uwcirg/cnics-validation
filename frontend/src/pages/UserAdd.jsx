@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-function UserAdd() {
+function UserAdd({ auth }) {
   const [formData, setFormData] = useState({
     username: '',
     login: '',
@@ -105,12 +105,14 @@ function UserAdd() {
             <input type="checkbox" name="third_reviewer" checked={formData.third_reviewer} onChange={handleChange} />
           </label>
         </div>
-        <div>
-          <label>
-            Admin?
-            <input type="checkbox" name="admin" checked={formData.admin} onChange={handleChange} />
-          </label>
-        </div>
+        {auth && auth.admin && (
+          <div>
+            <label>
+              Admin?
+              <input type="checkbox" name="admin" checked={formData.admin} onChange={handleChange} />
+            </label>
+          </div>
+        )}
         <button type="submit">Add</button>
       </form>
       {status === 'saved' && <p>User saved.</p>}

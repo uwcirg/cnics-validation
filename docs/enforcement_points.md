@@ -28,3 +28,5 @@ Define protected pages and actions and the roles required.
 Implementation: Use backend decorators and frontend route guards keyed to these roles.
 
 
+
+

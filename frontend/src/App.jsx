@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Route, BrowserRouter as Router, Routes } from 'react-router-dom'
 import BaseLayout from './components/BaseLayout'
+import DevAuthTester from './components/DevAuthTester'
+import ProtectedRoute from './components/ProtectedRoute'
+import Admin from './pages/Admin'
 import CriteriaAdd from './pages/CriteriaAdd'
 import CriteriaDelete from './pages/CriteriaDelete'
 import EventAdd from './pages/EventAdd'
@@ -54,34 +57,137 @@ function App() {
 
   return (
     <Router>
+      <DevAuthTester currentAuth={auth} onAuthChange={setAuth} />
       <BaseLayout auth={auth}>
         <Routes>
-          <Route path="/" element={<Home />} />
+          {/* Public routes */}
+          <Route path="/" element={<Home auth={auth} />} />
           <Route path="/events" element={<EventIndex />} />
-          <Route path="/events/add" element={<EventAdd />} />
-          <Route path="/events/addMany" element={<EventAddMany />} />
-          <Route path="/events/assignMany" element={<EventAssignMany />} />
-          <Route path="/events/upload" element={<EventUpload />} />
-          <Route path="/events/reupload" element={<EventReupload />} />
-          <Route path="/events/review" element={<EventReview />} />
-          <Route path="/events/screen" element={<EventScreen />} />
-          <Route path="/events/scrub" element={<EventScrub />} />
-          <Route path="/events/edit" element={<EventEdit />} />
-          <Route path="/events/viewAll" element={<EventViewAll />} />
-          <Route path="/events/assignThird" element={<EventAssignThird />} />
-          <Route path="/events/sendMany" element={<EventSendMany />} />
-          <Route path="/events/download" element={<EventDownload />} />
-          <Route path="/events/export" element={<EventExport />} />
-          <Route path="/users/viewAll" element={<UsersViewAll />} />
-          <Route path="/users/add" element={<UserAdd />} />
-          <Route path="/users/edit" element={<UserEdit />} />
-          <Route path="/users/delete" element={<UserDelete />} />
           <Route path="/users/logout" element={<UserLogout />} />
           <Route path="/logout" element={<UserLogout />} />
-          <Route path="/solicitations/add" element={<SolicitationAdd />} />
-          <Route path="/solicitations/delete" element={<SolicitationDelete />} />
-          <Route path="/criteria/add" element={<CriteriaAdd />} />
-          <Route path="/criteria/delete" element={<CriteriaDelete />} />
+          
+          {/* Admin-only routes */}
+          <Route path="/admin" element={
+            <ProtectedRoute requiredRoles={['admin']} auth={auth}>
+              <Admin />
+            </ProtectedRoute>
+          } />
+          <Route path="/events/add" element={
+            <ProtectedRoute requiredRoles={['admin']} auth={auth}>
+              <EventAdd />
+            </ProtectedRoute>
+          } />
+          <Route path="/events/addMany" element={
+            <ProtectedRoute requiredRoles={['admin']} auth={auth}>
+              <EventAddMany />
+            </ProtectedRoute>
+          } />
+          <Route path="/events/assignMany" element={
+            <ProtectedRoute requiredRoles={['admin']} auth={auth}>
+              <EventAssignMany />
+            </ProtectedRoute>
+          } />
+          <Route path="/events/sendMany" element={
+            <ProtectedRoute requiredRoles={['admin']} auth={auth}>
+              <EventSendMany />
+            </ProtectedRoute>
+          } />
+          <Route path="/events/export" element={
+            <ProtectedRoute requiredRoles={['admin']} auth={auth}>
+              <EventExport />
+            </ProtectedRoute>
+          } />
+          <Route path="/users/viewAll" element={
+            <ProtectedRoute requiredRoles={['admin']} auth={auth}>
+              <UsersViewAll />
+            </ProtectedRoute>
+          } />
+          <Route path="/users/add" element={
+            <ProtectedRoute requiredRoles={['admin']} auth={auth}>
+              <UserAdd auth={auth} />
+            </ProtectedRoute>
+          } />
+          <Route path="/users/edit" element={
+            <ProtectedRoute requiredRoles={['admin']} auth={auth}>
+              <UserEdit auth={auth} />
+            </ProtectedRoute>
+          } />
+          <Route path="/users/delete" element={
+            <ProtectedRoute requiredRoles={['admin']} auth={auth}>
+              <UserDelete />
+            </ProtectedRoute>
+          } />
+          
+          {/* Uploader routes (uploader or admin) */}
+          <Route path="/events/upload" element={
+            <ProtectedRoute requiredRoles={['uploader', 'admin']} auth={auth}>
+              <EventUpload />
+            </ProtectedRoute>
+          } />
+          <Route path="/events/reupload" element={
+            <ProtectedRoute requiredRoles={['uploader', 'admin']} auth={auth}>
+              <EventReupload />
+            </ProtectedRoute>
+          } />
+          
+          {/* Reviewer routes (reviewer or admin) */}
+          <Route path="/events/review" element={
+            <ProtectedRoute requiredRoles={['reviewer', 'admin']} auth={auth}>
+              <EventReview />
+            </ProtectedRoute>
+          } />
+          <Route path="/events/screen" element={
+            <ProtectedRoute requiredRoles={['reviewer', 'admin']} auth={auth}>
+              <EventScreen />
+            </ProtectedRoute>
+          } />
+          <Route path="/events/assignThird" element={
+            <ProtectedRoute requiredRoles={['reviewer', 'admin']} auth={auth}>
+              <EventAssignThird />
+            </ProtectedRoute>
+          } />
+          
+          {/* Multi-role routes (reviewer, uploader, or admin) */}
+          <Route path="/events/scrub" element={
+            <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
+              <EventScrub />
+            </ProtectedRoute>
+          } />
+          <Route path="/events/edit" element={
+            <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
+              <EventEdit />
+            </ProtectedRoute>
+          } />
+          <Route path="/events/viewAll" element={
+            <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
+              <EventViewAll />
+            </ProtectedRoute>
+          } />
+          <Route path="/events/download" element={
+            <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
+              <EventDownload />
+            </ProtectedRoute>
+          } />
+          <Route path="/solicitations/add" element={
+            <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
+              <SolicitationAdd />
+            </ProtectedRoute>
+          } />
+          <Route path="/solicitations/delete" element={
+            <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
+              <SolicitationDelete />
+            </ProtectedRoute>
+          } />
+          <Route path="/criteria/add" element={
+            <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
+              <CriteriaAdd />
+            </ProtectedRoute>
+          } />
+          <Route path="/criteria/delete" element={
+            <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
+              <CriteriaDelete />
+            </ProtectedRoute>
+          } />
         </Routes>
       </BaseLayout>
     </Router>

@@ -1,17 +1,28 @@
 import { Link } from 'react-router-dom'
 import './MenuBar.css'
 
-function MenuBar({ admin, uploader, reviewer }) {
+function MenuBar({ admin, uploader, reviewer, third_reviewer }) {
   return (
     <nav className="menu-bar">
-      {admin && <Link to="/">Admin Tools</Link>}
-      {uploader && (
-        <>
-          <Link to="/events/upload">Upload New Packets</Link>
-          <Link to="/events/reupload">Re-upload Existing Packets</Link>
-        </>
+      {/* Admin Tools - only for admin users */}
+      {admin && (
+        <Link to="/admin">Admin Tools</Link>
       )}
-      {reviewer && <Link to="/events/review">Review Events</Link>}
+      
+      {/* Upload New Packets - for uploaders and admins */}
+      {(uploader || admin) && (
+        <Link to="/events/upload">Upload New Packets</Link>
+      )}
+      
+      {/* Re-upload Existing Packets - for uploaders and admins */}
+      {(uploader || admin) && (
+        <Link to="/events/reupload">Re-upload Existing Packets</Link>
+      )}
+      
+      {/* Review Events - for reviewers and admins */}
+      {(reviewer || admin) && (
+        <Link to="/events/review">Review Events</Link>
+      )}
     </nav>
   )
 }

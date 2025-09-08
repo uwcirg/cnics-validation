@@ -264,7 +264,16 @@ function EventViewAll() {
         }))}
         renderActions={(row) => (
           <>
-            <button onClick={(e) => { e.stopPropagation(); window.open(`${API_BASE}/api/events/download/${row['ID']}`, '_blank') }}>download</button>
+            <button onClick={(e) => { 
+              e.stopPropagation(); 
+              const link = document.createElement('a');
+              link.href = `${API_BASE}/api/events/download/${row['ID']}`;
+              link.download = '';
+              link.style.display = 'none';
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+            }}>📥 Download</button>
             {' '}
             |{' '}
             <button onClick={(e) => { e.stopPropagation(); window.location.href = `/events/scrub?event_id=${row['ID']}` }}>upload scrubbed</button>
@@ -286,7 +295,16 @@ function EventViewAll() {
         }))}
         renderActions={(row) => (
           <>
-            <button onClick={(e) => { e.stopPropagation(); window.open(`${API_BASE}/api/events/download/${row['ID']}`, '_blank') }}>download</button>
+            <button onClick={(e) => { 
+              e.stopPropagation(); 
+              const link = document.createElement('a');
+              link.href = `${API_BASE}/api/events/download/${row['ID']}`;
+              link.download = '';
+              link.style.display = 'none';
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+            }}>📥 Download</button>
             {' '}
             |{' '}
             <button onClick={(e) => { e.stopPropagation(); window.location.href = `/events/scrub?event_id=${row['ID']}` }}>re-upload scrubbed</button>
