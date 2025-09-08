@@ -11,3 +11,5 @@ apispec-webframeworks
 
 SQLAlchemy
 Flask-Authorize
+
+python-json-logger
