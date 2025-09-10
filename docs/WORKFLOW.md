@@ -29,7 +29,7 @@ graph LR
   R1 --> J{Do R1 and R2 Agree?}
   R2 --> J
   J -->|Yes| F[Finalize Outcome]
-  J -->|No| R3[Third Reviewer (Tiebreaker)] --> F
+  J -->|No| R3["Third Reviewer (Tiebreaker)"] --> F
 ```
 
 Notes:
@@ -56,8 +56,8 @@ Proposed feature flags:
 ```mermaid
 graph TB
   subgraph "Host/Docker"
-    FDIR[FILES_DIR (ro): app/webroot/files or mounted]
-    DDIR[DOWNLOADS_DIR/UPLOAD_DIR (rw): downloads/ mount]
+    FDIR["FILES_DIR (ro): app/webroot/files or mounted"]
+    DDIR["DOWNLOADS_DIR/UPLOAD_DIR (rw): downloads/ mount"]
   end
 
   AUI[Frontend UI]
