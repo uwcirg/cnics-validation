@@ -178,13 +178,7 @@ function EventViewAll() {
           </table>
         </section>
       )}
-      <TableSection
-        title="All Events"
-        endpoint="/api/events"
-        renderActions={(row) => (
-          <button onClick={(e) => { e.stopPropagation(); window.location.href = `/events/edit?event_id=${row['ID']}` }}>edit</button>
-        )}
-      />
+      {/* Removed per request: All Events table */}
       <TableSection
         title="To Be Uploaded"
         endpoint="/api/events/need_packets"

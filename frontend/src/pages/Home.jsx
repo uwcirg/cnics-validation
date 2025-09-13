@@ -214,6 +214,45 @@ function Home({ auth }) {
         </section>
       )}
 
+      <div className="infobox">
+        <h3>Review packets should contain:</h3>
+        <ol>
+          <li>Physician's notes closest to potential Event date</li>
+          <li>Outpatient cardiology consultations</li>
+          <li>In-patient cardiology notes or consults</li>
+          <li>Baseline ECG</li>
+          <li>First 2 ECGs after admission or in-hospital event</li>
+          <li>Related procedure and diagnostic test results</li>
+          <li>Related laboratory evidence</li>
+          <li>
+            Please redact the personal identifiers including name, birthday, and
+            hospital number
+          </li>
+        </ol>
+        <div>
+          Full instructions:{' '}
+          <a href={`${API_BASE}/files/CNICS MI Review packet assembly instructions.doc`} download>.doc</a>{' '}
+          |{' '}
+          <a
+            href={`${API_BASE}/files/CNICS MI Review packet assembly instructions.pdf`}
+            target="_blank"
+          >
+            .pdf
+          </a>
+        </div>
+      </div>
+
+      <div className="infobox">
+        <h3>Review Instructions:</h3>
+        <div>
+          View as:{' '}
+          <a href={`${API_BASE}/files/CNICS MI reviewer instructions.doc`} download>.doc</a> |{' '}
+          <a href={`${API_BASE}/files/CNICS MI reviewer instructions.pdf`} target="_blank">
+            .pdf
+          </a>
+        </div>
+      </div>
+
     </div>
   )
 }

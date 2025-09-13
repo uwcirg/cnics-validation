@@ -131,7 +131,8 @@ def _send_via_smtp(msg: EmailMessage) -> Optional[str]:
     port_str = os.getenv("SMTP_PORT", "25")
     tls = (os.getenv("SMTP_TLS", "0").strip() in {"1", "true", "True", "YES", "yes"})
     ssl = (os.getenv("SMTP_SSL", "0").strip() in {"1", "true", "True", "YES", "yes"})
-    user = os.getenv("SMTP_USER")
+    # Fall back to EMAIL_FROM for SMTP auth username when not explicitly provided
+    user = os.getenv("SMTP_USER") or os.getenv("EMAIL_FROM")
     password = os.getenv("SMTP_PASSWORD")
 
     try:

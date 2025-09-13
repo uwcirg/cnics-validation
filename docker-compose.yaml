@@ -26,6 +26,19 @@ services:
       FILES_DIR: /files
       UPLOAD_DIR: /opt/backend/uploads
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN}
+      # Outbound email configuration
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_TLS: ${SMTP_TLS}
+      SMTP_SSL: ${SMTP_SSL}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      EMAIL_FROM: ${EMAIL_FROM}
+      EMAIL_REPLY_TO: ${EMAIL_REPLY_TO}
+      EMAIL_HELP_ADDRESS: ${EMAIL_HELP_ADDRESS}
+      EMAIL_SUBJECT_PREFIX: ${EMAIL_SUBJECT_PREFIX}
+      EMAIL_ATTACH_PACKET: ${EMAIL_ATTACH_PACKET}
+      EMAIL_TEST_MODE: ${EMAIL_TEST_MODE}
       PORT: 3000
       # Structured logging configuration
       LOG_FORMAT: ${LOG_FORMAT:-JSON}
@@ -39,7 +52,7 @@ services:
       - internal
     volumes:
       - ${FILES_DIR:-./app/webroot/files}:/files:ro
-      - ./downloads:/opt/backend/uploads
+      - cnics-downloads:/opt/backend/uploads
 
   web:
     build:
@@ -58,6 +71,7 @@ services:
 volumes:
   logs-data:
   mariadb-data:
+  cnics-downloads:
 
 networks:
   internal:

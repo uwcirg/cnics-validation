@@ -74,34 +74,5 @@ graph TB
   BE -- attach correct MIME --> AUI
 ```
 
-## Configuration (Expanded)
-
-- Copy `.env.example` to `.env` at repo root; Docker Compose interpolates values.
-- Key variables:
-  - DB_*: MariaDB credentials (root password, database, user, password).
-  - FRONTEND_ORIGIN: Allowed origin for CORS (Cross‑Origin Resource Sharing) requests to the backend.
-  - VITE_API_URL: Base URL to the backend API (Application Programming Interface) for the React SPA; leave empty for same‑origin.
-  - FILES_DIR: Read‑only mount for instruction files, served under `/files/<name>`.
-  - DOWNLOADS_DIR or UPLOAD_DIR: Writable mount for generated or uploaded artifacts (e.g., scrubbed ZIP/PDF/DOC/DOCX).
-  - FHIR_SERVER: Fast Healthcare Interoperability Resources server URL (if applicable).
-  - ALLOW_DEV_HEADER=1: Enables development authentication helpers and cookie/header overrides.
-
-## Project status and next steps (from Friday meeting)
-
-- Authentication testing:
-  - Role‑specific test accounts exist; UI currently shows admin for all. Backend role mapping is correct; prefer manual database toggling for validation.
-  - UI user management is not a near‑term priority for production.
-- JSON logging:
-  - Error handling logs are implemented (system standard out). Convert Flask’s default request logging to JSON for consistency (consider a JSON logging library).
-  - Log server to be deployed on a separate VM for testing.
-- Email system:
-  - Templates are ready; blocked on mailbox credentials and send privileges.
-- Workflow documentation:
-  - This document adds parallel first/second reviewers with a third reviewer as tiebreaker; to be reviewed and refined.
-- Roadmap checkpoints:
-  - Done: authentication wiring, file persistence, large‑table handling with pagination.
-  - Pending: process events through entire workflow (awaiting role‑testing resolution).
-  - Add pre‑scrub step behind ENABLE_PRESCRUB feature flag.
-
 
 

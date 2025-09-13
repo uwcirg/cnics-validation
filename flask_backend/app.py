@@ -818,17 +818,11 @@ def auth_dev_seed_users():
 @requires_any_role('reviewer', 'third_reviewer', 'admin')
 def reviewer_awaiting():
     """Return events awaiting the logged-in reviewer's action (minimal fields)."""
+    # Temporarily return an empty list so no events appear for review
     try:
-        q = request.args.get('q') or None
-        site = request.args.get('site') or None
-        auth_user = getattr(g, 'auth_user', None) or {}
-        uid = auth_user.get('id')
-        if not uid:
-            abort(401)
-        rows = table_service.get_events_awaiting_review(int(uid), q, site)
-        return jsonify({'data': rows})
+        return jsonify({'data': []})
     except Exception:
-        app.logger.exception("Failed to fetch reviewer awaiting list")
+        app.logger.exception("Failed to fetch reviewer awaiting list (empty mode)")
         return jsonify({'error': 'Failed to fetch reviewer awaiting list'}), 500
 
 

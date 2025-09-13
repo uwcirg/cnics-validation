@@ -17,3 +17,4 @@ __pycache__/
 flask_backend/__pycache__/
 flask_backend/tests/__pycache__/
 .env.swp
+downloads/
