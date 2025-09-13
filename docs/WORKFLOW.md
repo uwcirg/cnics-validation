@@ -55,9 +55,9 @@ Proposed feature flags:
 
 ```mermaid
 graph TB
-  subgraph "Host/Docker"
-    FDIR["FILES_DIR (ro): app/webroot/files or mounted"]
-    DDIR["DOWNLOADS_DIR/UPLOAD_DIR (rw): downloads/ mount"]
+  subgraph "Docker Volumes"
+    FDIR["Docker volume: files (ro)"]
+    DDIR["Docker volume: data (rw)"]
   end
 
   AUI[Frontend UI]
