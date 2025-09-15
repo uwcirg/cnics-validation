@@ -775,6 +775,14 @@ def assign_events(event_ids: list[int], reviewer_id: int, slot: str, assigner_id
                 e.assign3rd_date = now
             updated += 1
         session.commit()
+        # If assigning third reviewer, send third-reviewer emails now
+        if slot == "third":
+            try:
+                from . import emailer  # type: ignore
+                _ = emailer.send_third_reviewer_emails_for_event_ids([int(e.id) for e in events])
+            except Exception:
+                # Do not fail assignment on email errors
+                pass
         return {"updated": updated}
     finally:
         session.close()

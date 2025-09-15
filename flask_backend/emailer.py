@@ -7,6 +7,9 @@ from email.utils import formatdate, make_msgid
 from typing import Optional, List, Dict, Any
 
 from . import models
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _get_downloads_dir() -> str:
@@ -197,6 +200,16 @@ def send_assignment_emails_for_event_ids(event_ids: List[int], sender_id: Option
             if not reviewer_pairs:
                 results["skipped"] += 1
                 results["details"].append({"event_id": int(e.id), "skipped": True, "reason": "no reviewers assigned"})
+                try:
+                    logger.info(
+                        "email_skipped",
+                        extra={
+                            "event_id": int(e.id),
+                            "reason": "no_reviewers_assigned",
+                        },
+                    )
+                except Exception:
+                    pass
                 continue
 
             for slot, user in reviewer_pairs:
@@ -223,6 +236,19 @@ def send_assignment_emails_for_event_ids(event_ids: List[int], sender_id: Option
                         "attached": bool(attach_path),
                         "testing": True,
                     })
+                    try:
+                        logger.info(
+                            "email_sent_test",
+                            extra={
+                                "event_id": int(e.id),
+                                "recipient": to_addr,
+                                "slot": slot,
+                                "attached": bool(attach_path),
+                                "test_mode": True,
+                            },
+                        )
+                    except Exception:
+                        pass
                 else:
                     err = _send_via_smtp(msg)
                     if err is None:
@@ -234,6 +260,19 @@ def send_assignment_emails_for_event_ids(event_ids: List[int], sender_id: Option
                             "subject": subject,
                             "attached": bool(attach_path),
                         })
+                        try:
+                            logger.info(
+                                "email_sent",
+                                extra={
+                                    "event_id": int(e.id),
+                                    "recipient": to_addr,
+                                    "slot": slot,
+                                    "attached": bool(attach_path),
+                                    "test_mode": False,
+                                },
+                            )
+                        except Exception:
+                            pass
                     else:
                         results["errors"].append(f"Event {e.id}: email to {to_addr} failed: {err}")
                         results["details"].append({
@@ -244,8 +283,152 @@ def send_assignment_emails_for_event_ids(event_ids: List[int], sender_id: Option
                             "attached": bool(attach_path),
                             "error": err,
                         })
+                        try:
+                            logger.warning(
+                                "email_failed",
+                                extra={
+                                    "event_id": int(e.id),
+                                    "recipient": to_addr,
+                                    "slot": slot,
+                                    "attached": bool(attach_path),
+                                    "error": str(err),
+                                    "test_mode": False,
+                                },
+                            )
+                        except Exception:
+                            pass
         return results
     finally:
         session.close()
 
+
+
+def send_third_reviewer_emails_for_event_ids(event_ids: List[int]) -> Dict[str, Any]:
+    """Send assignment emails to the third reviewer for each event ID.
+
+    Returns a summary dict: { attempted, sent, skipped, errors: [...], details: [...] }.
+    """
+    if not event_ids:
+        return {"attempted": 0, "sent": 0, "skipped": 0, "errors": [], "details": []}
+
+    test_mode = os.getenv("EMAIL_TEST_MODE", "0").strip() in {"1", "true", "True", "YES", "yes"}
+
+    session = models.get_session()
+    try:
+        results: Dict[str, Any] = {"attempted": 0, "sent": 0, "skipped": 0, "errors": [], "details": []}
+        for eid in event_ids:
+            e = session.query(models.Events).get(int(eid))
+            if e is None:
+                results["errors"].append(f"Event {eid} not found")
+                continue
+
+            if not getattr(e, "reviewer3_id", None):
+                results["skipped"] += 1
+                results["details"].append({"event_id": int(eid), "skipped": True, "reason": "no third reviewer assigned"})
+                try:
+                    logger.info(
+                        "email_skipped",
+                        extra={
+                            "event_id": int(eid),
+                            "reason": "no_third_reviewer_assigned",
+                        },
+                    )
+                except Exception:
+                    pass
+                continue
+
+            user = session.query(models.Users).get(int(e.reviewer3_id))
+            if user is None:
+                results["errors"].append(f"Event {eid}: third reviewer user not found")
+                results["details"].append({"event_id": int(eid), "slot": 3, "recipient": None, "error": "user not found"})
+                continue
+
+            to_addr = _resolve_recipient_address(user)
+            if not to_addr:
+                results["errors"].append(f"Event {eid}: third reviewer has no email address")
+                results["details"].append({"event_id": int(eid), "slot": 3, "recipient": None, "error": "no email"})
+                continue
+
+            urls = _build_urls(int(e.id))
+            subject = _format_subject(int(e.id))
+            body = _build_body(user.first_name or "", user.last_name or "", urls)
+            attach_path = _find_attachment_path(int(e.id))
+            msg = _build_message(to_addr, subject, body, attach_path)
+
+            results["attempted"] += 1
+            if test_mode:
+                results["sent"] += 1
+                results["details"].append({
+                    "event_id": int(e.id),
+                    "slot": 3,
+                    "recipient": to_addr,
+                    "subject": subject,
+                    "body_preview": body[:200],
+                    "attached": bool(attach_path),
+                    "testing": True,
+                })
+                try:
+                    logger.info(
+                        "email_sent_test",
+                        extra={
+                            "event_id": int(e.id),
+                            "recipient": to_addr,
+                            "slot": 3,
+                            "attached": bool(attach_path),
+                            "test_mode": True,
+                        },
+                    )
+                except Exception:
+                    pass
+            else:
+                err = _send_via_smtp(msg)
+                if err is None:
+                    results["sent"] += 1
+                    results["details"].append({
+                        "event_id": int(e.id),
+                        "slot": 3,
+                        "recipient": to_addr,
+                        "subject": subject,
+                        "attached": bool(attach_path),
+                    })
+                    try:
+                        logger.info(
+                            "email_sent",
+                            extra={
+                                "event_id": int(e.id),
+                                "recipient": to_addr,
+                                "slot": 3,
+                                "attached": bool(attach_path),
+                                "test_mode": False,
+                            },
+                        )
+                    except Exception:
+                        pass
+                else:
+                    results["errors"].append(f"Event {e.id}: email to {to_addr} failed: {err}")
+                    results["details"].append({
+                        "event_id": int(e.id),
+                        "slot": 3,
+                        "recipient": to_addr,
+                        "subject": subject,
+                        "attached": bool(attach_path),
+                        "error": err,
+                    })
+                    try:
+                        logger.warning(
+                            "email_failed",
+                            extra={
+                                "event_id": int(e.id),
+                                "recipient": to_addr,
+                                "slot": 3,
+                                "attached": bool(attach_path),
+                                "error": str(err),
+                                "test_mode": False,
+                            },
+                        )
+                    except Exception:
+                        pass
+        return results
+    finally:
+        session.close()
 
