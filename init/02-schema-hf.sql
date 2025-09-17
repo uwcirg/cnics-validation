@@ -3,23 +3,33 @@
 -- Uncomment and modify as needed for Heart Failure study deployment
 
 /*
--- Heart Failure-specific review criteria
+-- Heart Failure-specific review criteria (based on actual CakePHP HF review form)
 CREATE TABLE `reviews` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `event_id` int(11) NOT NULL,
   `reviewer_id` int(11) NOT NULL,
-  `outcome` enum('Definite','Probable','Possible','No') NOT NULL,
-  `hf_type` enum('HFrEF','HFpEF','HFmrEF','Unknown') DEFAULT NULL,
-  `ejection_fraction` decimal(4,1) DEFAULT NULL,
-  `nyha_class` enum('I','II','III','IV','Unknown') DEFAULT NULL,
-  `bnp_level` int(6) DEFAULT NULL,
-  `hospitalization_required` tinyint(1) DEFAULT NULL,
-  `diuretic_use` tinyint(1) DEFAULT NULL,
-  `ace_inhibitor` tinyint(1) DEFAULT NULL,
-  `beta_blocker` tinyint(1) DEFAULT NULL,
-  `aldosterone_antagonist` tinyint(1) DEFAULT NULL,
-  `symptoms` enum('Dyspnea','Fatigue','Edema','Other') DEFAULT NULL,
-  `etiology` enum('Ischemic','Hypertensive','Valvular','Other') DEFAULT NULL,
+  
+  -- HF Type Classification
+  `hf_type` enum('Not HF','Probable HF','Definite HF','Definite/Probable HF') DEFAULT NULL,
+  
+  -- LVEF (Left Ventricular Ejection Fraction) - range 1-80%
+  `lvef` int(3) DEFAULT NULL,
+  
+  -- HF Classification based on LVEF
+  `hf_classification` enum('Preserved (LVEF >=50%)','Intermediate / mid-range EF (LVEF 40-49%)','Reduced (LVEF < 40%)') DEFAULT NULL,
+  
+  -- Congestion Assessment
+  `congestion` enum('Yes','No','N/A - No Xray') DEFAULT NULL,
+  
+  -- Presentation Types
+  `presentation` enum('Predominantly L-sided HF','Predominantly R-sided HF','Combined L- and R-sided dysfunction as contributors to HF') DEFAULT NULL,
+  
+  -- Lab Values
+  `labs` enum('Yes','No','No labs') DEFAULT NULL,
+  
+  -- Additional HF-specific fields (based on CakePHP constants)
+  `not_reported` enum('not reported') DEFAULT NULL,
+  
   PRIMARY KEY (`id`),
   KEY `event_id` (`event_id`),
   KEY `reviewer_id` (`reviewer_id`)
