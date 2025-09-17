@@ -7,7 +7,9 @@ After examining the old CakePHP repositories (VTE, Heart Failure, and AFIB), I'v
 ## Repository Status
 
 ### AFIB Repository
-- **Status**: Empty directory - no code found
+- **Status**: Complete CakePHP v1.x application
+- **Key Finding**: **NO PRESCRUB WORKFLOW** - AFIB follows standard workflow like MCI and HF
+- **Database**: Uses same core tables as MCI but with AFIB-specific review fields
 - **Note**: Per your boss's notes, AFIB has "no plans to use for the foreseeable future"
 - **Action**: Keep our commented-out AFIB code as placeholder for future use
 
@@ -89,12 +91,35 @@ After examining the old CakePHP repositories (VTE, Heart Failure, and AFIB), I'v
 - Add HF classification options
 - Add congestion assessment fields
 
-### 5. Database Schema Differences
+### 5. AFIB Review Form Complexity
+
+**What We Found:**
+- AFIB has complex review form with 1000+ lines of JavaScript
+- AFIB review includes:
+  - AFIB/AFlutter flags and encounter types
+  - AF timing (Presented in AF vs AF started after admission)
+  - AF type classification (Paroxysmal, Persistent, Permanent)
+  - Associated conditions (Coronary, MI, HF, VHD, COPD, Stroke, etc.)
+  - Substance use (Smoking, Heavy Alcohol, Other substances)
+  - Secondary causes assessment
+  - Echocardiogram findings
+  - Anticoagulation management
+
+**Our Current Plan Status:** ⚠️ **NEEDS ENHANCEMENT** - Our AFIB review form is too simplified
+
+**Required Updates:**
+- Update `frontend/src/studies/afib/EventReview.jsx` with full AFIB complexity
+- Add all AFIB-specific fields from the CakePHP form
+- Implement conditional form logic
+- Add proper validation rules
+
+### 6. Database Schema Differences
 
 **What We Found:**
 - All studies use the same core table structure (`events`, `reviews`, `users`, etc.)
 - Differences are in the `reviews` table fields and enum values
-- VTE has additional status workflow states
+- VTE has additional status workflow states (prescrub)
+- AFIB and HF follow standard workflow (no prescrub)
 - Each study has study-specific constants and validation rules
 
 **Our Current Plan Status:** ✅ **CORRECT** - Our schema approach is right
@@ -150,6 +175,35 @@ ALTER TABLE reviews ADD COLUMN hf_type ENUM('Not HF', 'Probable HF', 'Definite H
 - Add LVEF range validation
 - Add HF-specific constants
 
+### AFIB Migration Requirements
+
+#### Database Schema Updates Needed:
+```sql
+-- Add missing AFIB-specific fields to reviews table
+ALTER TABLE reviews ADD COLUMN afib_flag TINYINT(1);
+ALTER TABLE reviews ADD COLUMN aflutter_flag TINYINT(1);
+ALTER TABLE reviews ADD COLUMN af_foundonly_flag TINYINT(1);
+ALTER TABLE reviews ADD COLUMN no_af_flag TINYINT(1);
+ALTER TABLE reviews ADD COLUMN afib_encounter_flag TINYINT(1);
+ALTER TABLE reviews ADD COLUMN afib_history_flag TINYINT(1);
+ALTER TABLE reviews ADD COLUMN aflutter_encounter_flag TINYINT(1);
+ALTER TABLE reviews ADD COLUMN aflutter_history_flag TINYINT(1);
+ALTER TABLE reviews ADD COLUMN af_timing ENUM('Presented in AF','AF started after admission');
+ALTER TABLE reviews ADD COLUMN af_type ENUM('paroxysmal','persistent','permanent','unknown');
+-- ... (many more AFIB-specific fields)
+```
+
+#### Frontend Updates Needed:
+- Complete rewrite of AFIB EventReview component
+- Add complex conditional form logic
+- Add all AFIB-specific form fields
+- Implement proper validation
+
+#### Backend Updates Needed:
+- Add AFIB-specific validation rules
+- Add AFIB-specific constants
+- Add AFIB-specific business logic
+
 ## Updated Architecture Recommendations
 
 ### 1. Enhanced Study-Specific Components
@@ -192,14 +246,18 @@ ALTER TABLE reviews ADD COLUMN hf_type ENUM('Not HF', 'Probable HF', 'Definite H
 - 🔄 Test HF workflow end-to-end
 
 ### Phase 4: AFIB Migration (Low Priority)
-- 🔄 Implement AFIB when needed (currently no plans)
+- 🔄 Complete AFIB review form implementation (1000+ lines)
+- 🔄 Add AFIB-specific validation
+- 🔄 Test AFIB workflow end-to-end
+- 🔄 Implement when needed (currently no plans)
 
 ## Conclusion
 
 Our multi-study architecture plan is fundamentally sound and correctly identifies the key differences between studies. The main gaps are in the complexity and completeness of the study-specific components, particularly:
 
-1. **VTE**: Needs full prescrub workflow and complex review form
+1. **VTE**: Needs full prescrub workflow and complex review form (1000+ lines)
 2. **Heart Failure**: Needs enhanced review form with HF-specific fields
-3. **All Studies**: Need complete validation rules and business logic
+3. **AFIB**: Needs complex review form with AFIB-specific fields (1000+ lines)
+4. **All Studies**: Need complete validation rules and business logic
 
 The single repository approach with separate deployments remains the optimal solution, but we need to invest more effort in creating complete, production-ready study-specific components that match the functionality of the existing CakePHP applications.

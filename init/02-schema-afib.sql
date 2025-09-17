@@ -4,23 +4,81 @@
 -- Note: No immediate plans for use per Heidi
 
 /*
--- AFIB-specific review criteria
+-- AFIB-specific review criteria (based on actual CakePHP AFIB review form)
 CREATE TABLE `reviews` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `event_id` int(11) NOT NULL,
   `reviewer_id` int(11) NOT NULL,
-  `outcome` enum('Definite','Probable','Possible','No') NOT NULL,
-  `afib_type` enum('Paroxysmal','Persistent','Permanent','Unknown') DEFAULT NULL,
-  `ecg_evidence` tinyint(1) DEFAULT NULL,
-  `duration_hours` int(4) DEFAULT NULL,
-  `anticoagulation` tinyint(1) DEFAULT NULL,
-  `rate_control` tinyint(1) DEFAULT NULL,
-  `rhythm_control` tinyint(1) DEFAULT NULL,
-  `chads2_score` int(1) DEFAULT NULL,
-  `chads2vasc_score` int(2) DEFAULT NULL,
-  `bleeding_risk` enum('Low','Moderate','High') DEFAULT NULL,
-  `cardioversion` tinyint(1) DEFAULT NULL,
-  `ablation` tinyint(1) DEFAULT NULL,
+  
+  -- AFIB/AFlutter Flags
+  `afib_flag` tinyint(1) DEFAULT NULL,
+  `aflutter_flag` tinyint(1) DEFAULT NULL,
+  `af_foundonly_flag` tinyint(1) DEFAULT NULL,
+  `no_af_flag` tinyint(1) DEFAULT NULL,
+  
+  -- Encounter Types
+  `afib_encounter_flag` tinyint(1) DEFAULT NULL,
+  `afib_history_flag` tinyint(1) DEFAULT NULL,
+  `aflutter_encounter_flag` tinyint(1) DEFAULT NULL,
+  `aflutter_history_flag` tinyint(1) DEFAULT NULL,
+  
+  -- AF Timing
+  `af_timing` enum('Presented in AF','AF started after admission') DEFAULT NULL,
+  
+  -- AF Type Classification
+  `af_type` enum('paroxysmal','persistent','permanent','unknown') DEFAULT NULL,
+  
+  -- Associated Conditions
+  `assoc_coronary_flag` tinyint(1) DEFAULT NULL,
+  `assoc_mi_flag` tinyint(1) DEFAULT NULL,
+  `assoc_hf_flag` tinyint(1) DEFAULT NULL,
+  `assoc_vhd_flag` tinyint(1) DEFAULT NULL,
+  `assoc_copd_flag` tinyint(1) DEFAULT NULL,
+  `assoc_stroke_flag` tinyint(1) DEFAULT NULL,
+  `assoc_infection_flag` tinyint(1) DEFAULT NULL,
+  `assoc_thoracic_flag` tinyint(1) DEFAULT NULL,
+  `assoc_pvd_flag` tinyint(1) DEFAULT NULL,
+  `assoc_surgery_flag` tinyint(1) DEFAULT NULL,
+  `assoc_none_flag` tinyint(1) DEFAULT NULL,
+  
+  -- Infection Subtypes
+  `assoc_infection_sepsis_flag` tinyint(1) DEFAULT NULL,
+  `assoc_infection_bacteremia_flag` tinyint(1) DEFAULT NULL,
+  `assoc_infection_pneumonia_flag` tinyint(1) DEFAULT NULL,
+  `assoc_infection_other_flag` tinyint(1) DEFAULT NULL,
+  
+  -- Thoracic Subtypes
+  `assoc_thoracic_malignancy_flag` tinyint(1) DEFAULT NULL,
+  `assoc_thoracic_mass_flag` tinyint(1) DEFAULT NULL,
+  `assoc_thoracic_pericarditis_flag` tinyint(1) DEFAULT NULL,
+  `assoc_thoracic_ild_flag` tinyint(1) DEFAULT NULL,
+  `assoc_thoracic_ph_flag` tinyint(1) DEFAULT NULL,
+  `assoc_thoracic_other_flag` tinyint(1) DEFAULT NULL,
+  
+  -- Substance Use
+  `tobacco_use` enum('current','past','unknown','none') DEFAULT NULL,
+  `ha_flag` tinyint(1) DEFAULT NULL, -- Heavy Alcohol
+  `sub_other_flag` tinyint(1) DEFAULT NULL,
+  `sub_other_marijuana_flag` tinyint(1) DEFAULT NULL,
+  `sub_other_meth_flag` tinyint(1) DEFAULT NULL,
+  `sub_other_cocaine_flag` tinyint(1) DEFAULT NULL,
+  `sub_other_opiate_flag` tinyint(1) DEFAULT NULL,
+  `sub_other_unspecified_flag` tinyint(1) DEFAULT NULL,
+  
+  -- Secondary Causes
+  `secondary_yes` tinyint(1) DEFAULT NULL,
+  `secondary_no` tinyint(1) DEFAULT NULL,
+  `secondary_other_flag` tinyint(1) DEFAULT NULL,
+  
+  -- Echocardiogram
+  `echo_flag` tinyint(1) DEFAULT NULL,
+  `echo_other_flag` tinyint(1) DEFAULT NULL,
+  
+  -- Anticoagulation
+  `antic_flag` tinyint(1) DEFAULT NULL,
+  `antic_already_flag` tinyint(1) DEFAULT NULL,
+  `antic_prescribed_flag` tinyint(1) DEFAULT NULL,
+  
   PRIMARY KEY (`id`),
   KEY `event_id` (`event_id`),
   KEY `reviewer_id` (`reviewer_id`)
