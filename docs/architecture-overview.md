@@ -104,27 +104,23 @@ flowchart TD
 ```mermaid
 graph TB
     subgraph "Shared Core Tables"
-        EVENTS[Events Table<br/>- id (PK)<br/>- patient_id (FK)<br/>- creator_id (FK)<br/>- status<br/>- created_date]
-        USERS[Users Table<br/>- id (PK)<br/>- login<br/>- name<br/>- admin_flag<br/>- uploader_flag<br/>- reviewer_flag]
-        LOGS[Logs Table<br/>- id (PK)<br/>- user_id (FK)<br/>- action<br/>- timestamp]
-        PATIENTS[Patients Table<br/>- id (PK)<br/>- site_patient_id<br/>- site]
-        CRITERIAS[Criterias Table<br/>- id (PK)<br/>- event_id (FK)<br/>- criteria_text]
+        EVENTS["Events Table"]
+        USERS["Users Table"]
+        LOGS["Logs Table"]
+        PATIENTS["Patients Table"]
+        CRITERIAS["Criterias Table"]
     end
     
     subgraph "Study-Specific Review Tables"
-        MCI_REVIEWS[MCI Reviews<br/>- id (PK)<br/>- event_id (FK)<br/>- reviewer_id (FK)<br/>- outcome<br/>- chest_pain_flag<br/>- ecg_changes_flag<br/>- ecg_type]
-        
-        VTE_REVIEWS[VTE Reviews<br/>- id (PK)<br/>- event_id (FK)<br/>- reviewer_id (FK)<br/>- outcome<br/>- pe_flag, dvt_flag<br/>- vte_type<br/>- anticoagulation<br/>- risk_factors]
-        
-        CVA_REVIEWS[CVA Reviews<br/>- id (PK)<br/>- event_id (FK)<br/>- reviewer_id (FK)<br/>- outcome<br/>- stroke_type<br/>- nihss_score<br/>- thrombolysis<br/>- mechanical_thrombectomy]
-        
-        HF_REVIEWS[HF Reviews<br/>- id (PK)<br/>- event_id (FK)<br/>- reviewer_id (FK)<br/>- outcome<br/>- hf_type<br/>- lvef (1-80%)<br/>- hf_classification<br/>- congestion]
-        
-        AFIB_REVIEWS[AFIB Reviews<br/>- id (PK)<br/>- event_id (FK)<br/>- reviewer_id (FK)<br/>- outcome<br/>- afib_flag, aflutter_flag<br/>- af_type<br/>- associated_conditions<br/>- anticoagulation]
+        MCI_REVIEWS["MCI Reviews"]
+        VTE_REVIEWS["VTE Reviews"]
+        CVA_REVIEWS["CVA Reviews"]
+        HF_REVIEWS["HF Reviews"]
+        AFIB_REVIEWS["AFIB Reviews"]
     end
     
     subgraph "Study-Specific Additional Tables"
-        QUESTIONNAIRES[Questionnaires<br/>- id (PK)<br/>- event_id (FK)<br/>- questionnaire_type<br/>- data (JSON)<br/>- completed_date]
+        QUESTIONNAIRES["Questionnaires"]
     end
     
     %% Relationships
@@ -145,6 +141,19 @@ graph TB
     
     PATIENTS -->|1:many| EVENTS
 ```
+
+**Table Structure Details:**
+- **Events Table**: id (PK), patient_id (FK), creator_id (FK), status, created_date
+- **Users Table**: id (PK), login, name, admin_flag, uploader_flag, reviewer_flag
+- **Logs Table**: id (PK), user_id (FK), action, timestamp
+- **Patients Table**: id (PK), site_patient_id, site
+- **Criterias Table**: id (PK), event_id (FK), criteria_text
+- **MCI Reviews**: id (PK), event_id (FK), reviewer_id (FK), outcome, chest_pain_flag, ecg_changes_flag, ecg_type
+- **VTE Reviews**: id (PK), event_id (FK), reviewer_id (FK), outcome, pe_flag, dvt_flag, vte_type, anticoagulation, risk_factors
+- **CVA Reviews**: id (PK), event_id (FK), reviewer_id (FK), outcome, stroke_type, nihss_score, thrombolysis, mechanical_thrombectomy
+- **HF Reviews**: id (PK), event_id (FK), reviewer_id (FK), outcome, hf_type, lvef (1-80%), hf_classification, congestion
+- **AFIB Reviews**: id (PK), event_id (FK), reviewer_id (FK), outcome, afib_flag, aflutter_flag, af_type, associated_conditions, anticoagulation
+- **Questionnaires**: id (PK), event_id (FK), questionnaire_type, data (JSON), completed_date
 
 ## 4. Deployment Architecture
 
