@@ -102,80 +102,48 @@ flowchart TD
 ## 3. Database Schema Strategy
 
 ```mermaid
-erDiagram
-    subgraph "Shared Tables"
-        EVENTS {
-            int id PK
-            int patient_id FK
-            int creator_id FK
-            string status
-            datetime created_date
-        }
-        USERS {
-            int id PK
-            string login
-            string name
-            boolean admin_flag
-            boolean uploader_flag
-            boolean reviewer_flag
-        }
-        LOGS {
-            int id PK
-            int user_id FK
-            string action
-            datetime timestamp
-        }
-    }
+graph TB
+    subgraph "Shared Core Tables"
+        EVENTS[Events Table<br/>- id (PK)<br/>- patient_id (FK)<br/>- creator_id (FK)<br/>- status<br/>- created_date]
+        USERS[Users Table<br/>- id (PK)<br/>- login<br/>- name<br/>- admin_flag<br/>- uploader_flag<br/>- reviewer_flag]
+        LOGS[Logs Table<br/>- id (PK)<br/>- user_id (FK)<br/>- action<br/>- timestamp]
+        PATIENTS[Patients Table<br/>- id (PK)<br/>- site_patient_id<br/>- site]
+        CRITERIAS[Criterias Table<br/>- id (PK)<br/>- event_id (FK)<br/>- criteria_text]
+    end
     
-    subgraph "Study-Specific Tables"
-        MCI_REVIEWS {
-            int id PK
-            int event_id FK
-            int reviewer_id FK
-            enum outcome
-            boolean chest_pain_flag
-            boolean ecg_changes_flag
-            enum ecg_type
-        }
+    subgraph "Study-Specific Review Tables"
+        MCI_REVIEWS[MCI Reviews<br/>- id (PK)<br/>- event_id (FK)<br/>- reviewer_id (FK)<br/>- outcome<br/>- chest_pain_flag<br/>- ecg_changes_flag<br/>- ecg_type]
         
-        VTE_REVIEWS {
-            int id PK
-            int event_id FK
-            int reviewer_id FK
-            enum outcome
-            enum vte_type
-            enum dvt_location
-            enum pe_severity
-            boolean anticoagulation
-        }
+        VTE_REVIEWS[VTE Reviews<br/>- id (PK)<br/>- event_id (FK)<br/>- reviewer_id (FK)<br/>- outcome<br/>- pe_flag, dvt_flag<br/>- vte_type<br/>- anticoagulation<br/>- risk_factors]
         
-        CVA_REVIEWS {
-            int id PK
-            int event_id FK
-            int reviewer_id FK
-            enum outcome
-            enum stroke_type
-            int nihss_score
-            boolean thrombolysis
-            boolean mechanical_thrombectomy
-        }
+        CVA_REVIEWS[CVA Reviews<br/>- id (PK)<br/>- event_id (FK)<br/>- reviewer_id (FK)<br/>- outcome<br/>- stroke_type<br/>- nihss_score<br/>- thrombolysis<br/>- mechanical_thrombectomy]
         
-        QUESTIONNAIRES {
-            int id PK
-            int event_id FK
-            enum questionnaire_type
-            json data
-            datetime completed_date
-        }
-    }
+        HF_REVIEWS[HF Reviews<br/>- id (PK)<br/>- event_id (FK)<br/>- reviewer_id (FK)<br/>- outcome<br/>- hf_type<br/>- lvef (1-80%)<br/>- hf_classification<br/>- congestion]
+        
+        AFIB_REVIEWS[AFIB Reviews<br/>- id (PK)<br/>- event_id (FK)<br/>- reviewer_id (FK)<br/>- outcome<br/>- afib_flag, aflutter_flag<br/>- af_type<br/>- associated_conditions<br/>- anticoagulation]
+    end
     
-    EVENTS ||--o{ MCI_REVIEWS : "has"
-    EVENTS ||--o{ VTE_REVIEWS : "has"
-    EVENTS ||--o{ CVA_REVIEWS : "has"
-    EVENTS ||--o{ QUESTIONNAIRES : "has"
-    USERS ||--o{ MCI_REVIEWS : "creates"
-    USERS ||--o{ VTE_REVIEWS : "creates"
-    USERS ||--o{ CVA_REVIEWS : "creates"
+    subgraph "Study-Specific Additional Tables"
+        QUESTIONNAIRES[Questionnaires<br/>- id (PK)<br/>- event_id (FK)<br/>- questionnaire_type<br/>- data (JSON)<br/>- completed_date]
+    end
+    
+    %% Relationships
+    EVENTS -->|1:many| MCI_REVIEWS
+    EVENTS -->|1:many| VTE_REVIEWS
+    EVENTS -->|1:many| CVA_REVIEWS
+    EVENTS -->|1:many| HF_REVIEWS
+    EVENTS -->|1:many| AFIB_REVIEWS
+    EVENTS -->|1:many| QUESTIONNAIRES
+    EVENTS -->|1:many| CRITERIAS
+    
+    USERS -->|1:many| MCI_REVIEWS
+    USERS -->|1:many| VTE_REVIEWS
+    USERS -->|1:many| CVA_REVIEWS
+    USERS -->|1:many| HF_REVIEWS
+    USERS -->|1:many| AFIB_REVIEWS
+    USERS -->|1:many| LOGS
+    
+    PATIENTS -->|1:many| EVENTS
 ```
 
 ## 4. Deployment Architecture
