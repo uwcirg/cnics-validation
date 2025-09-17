@@ -1,0 +1,42 @@
+# VTE (Venothromboembolic) Study Docker Compose Override
+# This file is commented out until VTE study migration is needed
+# Uncomment and modify as needed for VTE study deployment
+
+# version: '3.8'
+# services:
+#   backend:
+#     environment:
+#       - STUDY_TYPE=vte
+#       - DB_SCHEMA_VERSION=vte_v1
+#       - ENABLE_PRE_SCRUB=true
+#       - ENABLE_PRESCRUB_REJECTION=true
+#     volumes:
+#       - ./init/02-schema-vte.sql:/docker-entrypoint-initdb.d/02-schema.sql
+#       - ./studies/vte/instructions:/app/webroot/files
+#     labels:
+#       - "traefik.http.routers.vte-backend.rule=Host(`vte-validation.cirg.uw.edu`)"
+#       - "traefik.http.routers.vte-backend.tls=true"
+#       - "traefik.http.routers.vte-backend.tls.certresolver=letsencrypt"
+
+#   frontend:
+#     environment:
+#       - VITE_STUDY_TYPE=vte
+#       - VITE_STUDY_NAME=VTE Validation
+#       - VITE_ENABLE_PRE_SCRUB=true
+#     labels:
+#       - "traefik.http.routers.vte-frontend.rule=Host(`vte-validation.cirg.uw.edu`)"
+#       - "traefik.http.routers.vte-frontend.tls=true"
+#       - "traefik.http.routers.vte-frontend.tls.certresolver=letsencrypt"
+
+#   mariadb:
+#     environment:
+#       - MYSQL_DATABASE=cnics_vte_validation
+#       - MYSQL_USER=cnics_vte_user
+#       - MYSQL_PASSWORD=your_vte_password_here
+#     volumes:
+#       - vte_mariadb_data:/var/lib/mysql
+#     labels:
+#       - "traefik.enable=false"
+
+# volumes:
+#   vte_mariadb_data:
