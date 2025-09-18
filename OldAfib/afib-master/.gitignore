@@ -1,0 +1,9 @@
+# .gitignore
+# app/chartUploads/*pdf
+*.pdf
+# app/config/database.php
+app/config/database.php
+# app/tmp/*
+app/tmp/*
+# app/tmp/logs
+*.log

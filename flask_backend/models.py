@@ -125,6 +125,7 @@ class Reviews(Base):
     ecg_type: Mapped[Optional[str]] = mapped_column(Enum('STEMI', 'non-STEMI', 'Other/Uninterpretable', 'New LBBB', 'Normal', 'No EKG'))
     event = relationship("Events", back_populates="reviews")
     reviewer = relationship("Users", foreign_keys=[reviewer_id])
+    
 class Solicitations(Base):
     __tablename__ = "solicitations"
 

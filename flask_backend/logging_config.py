@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 import datetime
+import json
 from typing import Any, Optional
 
 try:
@@ -87,11 +88,12 @@ class IsoTimeJsonFormatter(jsonlogger.JsonFormatter if jsonlogger else logging.F
             return
         super().add_fields(log_record, record, message_dict)  # type: ignore[misc]
         # Ensure timestamp is ISO8601 with timezone Z
-        if "ts" not in log_record:
+        if not log_record.get("ts"):
             now = datetime.datetime.now(datetime.timezone.utc)
             log_record["ts"] = now.isoformat()
-        # Ensure app name present
-        log_record.setdefault("app", self.app_name)
+        # Ensure app name present (do not leave null)
+        if log_record.get("app") in (None, ""):
+            log_record["app"] = self.app_name
         # Backfill defaults for structured keys when absent
         for key, default in (
             ("request_id", None),
@@ -103,13 +105,91 @@ class IsoTimeJsonFormatter(jsonlogger.JsonFormatter if jsonlogger else logging.F
             ("user_login", None),
             ("site", None),
         ):
-            log_record.setdefault(key, default)
+            if key not in log_record:
+                log_record.setdefault(key, default)
 
     def formatTime(self, record: logging.LogRecord, datefmt: Optional[str] = None) -> str:  # noqa: N802
         # For python-json-logger, asctime will be renamed to ts
         now = datetime.datetime.fromtimestamp(record.created, tz=datetime.timezone.utc)
         return now.isoformat()
 
+
+class FallbackJsonFormatter(logging.Formatter):
+    """JSON formatter used when python-json-logger is unavailable.
+
+    Produces the same schema as IsoTimeJsonFormatter:
+    ts, level, logger, module, func, line, msg, request fields, app, plus extras.
+    """
+
+    def __init__(self, app_name: str):
+        super().__init__()
+        self.app_name = app_name
+        # Standard logging attributes to exclude from extras
+        self._standard_attrs = {
+            "name",
+            "msg",
+            "args",
+            "levelname",
+            "levelno",
+            "pathname",
+            "filename",
+            "module",
+            "exc_info",
+            "exc_text",
+            "stack_info",
+            "lineno",
+            "funcName",
+            "created",
+            "msecs",
+            "relativeCreated",
+            "thread",
+            "threadName",
+            "processName",
+            "process",
+            "message",
+        }
+
+    def format(self, record: logging.LogRecord) -> str:  # noqa: D401
+        ts = datetime.datetime.fromtimestamp(record.created, tz=datetime.timezone.utc).isoformat()
+        log_record: dict[str, Any] = {
+            "ts": ts,
+            "level": record.levelname,
+            "logger": record.name,
+            "module": record.module,
+            "func": record.funcName,
+            "line": record.lineno,
+            "msg": record.getMessage(),
+            "request_id": getattr(record, "request_id", None),
+            "method": getattr(record, "method", None),
+            "path": getattr(record, "path", None),
+            "status": getattr(record, "status", None),
+            "duration_ms": getattr(record, "duration_ms", None),
+            "remote_ip": getattr(record, "remote_ip", None),
+            "user_login": getattr(record, "user_login", None),
+            "site": getattr(record, "site", None),
+            "app": self.app_name,
+        }
+
+        # Include any extra fields passed via logger(..., extra={...})
+        for key, value in record.__dict__.items():
+            if key.startswith("_"):
+                continue
+            if key in log_record or key in self._standard_attrs:
+                continue
+            try:
+                json.dumps(value)
+                log_record[key] = value
+            except Exception:
+                # Fallback to string representation for non-serializable extras
+                log_record[key] = str(value)
+
+        if record.exc_info:
+            log_record["exc_info"] = self.formatException(record.exc_info)
+        if record.stack_info:
+            # record.stack_info is already a formatted string
+            log_record["stack_info"] = record.stack_info
+
+        return json.dumps(log_record, ensure_ascii=False)
 
 def _determine_level(default: str = "INFO") -> int:
     level_str = os.getenv("LOG_LEVEL", default).upper()
@@ -139,8 +219,11 @@ def configure_logging(app_name: Optional[str] = None) -> None:
     handler.setLevel(level)
     handler.addFilter(FlaskRequestContextFilter())
 
-    if fmt == "JSON" and jsonlogger is not None:
-        handler.setFormatter(IsoTimeJsonFormatter(app_val))
+    if fmt == "JSON":
+        if jsonlogger is not None:
+            handler.setFormatter(IsoTimeJsonFormatter(app_val))
+        else:
+            handler.setFormatter(FallbackJsonFormatter(app_val))
     else:
         # Plain text fallback
         handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s - %(message)s"))

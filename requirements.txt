@@ -1,0 +1,5 @@
+# No additional packages required - uses only Python standard library
+# The script uses built-in modules: smtplib, ssl, email, os, sys
+
+
+

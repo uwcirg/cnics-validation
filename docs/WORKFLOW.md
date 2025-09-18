@@ -7,7 +7,7 @@ This chart‑first overview shows how the system fits together, how requests flo
 ## Event Lifecycle (High Level)
 
 ```mermaid
-graph LR
+graph TD
   A["Create Event<br/>POST /api/events (admin)"] --> B["Upload Packet<br/>POST /api/events/:id/upload_scrubbed<br/>(uploader/reviewer/admin)"]
   B --> C[Scrubbed]
   C --> D["Screening Decision<br/>POST /api/events/:id/screen<br/>(reviewer/admin)"]
@@ -23,7 +23,7 @@ graph LR
 ## Review Process (Parallel First/Second Reviewers; Third as Tiebreaker)
 
 ```mermaid
-graph LR
+graph TD
   A[Assigned for Review] --> R1[Reviewer 1 Works]
   A --> R2[Reviewer 2 Works]
   R1 --> J{Do R1 and R2 Agree?}
@@ -39,7 +39,7 @@ Notes:
 ## Optional Pre‑Scrub Step (Feature Toggle)
 
 ```mermaid
-graph LR
+graph TD
   U[Upload Packet] --> T{Pre‑scrub Enabled?}
   T -- Yes --> P[Pre‑Scrub Step]
   P --> S[Scrubbing]

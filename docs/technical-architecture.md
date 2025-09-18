@@ -205,7 +205,7 @@ graph TB
 ## 5. Deployment Pipeline
 
 ```mermaid
-flowchart LR
+flowchart TD
     subgraph "Development"
         A[Code Changes]
         B[Study-Specific Config]
@@ -328,7 +328,7 @@ graph TB
 ## 8. Cost and Resource Optimization
 
 ```mermaid
-graph LR
+graph TB
     subgraph "Resource Sharing"
         A[Shared Infrastructure]
         B[Common Components]

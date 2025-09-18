@@ -278,7 +278,7 @@ gantt
 ## 7. Technology Stack Comparison
 
 ```mermaid
-graph LR
+graph TB
     subgraph "Legacy CakePHP Systems"
         A[CakePHP v1.x]
         B[MySQL]

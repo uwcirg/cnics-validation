@@ -1,0 +1,14 @@
+888a,UNC,2003-05-08,CK,5
+999b,DFCI,2003-06-09,CK,5
+XXX,UNC,2002-01-01,name,value
+888a,UCSD,2001-06-06,name2,value2
+,UNC,2002-01-01,name,value
+000c,UNC,2003-07-10,CK,5
+888a,,2001-06-06,name2,value2
+888a,UCSD,,name2,value2
+888a,UNC,garble,name,value
+888a,UNC,1900-06-06,name2,value2
+888a,UNC,2003-05-08,name,value,name2
+888a,UNC,2003-05-06,MI_Dx,CKMB
+111d,UCSD,2003-08-11
+007x,UW,2003-09-12,name1,value1,name2,value2,name3,value3,name4,value4

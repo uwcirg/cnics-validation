@@ -13,3 +13,4 @@ SQLAlchemy
 Flask-Authorize
 
 python-json-logger
+pytest

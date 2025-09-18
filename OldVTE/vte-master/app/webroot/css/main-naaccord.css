@@ -1,0 +1,343 @@
+/***** GLOBAL *****/
+
+/*** Structure ***/
+
+/* Reset CSS - Based on YUI */
+html{color:#000;background:#FFF;}body,div,dl,dt,dd,ul,ol,li,h1,h2,h3,h4,h5,h6,pre,code,form,fieldset,legend,input,textarea,p,blockquote,th,td{margin:0;padding:0;}table{border-collapse:collapse;border-spacing:0;}fieldset,img{border:0;}address,caption,cite,code,dfn,em,strong,th,var{font-style:normal;font-weight:normal;}li{list-style:none;}caption,th{text-align:left;}h1,h2,h3,h4,h5,h6{font-size:100%;font-weight:normal;}q:before,q:after{content:'';}abbr,acronym{border:0;font-variant:normal;}sup{vertical-align:text-top;}sub{vertical-align:text-bottom;}input,textarea,select{font-family:inherit;font-size:inherit;font-weight:inherit;}input,textarea,select{*font-size:100%;}legend{color:#000;}
+/* End Reset */
+
+/* = The 1Kb Grid = */     /* 12 columns, 60 pixels each, with 20 pixel gutter */
+.grid_1 { width:60px; }
+.grid_2 { width:140px; }
+.grid_3 { width:220px; }
+.grid_4 { width:300px; }
+.grid_5 { width:380px; }
+.grid_6 { width:460px; }
+.grid_7 { width:540px; }
+.grid_8 { width:620px; }
+.grid_9 { width:700px; }
+.grid_10 { width:780px; }
+.grid_11 { width:860px; }
+.grid_12 { width:940px; }
+.column { margin: 0 10px; overflow: hidden; float: left; display: inline; }
+.row { width: 960px; margin: 0 auto; overflow: hidden; background-color: #fff  }
+.row .row {	margin: 0 -10px; width: auto; display: inline-block; }
+/* End 1Kb Grid */
+
+/*** Typographic ***/
+
+body { font-family: Verdana,Arial,Helvetica,sans-serif; color: #454545; font-size: 75%; line-height: 1.5em; }
+em { font-style: italic }
+h1, h2, h3, strong { font-weight: bold }
+h1 { font-size: 2em; line-height: 1.5em; margin-bottom: 12px }
+h2 { font-size: 1.5em; margin-bottom: 12px }
+h3 { font-size: 1.25em }
+ul { list-style-type: disc; }
+p { margin-bottom: 1.5em }
+ul, ol { margin: 0 1.5em 1.5em 0; padding-left: 1.5em }
+ol li { list-style: decimal outside }
+ul li { list-style: disc outside }
+a:link, a:visited { text-decoration: none; color: #06d }
+a:hover, a:active { text-decoration: underline; color: #f60 }
+
+/*** Tables ***/
+
+table {	border-color: #b3b3b3; border-width: 1px; border-style: solid; }
+th { background-color: #333; color: #fff; border-bottom-color: #CCC; border-bottom-width: 1px; border-bottom-style: solid; border-right-color: #CCC; border-right-width: 1px; border-right-style: solid; padding: 2px 10px }
+td { border-bottom-color: #CCC; border-bottom-width: 1px; border-bottom-style: solid; border-right-color: #CCC; border-right-width: 1px; border-right-style: solid; padding: 4px 18px }
+caption { font-style: italic; text-align: left }
+/* For standard result table - .table_list */
+.table_list, .eventTable { margin: 12px 18px }
+.table_list .odd, .eventTable .odd, .r1 { background: #fff; }
+.table_list .even, .eventTable .even, .r2 { background: #eee; }
+.table_list tbody tr:hover, .eventTable tbody tr:hover { background-color: #adcbb5 }
+.table_list tbody tr:hover { cursor: pointer }
+.table_list tr a { display: block; }
+.table_list td a:link, .table_list td a:visited, .table_list td a:hover, .table_list td a:active { color: #000; text-decoration: none }
+/* End result table */
+div.eventTable { margin-bottom: 18px }
+
+/***** NAVIGATION *****/
+
+.tabnav { padding: 0; width: 100%; background: transparent; margin-bottom: 30px }
+.tabnav ul { margin:0; padding: 0; list-style: none }
+.tabnav li { display: inline; margin: 0 2px 0 0; padding: 0; text-transform:uppercase; }
+.tabnav a { float: left; display: block; font: bold 12px Arial; color: black; text-decoration: none; margin: 0 12px 0 0; padding: 5px 10px 9px 10px; background-color: white; -moz-border-radius-bottomleft: 5px; border-bottom-left-radius: 5px; -moz-border-radius-bottomright: 5px; border-bottom-right-radius: 5px; }
+.tabnav a:hover { background-color: #3e6b98; color: white }
+.tabnav .current a { background-color: #3e6b98; padding-top: 9px; padding-bottom: 5px; color: white }
+
+/***** HEADER *****/
+
+#header { height: 72px; background: url(../img/naaccord_logo.png) #fff no-repeat left; position: relative }
+#title {  padding-left: 240px; line-height: 72px; font-size: 3em; font-weight: bold; }
+#title a:link, #title a:visited, #title a:hover, #title a:active { text-decoration: none; color: #333 }
+#login { color: #666; font-size: 0.9166em }
+#login div { float: right; padding-right: 12px }
+
+/***** CONTENT *****/
+
+#content { margin: 0 10px 10px 10px; padding: 0 24px 24px 24px; line-height: 1.5em; background-color: #fff; border: 2px solid #3e6b98; min-height: 300px; position: relative }
+#infobox { background-color: #f2e8c2; border: #f1d676 1px solid; padding: 5px 10px; -webkit-border-radius: 12px; -moz-border-radius: 12px; border-radius: 12px }
+#footer { clear: both; margin-top: 24px; padding-top: 12px; border-top: #666 1px solid }
+.sort { color: #666; font-size: 0.9166em; line-height:24px; margin-bottom: 6px; font-style: italic; margin-left: 18px }
+.submit { margin: 8px 0 18px }
+#id_search { border: #a4a4a4 solid 2px; -moz-border-radius: 4px; border-radius: 4px; padding:2px 3px; vertical-align:middle; background: #F0F0F0 }
+.indent1 { margin-left: 18px }
+.indent2 { margin-left: 36px }
+.indent3 { margin-left: 54px }
+.boxleft { float: left;	margin: 2px 12px 12px 0px; }
+.boxright { float: right; margin: 2px 0px 12px 12px; }
+.message, .successMessage { border: 1px solid; padding: 5px 10px; -webkit-border-radius: 12px; -moz-border-radius: 12px; border-radius: 12px; font-weight: bold; color: #fff; margin-bottom: 12px }
+.message { background-color: #ff5d5d; border-color: #F00  }
+.successMessage { background-color: #00b100; border-color: #006600  }
+
+/*** Forms ***/
+
+input { margin: 3px 3px 0 5px }
+.radio label { margin: 0 18px 0 4px }
+
+/*** Old code:
+
+.message { background-color: transparent; color: #f00; }
+
+.successMessage { background-color: transparent; color: green; }
+
+div.banner { background-color: #aaaaff }
+div.root { background-color: #ddddff }
+
+div.list {
+    font-size: medium;
+    color: #660000;
+}
+
+tr.rowDark td {
+    background-color: #d7d7ff;
+}
+
+tr.rowLight td {
+    background-color: #e3e3ff;
+}
+
+@media print {
+    .noPrint {
+	display: none;
+    }
+}
+
+html, body {
+    height: 100%;
+    margin: 0px;
+}
+
+body { 
+    font-family: Arial, Helvetica, sans-serif;
+    background-color: #444;
+    padding: 1%;
+}
+@media print {
+    body {
+	font-family: serif;
+	margin: 0px;
+	padding: 0px;
+    }
+}
+
+span.criteria {
+    font-family = serif;
+}
+
+span.debug {
+    display: none;
+}
+
+h1 {
+    font-size: x-large;
+}
+
+h2 {
+    font-size: large;
+}
+
+h2#rescrub {
+    color: red;
+}
+
+em {
+    font-weight: bold;
+    font-style: normal;
+}
+
+p {
+    font-size: medium;
+    color: #660000;
+}
+
+p.menuBar {
+    text-align: center;
+}
+
+A:link {
+    text-decoration: none;
+}
+A:visited {
+    text-decoration: none;
+}
+A:active {
+    text-decoration: none;
+}
+A:hover {
+    text-decoration: underline;
+    color: red;
+}
+
+
+div.root {
+    background-color: #ddddff;
+    border: 5px inset #aaa;
+    min-height: 94%;
+}
+@media print {
+    div.root {
+	border: 0px solid white;
+    }
+}
+
+
+div.banner { 
+    color: #ffffff;
+    font-size: x-large;
+    background-color: #aaaaff;
+    padding: 0.25em;
+}
+@media print {
+    div.banner {
+	padding: 0.25em 0px;
+    }
+}
+
+div.content {
+    font-size: 18px;	
+    padding: 0.25em;
+}
+@media print {
+    div.content {
+	padding: 0.25em 0px;
+    }
+}
+
+div.username {
+    text-align: center;
+
+}
+
+
+img.radio, img.check {
+    cursor: pointer;
+}
+
+
+
+tr.rowDark td {
+    background-color: #d7d7ff;
+}
+
+tr.rowLight td {
+    background-color: #e3e3ff;
+}
+
+
+p.hiddenHelp {
+    padding: 5px;
+    margin: 0px;
+}
+
+p.hiddenHelp a {
+    color: white;
+}
+
+p.hiddenHelp a:hover {
+    text-decoration: underline;
+    color: white;
+    background-color: #aaa;
+}
+
+
+table.patientTable {
+    border-collapse: collapse;
+    border: 2px solid #888;
+    background-color: white;
+    cursor: pointer;
+}
+@media print {
+    table.patientTable {
+	font-size: 12pt;
+    }
+}
+
+table.formTable th {
+    text-align: right;
+}
+
+td.explain {
+    font-size: smaller;
+}
+
+table.patientTable th {
+    border: 1px solid #888;
+    background-color: silver;
+    text-align: center;
+}
+
+table.patientTable td {
+    border: 1px solid #888;
+    border-width: 1px;
+    padding: 1px 5px;
+}
+
+table.patientTable tbody tr:hover {
+    background-color: #dff;
+}
+
+table.patientTable tr.error {
+    background-color: #f77;
+}
+
+table.patientTable tr.error:hover {
+    background-color: #f99;
+}
+
+option.lime {
+    background-color:lime
+}
+
+option.aqua {
+    background-color:aqua
+}
+
+option.purple {
+    background-color:purple; color:white
+}
+
+option.yellow {
+    background-color:yellow
+}
+
+option.fuchsia {
+    background-color:fuchsia
+}
+
+table.eventTable { font-size: .9em; border-spacing: 0px 0px; clear:both; width:100%}
+table.eventTable tr td { font-size: .9em; border: 1px solid #999; text-align:center;}
+table.eventTable th{border: 1px solid #999; text-align:center;}
+
+table.userTable { font-size: .9em; border-spacing: 0px 0px; clear:both; width:100%}
+table.userTable tr td { font-size: .9em; border: 1px solid #999; text-align:center;}
+table.userTable th{border: 1px solid #999; text-align:center;}
+
+table#reviewForm th{width: 50%;}
+
+table#reviewForm td{width: 50%;}
+
+div#ceCriteria {margin-left: 3em}
+
+***/
