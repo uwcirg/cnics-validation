@@ -29,6 +29,10 @@ import UserDelete from './pages/UserDelete'
 import UserEdit from './pages/UserEdit'
 import UserLogout from './pages/UserLogout'
 import UsersViewAll from './pages/UsersViewAll'
+import VTEEventReview from './studies/vte/EventReview'
+import VTEEventScreen from './studies/vte/EventScreen'
+import VTEEventScrub from './studies/vte/EventScrub'
+import VTEEventUpload from './studies/vte/EventUpload'
 
 function App() {
   const [auth, setAuth] = useState({})
@@ -124,6 +128,11 @@ function App() {
               <EventUpload />
             </ProtectedRoute>
           } />
+          <Route path="/vte/upload" element={
+            <ProtectedRoute requiredRoles={['uploader', 'admin']} auth={auth}>
+              <VTEEventUpload />
+            </ProtectedRoute>
+          } />
           <Route path="/events/reupload" element={
             <ProtectedRoute requiredRoles={['uploader', 'admin']} auth={auth}>
               <EventReupload />
@@ -136,9 +145,19 @@ function App() {
               <EventReview />
             </ProtectedRoute>
           } />
+          <Route path="/vte/review" element={
+            <ProtectedRoute requiredRoles={['reviewer', 'admin']} auth={auth}>
+              <VTEEventReview />
+            </ProtectedRoute>
+          } />
           <Route path="/events/screen" element={
             <ProtectedRoute requiredRoles={['reviewer', 'admin']} auth={auth}>
               <EventScreen />
+            </ProtectedRoute>
+          } />
+          <Route path="/vte/screen" element={
+            <ProtectedRoute requiredRoles={['reviewer', 'admin']} auth={auth}>
+              <VTEEventScreen />
             </ProtectedRoute>
           } />
           <Route path="/events/assignThird" element={
@@ -151,6 +170,11 @@ function App() {
           <Route path="/events/scrub" element={
             <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
               <EventScrub />
+            </ProtectedRoute>
+          } />
+          <Route path="/vte/scrub" element={
+            <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
+              <VTEEventScrub />
             </ProtectedRoute>
           } />
           <Route path="/events/edit" element={
