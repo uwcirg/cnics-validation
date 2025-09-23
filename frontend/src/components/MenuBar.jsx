@@ -4,6 +4,10 @@ import './MenuBar.css'
 function MenuBar({ admin, uploader, reviewer, third_reviewer }) {
   return (
     <nav className="menu-bar">
+      {/* Study Navigation */}
+      <Link to="/">MCI Home</Link>
+      <Link to="/vte">VTE Home</Link>
+      
       {/* Admin Tools - only for admin users */}
       {admin && (
         <Link to="/admin">Admin Tools</Link>
