@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { showToast } from '../../components/Toast'
+import '../../pages/Home.css'
 
 function VTEEventScrub() {
   const [searchParams] = useSearchParams()
@@ -59,7 +60,10 @@ function VTEEventScrub() {
   }
 
   return (
-    <div>
+    <div className="home-container">
+      {/* Top-right CNICS logo */}
+      <img className="cnics-logo" src="/cnics_logo.png" alt="CNICS" />
+      
       <div className="infobox" style={{ width: '300px', fontSize: '.95em' }}>
         <h3>VTE Scrubbing Instructions:</h3>
         <div style={{ marginTop: '8px' }}>
@@ -107,7 +111,7 @@ function VTEEventScrub() {
       {status === 'error' && <p>Upload failed.</p>}
 
       <p style={{ marginTop: '16px' }}>
-        <a href="#" onClick={(e) => { e.preventDefault(); navigate('/events/viewAll') }}>
+        <a href="#" onClick={(e) => { e.preventDefault(); navigate('/vte/viewAll') }}>
           &lt; Return to View All Events
         </a>
       </p>

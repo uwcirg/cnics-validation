@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import DataTable from '../../components/DataTable'
 import '../../pages/EventUpload.css'
+import '../../pages/Home.css'
 
 const PAGE_SIZE = 20
 
@@ -162,21 +163,23 @@ function VTEEventUpload() {
   }
 
   return (
-    <div>
+    <div className="home-container">
+      {/* Top-right CNICS logo */}
+      <img className="cnics-logo" src="/cnics_logo.png" alt="CNICS" />
       <h1>Upload VTE Event Packet</h1>
 
       {!eventId && (
         <section>
           <h3>VTE Events That Need Packets</h3>
           <TableWrapper
-            endpoint="/api/events/need_packets"
+            endpoint="/api/vte/events/need_packets"
             columns={['ID', 'Date', 'Created', 'Site']}
             renderActions={(row) => (
               <>
                 <button onClick={(e) => { e.stopPropagation(); window.location.href = `/vte/upload?event_id=${row['ID']}` }}>upload</button>
                 {' '}
                 |{' '}
-                <button onClick={(e) => { e.stopPropagation(); window.location.href = `/events/edit?event_id=${row['ID']}` }}>edit</button>
+                <button onClick={(e) => { e.stopPropagation(); window.location.href = `/vte/edit?event_id=${row['ID']}` }}>edit</button>
               </>
             )}
           />
