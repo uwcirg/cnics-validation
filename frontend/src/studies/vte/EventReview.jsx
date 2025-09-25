@@ -1,10 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import '../../pages/Home.css'
 
 function VTEEventReview() {
   const apiUrl = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || '')
   const [searchParams] = useSearchParams()
   const eventId = searchParams.get('event_id')
+  
+  // Loading and error states
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const [submitting, setSubmitting] = useState(false)
 
   // VTE Type flags
   const [peFlag, setPeFlag] = useState(false)
@@ -142,10 +148,23 @@ function VTEEventReview() {
 
   useEffect(() => {
     if (!eventId) return
+    
+    setLoading(true)
+    setError(null)
+    
     fetch(`${apiUrl}/api/events/${eventId}`, { credentials: 'include' })
-      .then((r) => r.ok ? r.json() : Promise.reject(r))
+      .then((r) => {
+        if (!r.ok) {
+          throw new Error(`Failed to load event: ${r.status} ${r.statusText}`)
+        }
+        return r.json()
+      })
       .then((j) => setEventDetails(j.data || null))
-      .catch(() => setEventDetails(null))
+      .catch((err) => {
+        setError(err.message)
+        setEventDetails(null)
+      })
+      .finally(() => setLoading(false))
   }, [apiUrl, eventId])
 
   const show = useMemo(() => {
@@ -350,15 +369,148 @@ function VTEEventReview() {
     managementThrombectomy, managementManagedas
   ])
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    alert('VTE Review submitted (placeholder).')
+    
+    if (!eventId) {
+      setError('No event ID provided')
+      return
+    }
+    
+    setSubmitting(true)
+    setError(null)
+    
+    try {
+      // Prepare the review data
+      const reviewData = {
+        event_id: parseInt(eventId),
+        // VTE-specific fields
+        pe_flag: peFlag,
+        dvt_flag: dvtFlag,
+        cat_flag: catFlag,
+        no_vte_flag: noVteFlag,
+        pe_dp: peDp,
+        dvt_dp: dvtDp,
+        cat_dp: catDp,
+        pe_type: peType,
+        dvt_type: dvtType,
+        cat_type: catType,
+        cat_subtype: catSubtype,
+        // Location data
+        pe_main_flag: peMainFlag,
+        pe_lobar_flag: peLobarFlag,
+        pe_segmental_flag: peSegmentalFlag,
+        pe_subsegmental_flag: peSubsegmentalFlag,
+        pe_unknown_flag: peUnknownFlag,
+        dvt_ue_flag: dvtUeFlag,
+        dvt_le_flag: dvtLeFlag,
+        dvt_other_flag: dvtOtherFlag,
+        dvt_unknown_flag: dvtUnknownFlag,
+        // Contributing conditions
+        cc_malignancy_flag: ccMalignancyFlag,
+        cc_chemo_flag: ccChemoFlag,
+        cc_heartfailure_flag: ccHeartfailureFlag,
+        cc_ns_flag: ccNsFlag,
+        cc_dialysis_flag: ccDialysisFlag,
+        cc_hosp_flag: ccHospFlag,
+        cc_mt_flag: ccMtFlag,
+        cc_immob_flag: ccImmobFlag,
+        cc_longride_flag: ccLongrideFlag,
+        cc_surgery_flag: ccSurgeryFlag,
+        cc_infection_flag: ccInfectionFlag,
+        cc_transfusion_flag: ccTransfusionFlag,
+        cc_inherited_flag: ccInheritedFlag,
+        cc_ivdrug_flag: ccIvdrugFlag,
+        cc_copd_flag: ccCopdFlag,
+        cc_ph_flag: ccPhFlag,
+        cc_steroid_flag: ccSteroidFlag,
+        cc_pregnancy_flag: ccPregnancyFlag,
+        cc_other_flag: ccOtherFlag,
+        cc_unknown_flag: ccUnknownFlag,
+        cc_none_flag: ccNoneFlag,
+        // Additional fields
+        iv_drug_use: ivDrugUse,
+        cc_other: ccOther,
+        cc_infection_other: ccInfectionOther,
+        dvt_other: dvtOther,
+        smoking_use: smokingUse,
+        vte_history_pe_flag: vtehistoryPeFlag,
+        vte_history_dvt_flag: vtehistoryDvtFlag,
+        vte_history_unknown_type_flag: vtehistoryUnknowntypeFlag,
+        vte_history_none_flag: vtehistoryNoneFlag,
+        vte_history_unknown_flag: vtehistoryUnknownFlag,
+        family_history: familyHistory,
+        // Management
+        management_info: managementInfo,
+        management_at: managementAt,
+        management_hosp: managementHosp,
+        management_vcf: managementVcf,
+        management_tt: managementTt,
+        management_thrombectomy: managementThrombectomy,
+        management_managed_as: managementManagedas
+      }
+      
+      const response = await fetch(`${apiUrl}/api/vte/reviews`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(reviewData)
+      })
+      
+      if (!response.ok) {
+        throw new Error(`Failed to submit review: ${response.status} ${response.statusText}`)
+      }
+      
+      const result = await response.json()
+      
+      // Show success message and redirect or reset form
+      alert('VTE Review submitted successfully!')
+      
+      // Reset form or redirect
+      window.location.href = '/vte/review'
+      
+    } catch (err) {
+      setError(err.message)
+      console.error('Error submitting VTE review:', err)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="home-container">
+        <h1>Loading VTE Event Review...</h1>
+        <p>Please wait while we load the event details.</p>
+      </div>
+    )
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="home-container">
+        <h1>Error Loading VTE Event Review</h1>
+        <div style={{ color: 'red', margin: '20px 0' }}>
+          <strong>Error:</strong> {error}
+        </div>
+        <button onClick={() => window.location.reload()}>
+          Try Again
+        </button>
+      </div>
+    )
   }
 
   return (
-    <div>
+    <div className="home-container">
+      {/* Top-right CNICS logo */}
+      <img className="cnics-logo" src="/cnics_logo.png" alt="CNICS" />
+      
       <div className="boxright" style={{ width: '300px', fontSize: '.95em' }}>
-        <h3>Review Instructions:</h3>
+        <h3>VTE Review Instructions:</h3>
         <div style={{ marginTop: '8px' }}>
           View as: {" "}
           <a href={`${apiUrl}/files/CNICS VTE reviewer instructions.doc`} download>.doc</a>
@@ -370,6 +522,12 @@ function VTEEventReview() {
       <h1>Review event: VTE {eventId}</h1>
       {eventDetails && (
         <p>Date: {eventDetails.event_date || '—'}</p>
+      )}
+      
+      {error && (
+        <div style={{ color: 'red', margin: '20px 0', padding: '10px', border: '1px solid red', borderRadius: '4px' }}>
+          <strong>Error:</strong> {error}
+        </div>
       )}
 
       <div className="indent1">
@@ -1393,7 +1551,23 @@ function VTEEventReview() {
 
               {show.submit && (
                 <tr id="submit">
-                  <td colSpan={2}><button type="submit">Submit</button></td>
+                  <td colSpan={2}>
+                    <button 
+                      type="submit" 
+                      disabled={submitting}
+                      style={{
+                        padding: '10px 20px',
+                        fontSize: '16px',
+                        backgroundColor: submitting ? '#ccc' : '#007bff',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: submitting ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      {submitting ? 'Submitting...' : 'Submit VTE Review'}
+                    </button>
+                  </td>
                 </tr>
               )}
             </tbody>

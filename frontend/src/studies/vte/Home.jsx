@@ -93,7 +93,7 @@ function VTEHome({ auth }) {
   const [search, setSearch] = useState('')
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/tables/events`, { credentials: 'include' })
+    fetch(`${API_BASE}/api/vte/tables/events`, { credentials: 'include' })
       .then((res) => {
         if (!res.ok) {
           if (res.status === 401) alert('Login required');
@@ -105,7 +105,7 @@ function VTEHome({ auth }) {
       .then((json) => setRows(json.data || []))
       .catch(() => {})
 
-    fetch(`${API_BASE}/api/events/status_summary`, { credentials: 'include' })
+    fetch(`${API_BASE}/api/events/status_summary?study=vte`, { credentials: 'include' })
       .then((res) => {
         if (!res.ok) {
           if (res.status === 401) alert('Login required');
@@ -140,73 +140,83 @@ function VTEHome({ auth }) {
             <h4>Events</h4>
             <ul>
               <li>
-                <Link to="/events/viewAll">View all events</Link>
+                <Link to="/vte/viewAll">View all VTE events</Link>
               </li>
               <li>
-                <Link to="/events/add">Add an event</Link>
+                <Link to="/vte/add">Add a VTE event</Link>
               </li>
               <li>
-                <Link to="/events/addMany">Add multiple events from a CSV file</Link>
+                <Link to="/vte/addMany">Add multiple VTE events from a CSV file</Link>
               </li>
               <li>
-                <a href={`${API_BASE}/api/events/export?format=csv`}>Export all events as CSV</a>
+                <a href={`${API_BASE}/api/events/export?format=csv&study=vte`}>Export all VTE events as CSV</a>
               </li>
             </ul>
             <h4>Users</h4>
             <ul>
               <li>
-                <Link to="/users/add">Add a user</Link>
+                <Link to="/vte/users/add">Add a VTE user</Link>
               </li>
               <li>
-                <Link to="/users/viewAll">Edit/Delete users</Link>
+                <Link to="/vte/users/viewAll">Edit/Delete VTE users</Link>
               </li>
             </ul>
           </div>
         </section>
       )}
 
-      {(auth && (auth.uploader || auth.admin)) && (
+      {/* Events to Review section - for reviewers and admins */}
+      {(auth && (auth.reviewer || auth.admin)) && (
         <section>
-          <h3>Upload New Packets</h3>
-          <p>
-            Use this page to find an event and upload its packet. Please note the
-            instructions on the right about how to properly assemble a review
-            packet.
-          </p>
-          <h4>Quick Search</h4>
-          <p style={{ marginTop: '4px', color: '#444', fontSize: '14px' }}>
-            Search across all columns (ID, Event Date, Created/Uploaded/Scrubbed, Criteria, Site). Example: "UW" or "2024-01-15".
-          </p>
-          <input
-            className="quick-search"
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search"
-          />
-          
-          <h4>Events That Need Packets</h4>
+          <h3>Events to Review</h3>
+          <p>Events with packets ready for review.</p>
           <TableWrapper
-            endpoint="/api/events/need_packets"
-            columns={['ID', 'Date', 'Created', 'Site']}
+            endpoint="/api/vte/events/for_review"
+            columns={['ID', 'Patient ID', 'Date', 'Criteria', 'Site']}
             renderActions={(row) => (
-              <>
-                <button onClick={(e) => { e.stopPropagation(); window.location.href = `/events/upload?event_id=${row['ID']}` }}>upload</button>
-                {' '}
-                |{' '}
-                <button onClick={(e) => { e.stopPropagation(); window.location.href = `/events/edit?event_id=${row['ID']}` }}>edit</button>
-              </>
+              <button onClick={(e) => { e.stopPropagation(); window.location.href = `/vte/review?event_id=${row['ID']}` }}>review</button>
             )}
           />
         </section>
       )}
 
-      {(auth && (auth.reviewer || auth.admin)) && (
-        <section>
-          <h3>Review Events</h3>
-          <TableWrapper endpoint="/api/reviewer/awaiting" pageSize={3} />
-        </section>
-      )}
+      <section>
+        <h3>Search Events</h3>
+        <p>
+          Search for events across all columns (ID, Event Date, Created/Uploaded/Scrubbed, Criteria, Site). 
+          Example: "UW" or "2024-01-15".
+        </p>
+        <input
+          className="quick-search"
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search events..."
+        />
+        
+        {search && (
+          <div style={{ marginTop: '20px' }}>
+            <h4>Search Results</h4>
+            <TableWrapper
+              endpoint="/api/vte/events"
+              columns={['ID', 'Date', 'Created', 'Site']}
+              renderActions={(row) => (
+                <>
+                  {(auth && (auth.uploader || auth.admin)) && (
+                    <>
+                      <button onClick={(e) => { e.stopPropagation(); window.location.href = `/vte/upload?event_id=${row['ID']}` }}>upload</button>
+                      {' '}
+                      |{' '}
+                    </>
+                  )}
+                  <button onClick={(e) => { e.stopPropagation(); window.location.href = `/vte/edit?event_id=${row['ID']}` }}>edit</button>
+                </>
+              )}
+            />
+          </div>
+        )}
+      </section>
+
 
       <div className="infobox">
         <h3>Review packets should contain:</h3>

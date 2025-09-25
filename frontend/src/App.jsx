@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Route, BrowserRouter as Router, Routes } from 'react-router-dom'
 import BaseLayout from './components/BaseLayout'
-import DevAuthTester from './components/DevAuthTester'
 import ProtectedRoute from './components/ProtectedRoute'
 import Admin from './pages/Admin'
 import CriteriaAdd from './pages/CriteriaAdd'
@@ -29,10 +28,30 @@ import UserDelete from './pages/UserDelete'
 import UserEdit from './pages/UserEdit'
 import UserLogout from './pages/UserLogout'
 import UsersViewAll from './pages/UsersViewAll'
+import VTEAdmin from './studies/vte/Admin'
+import VTECriteriaAdd from './studies/vte/CriteriaAdd'
+import VTECriteriaDelete from './studies/vte/CriteriaDelete'
+import VTEEventAdd from './studies/vte/EventAdd'
+import VTEEventAddMany from './studies/vte/EventAddMany'
+import VTEEventAssignMany from './studies/vte/EventAssignMany'
+import VTEEventAssignThird from './studies/vte/EventAssignThird'
+import VTEEventDownload from './studies/vte/EventDownload'
+import VTEEventEdit from './studies/vte/EventEdit'
+import VTEEventExport from './studies/vte/EventExport'
+import VTEEventReupload from './studies/vte/EventReupload'
 import VTEEventReview from './studies/vte/EventReview'
 import VTEEventScreen from './studies/vte/EventScreen'
 import VTEEventScrub from './studies/vte/EventScrub'
+import VTEEventSendMany from './studies/vte/EventSendMany'
 import VTEEventUpload from './studies/vte/EventUpload'
+import VTEEventViewAll from './studies/vte/EventViewAll'
+import VTEHome from './studies/vte/Home'
+import VTESolicitationAdd from './studies/vte/SolicitationAdd'
+import VTESolicitationDelete from './studies/vte/SolicitationDelete'
+import VTEUserAdd from './studies/vte/UserAdd'
+import VTEUserDelete from './studies/vte/UserDelete'
+import VTEUserEdit from './studies/vte/UserEdit'
+import VTEUsersViewAll from './studies/vte/UsersViewAll'
 
 function App() {
   const [auth, setAuth] = useState({})
@@ -61,11 +80,11 @@ function App() {
 
   return (
     <Router>
-      <DevAuthTester currentAuth={auth} onAuthChange={setAuth} />
       <BaseLayout auth={auth}>
         <Routes>
           {/* Public routes */}
           <Route path="/" element={<Home auth={auth} />} />
+          <Route path="/vte" element={<VTEHome auth={auth} />} />
           <Route path="/events" element={<EventIndex />} />
           <Route path="/users/logout" element={<UserLogout />} />
           <Route path="/logout" element={<UserLogout />} />
@@ -76,14 +95,44 @@ function App() {
               <Admin />
             </ProtectedRoute>
           } />
+          <Route path="/vte/admin" element={
+            <ProtectedRoute requiredRoles={['admin']} auth={auth}>
+              <VTEAdmin />
+            </ProtectedRoute>
+          } />
           <Route path="/events/add" element={
             <ProtectedRoute requiredRoles={['admin']} auth={auth}>
               <EventAdd />
             </ProtectedRoute>
           } />
+          <Route path="/vte/add" element={
+            <ProtectedRoute requiredRoles={['admin']} auth={auth}>
+              <VTEEventAdd />
+            </ProtectedRoute>
+          } />
           <Route path="/events/addMany" element={
             <ProtectedRoute requiredRoles={['admin']} auth={auth}>
               <EventAddMany />
+            </ProtectedRoute>
+          } />
+          <Route path="/vte/addMany" element={
+            <ProtectedRoute requiredRoles={['admin']} auth={auth}>
+              <VTEEventAddMany />
+            </ProtectedRoute>
+          } />
+          <Route path="/vte/assignMany" element={
+            <ProtectedRoute requiredRoles={['admin']} auth={auth}>
+              <VTEEventAssignMany />
+            </ProtectedRoute>
+          } />
+          <Route path="/vte/assignThird" element={
+            <ProtectedRoute requiredRoles={['admin']} auth={auth}>
+              <VTEEventAssignThird />
+            </ProtectedRoute>
+          } />
+          <Route path="/vte/sendMany" element={
+            <ProtectedRoute requiredRoles={['admin']} auth={auth}>
+              <VTEEventSendMany />
             </ProtectedRoute>
           } />
           <Route path="/events/assignMany" element={
@@ -99,6 +148,16 @@ function App() {
           <Route path="/events/export" element={
             <ProtectedRoute requiredRoles={['admin']} auth={auth}>
               <EventExport />
+            </ProtectedRoute>
+          } />
+          <Route path="/vte/export" element={
+            <ProtectedRoute requiredRoles={['admin']} auth={auth}>
+              <VTEEventExport />
+            </ProtectedRoute>
+          } />
+          <Route path="/vte/download" element={
+            <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
+              <VTEEventDownload />
             </ProtectedRoute>
           } />
           <Route path="/users/viewAll" element={
@@ -121,6 +180,26 @@ function App() {
               <UserDelete />
             </ProtectedRoute>
           } />
+          <Route path="/vte/users/viewAll" element={
+            <ProtectedRoute requiredRoles={['admin']} auth={auth}>
+              <VTEUsersViewAll />
+            </ProtectedRoute>
+          } />
+          <Route path="/vte/users/add" element={
+            <ProtectedRoute requiredRoles={['admin']} auth={auth}>
+              <VTEUserAdd auth={auth} />
+            </ProtectedRoute>
+          } />
+          <Route path="/vte/users/edit" element={
+            <ProtectedRoute requiredRoles={['admin']} auth={auth}>
+              <VTEUserEdit auth={auth} />
+            </ProtectedRoute>
+          } />
+          <Route path="/vte/users/delete" element={
+            <ProtectedRoute requiredRoles={['admin']} auth={auth}>
+              <VTEUserDelete />
+            </ProtectedRoute>
+          } />
           
           {/* Uploader routes (uploader or admin) */}
           <Route path="/events/upload" element={
@@ -136,6 +215,11 @@ function App() {
           <Route path="/events/reupload" element={
             <ProtectedRoute requiredRoles={['uploader', 'admin']} auth={auth}>
               <EventReupload />
+            </ProtectedRoute>
+          } />
+          <Route path="/vte/reupload" element={
+            <ProtectedRoute requiredRoles={['uploader', 'admin']} auth={auth}>
+              <VTEEventReupload />
             </ProtectedRoute>
           } />
           
@@ -182,9 +266,19 @@ function App() {
               <EventEdit />
             </ProtectedRoute>
           } />
+          <Route path="/vte/edit" element={
+            <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
+              <VTEEventEdit />
+            </ProtectedRoute>
+          } />
           <Route path="/events/viewAll" element={
             <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
               <EventViewAll />
+            </ProtectedRoute>
+          } />
+          <Route path="/vte/viewAll" element={
+            <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
+              <VTEEventViewAll />
             </ProtectedRoute>
           } />
           <Route path="/events/download" element={
@@ -210,6 +304,26 @@ function App() {
           <Route path="/criteria/delete" element={
             <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
               <CriteriaDelete />
+            </ProtectedRoute>
+          } />
+          <Route path="/vte/criteria/add" element={
+            <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
+              <VTECriteriaAdd />
+            </ProtectedRoute>
+          } />
+          <Route path="/vte/criteria/delete" element={
+            <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
+              <VTECriteriaDelete />
+            </ProtectedRoute>
+          } />
+          <Route path="/vte/solicitations/add" element={
+            <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
+              <VTESolicitationAdd />
+            </ProtectedRoute>
+          } />
+          <Route path="/vte/solicitations/delete" element={
+            <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
+              <VTESolicitationDelete />
             </ProtectedRoute>
           } />
         </Routes>

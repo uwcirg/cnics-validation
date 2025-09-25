@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import '../../pages/Home.css'
 
 function VTEEventScreen() {
   const [searchParams] = useSearchParams()
@@ -49,7 +50,9 @@ function VTEEventScreen() {
   }
 
   return (
-    <div>
+    <div className="home-container">
+      {/* Top-right CNICS logo */}
+      <img className="cnics-logo" src="/cnics_logo.png" alt="CNICS" />
       <h1>Screen charts for VTE {eventId}</h1>
 
       {details && (
