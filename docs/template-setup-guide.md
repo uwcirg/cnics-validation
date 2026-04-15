@@ -46,7 +46,7 @@ The existing studies (MI, VTE, CVA, Heart Failure, AFIB) are currently running o
 #### Data Migration
 - **Backwards Compatibility**: Existing tables must remain compatible or require migration scripts
 - **Patient Data**: All systems use views on `cnics_data.Patients` table
-- **Authentication**: Maintain existing Apache/LDAP authentication approach
+- **Authentication**: Maintain existing Apache-edge auth contract — HTTP Basic Auth with `AuthBasicProvider ldap` and a `require ldap-group` rule (see repository-root [`.htaccess`](../.htaccess)), with the authenticated identity forwarded to the Flask backend as the `X-Remote-User` header. Keycloak is deferred to a later release and is NOT supported for first-release deployments.
 - **Authorization**: Preserve simple role-based access (uploader_flag, admin_flag)
 
 #### Study-Specific Differences
@@ -58,7 +58,7 @@ The existing studies (MI, VTE, CVA, Heart Failure, AFIB) are currently running o
 
 #### Technical Migration
 - **Database**: Assume MariaDB compatibility
-- **Authentication**: Apache .htaccess & LDAP integration
+- **Authentication**: Apache edge auth via `.htaccess` using `AuthType basic` + `AuthBasicProvider ldap` (the repository-root [`.htaccess`](../.htaccess) is authoritative); Flask backend consumes `X-Remote-User` forwarded by Apache after a successful bind.
 - **File Handling**: Preserve existing file upload/download workflows
 - **API Compatibility**: Maintain existing API contracts where possible
 
@@ -69,7 +69,7 @@ The CNICS Validation system is built with:
 - **Backend**: Flask API with SQLAlchemy ORM
 - **Database**: MariaDB/MySQL with study-specific schemas
 - **Containerization**: Docker Compose for development and deployment
-- **Authentication**: Header-based authentication with role management
+- **Authentication**: Two-layer contract — Apache edge basic auth with `AuthBasicProvider ldap` (per `.htaccess`) forwards the authenticated identity to the Flask backend as `X-Remote-User`; role flags (`admin`, `uploader`, `reviewer`, `third_reviewer`) are enforced in the backend via decorators. See the root README's Authentication and Authorization section and `.specify/memory/constitution.md` (Security & Data Governance → Authentication) for the full decision record.
 
 ## Study-Specific Configuration Strategy
 

@@ -158,7 +158,13 @@ def ensure_pdf(doc_path: str, pdf_path: str) -> None:
             y = height - 40
     c.save()
 
-# Optional Keycloak configuration mirroring the Express backend
+# DEFERRED: Keycloak integration is NOT part of the first release.
+# Gated off by default (KEYCLOAK_REALM unset). Do not set KEYCLOAK_REALM
+# in any first-release study deployment. Before re-enabling, amend
+# .specify/memory/constitution.md under
+# Security & Data Governance -> Authentication (future releases).
+# The first-release auth mechanism is basic+ldap at the Apache edge
+# (see .htaccess) forwarded to this backend as X-Remote-User.
 keycloak_openid = None
 if os.getenv("KEYCLOAK_REALM"):
     try:
@@ -208,11 +214,17 @@ def _load_user_from_remote_header() -> Optional[dict]:
 def requires_auth(func):
     """Decorator enforcing authentication.
 
-    Priority:
-    1) If `X-Remote-User` header is present, require user to exist in DB
-       and attach role flags to request context.
-    2) Else if Keycloak is configured, require a valid Bearer token.
-    3) Else allow (legacy/dev environments without external auth configured).
+    First-release priority (see .specify/memory/constitution.md,
+    Security & Data Governance -> Authentication):
+    1) If `X-Remote-User` header is present (forwarded by Apache after a
+       successful basic+ldap bind per the repo-root .htaccess), require
+       the user to exist in DB and attach role flags to request context.
+       This is the ONLY supported first-release path.
+    2) DEFERRED — not part of first release: if Keycloak is configured
+       (KEYCLOAK_REALM set, which MUST NOT be set in a first-release
+       study deployment), require a valid Bearer token.
+    3) Else allow (legacy/dev environments without external auth
+       configured).
     """
 
     def wrapper(*args, **kwargs):
@@ -269,7 +281,12 @@ def requires_auth(func):
                     session.close()
                 return func(*args, **kwargs)
 
-        # Fallback to Keycloak if configured: require a valid Bearer token
+        # DEFERRED: Keycloak Bearer-token fallback is NOT part of the
+        # first release. This branch only activates when KEYCLOAK_REALM
+        # is set, which MUST NOT happen in a first-release deployment.
+        # See .specify/memory/constitution.md -> Security & Data
+        # Governance -> Authentication (future releases) before
+        # re-enabling.
         if 'keycloak_openid' in globals() and keycloak_openid:
             auth = request.headers.get("Authorization", "")
             if not auth.startswith("Bearer "):
@@ -599,9 +616,10 @@ def add_user():
 def auth_me():
     """Return the authenticated user's identity and role flags.
 
-    Only header-based auth populates this endpoint. If no header auth is used
-    (e.g., Keycloak or dev without auth), this returns 401 because role mapping
-    requires a cnics user.
+    Only the first-release auth path (basic+ldap at the Apache edge
+    forwarded as X-Remote-User) populates this endpoint. If no header
+    auth is used (e.g., the deferred Keycloak path, or dev without
+    auth), this returns 401 because role mapping requires a cnics user.
     """
     auth_user = getattr(g, 'auth_user', None)
     if not auth_user:

@@ -80,6 +80,15 @@ graph TB
 > study backend currently calls a FHIR server. The node is intentionally
 > drawn without edges to make that visually obvious. Any future FHIR
 > integration will be tracked as its own feature with its own spec.
+>
+> **Note on the LDAP Authentication node:** `LDAP Authentication` above
+> denotes HTTP Basic Auth at the Apache edge with `AuthBasicProvider
+> ldap` (per repository-root [`.htaccess`](../.htaccess)) — not a
+> direct LDAP bind from any study backend. After a successful bind,
+> Apache forwards the authenticated identity to each study backend as
+> the `X-Remote-User` header. Keycloak is **deferred — not part of
+> first release**; see `.specify/memory/constitution.md` (Security &
+> Data Governance → Authentication) for the decision record.
 
 ## 2. Study Configuration Loading
 
@@ -204,6 +213,18 @@ graph TB
     CVA_AUTH --> CVA_ISO
     HF_AUTH --> HF_ISO
 ```
+
+> **Note on the Authentication Layer:** For the first release,
+> `LDAP Server → Apache/LDAP Integration` in the diagram above is
+> `AuthType basic` + `AuthBasicProvider ldap` + `require ldap-group`
+> configured in the repository-root [`.htaccess`](../.htaccess). After
+> a successful basic-auth bind, Apache forwards the authenticated
+> identity to the Flask backend as the `X-Remote-User` header, and
+> `Role-Based Access Control` downstream is enforced in the backend
+> via `@requires_auth` / `@requires_roles` decorators. Keycloak is
+> **deferred — not part of first release**; see
+> `.specify/memory/constitution.md` (Security & Data Governance →
+> Authentication) for the decision record.
 
 ## 5. Deployment Pipeline
 
