@@ -128,8 +128,9 @@ Outstanding next steps:
 
 ### OpenAPI Documentation
 
-Run `python scripts/generate_openapi.py` to generate `openapi.json` describing
-the backend API. A GitHub action updates this file on each push.
+Run `python -m flask_backend.generate_openapi` from the repository root
+to generate `openapi.json` describing the backend API. A GitHub action
+updates this file on each push.
 
 ## Alternative SQLAlchemy models
 

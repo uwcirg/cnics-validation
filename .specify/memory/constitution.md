@@ -1,7 +1,47 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: 1.1.0 → 1.1.1
+Version change: 1.1.1 → 1.1.2
+Rationale: PATCH bump. Updates the "API contracts" bullet in the
+Development Workflow & Quality Gates section to point at the canonical
+location of the OpenAPI generator, which now lives inside the
+`flask_backend` package (`python -m flask_backend.generate_openapi`)
+rather than at a repo-root `scripts/` directory that existed nowhere
+except in stale references. No new rule is introduced, no principle is
+added or removed, and no prior normative guidance is rescinded — this
+is a command-path precision fix, hence PATCH. Prior SYNC IMPACT REPORT
+for v1.1.0 → v1.1.1 is preserved below.
+
+---- v1.1.1 → v1.1.2 (this amendment) ----
+
+Modified principles: I–VI unchanged.
+
+Modified sections:
+  - Development Workflow & Quality Gates → "API contracts" bullet:
+    command reference changed from `python scripts/generate_openapi.py`
+    to `python -m flask_backend.generate_openapi`.
+
+Source material: feature 002-constitution-sync follow-up — the
+referenced `scripts/generate_openapi.py` had never been committed to
+the repo; the script was created fresh during the implementation of
+002 and subsequently moved into the `flask_backend` package so it
+lives next to the code it introspects, which matches the project's
+preference for reusing existing directory structures over creating
+new top-level directories.
+
+Templates requiring updates:
+  - ✅ .github/workflows/update-openapi.yml — command and path-filter
+    updated to `python -m flask_backend.generate_openapi`.
+  - ✅ README.md — "OpenAPI Documentation" section updated to the new
+    command.
+  - ✅ .specify/templates/* — no change needed.
+  - ✅ docs/* — no change needed.
+
+Deferred / TODO:
+  - None.
+
+---- v1.1.0 → v1.1.1 (prior amendment, preserved for history) ----
+
 Rationale: PATCH bump. Clarifies the first-release authentication mechanism
 to match what `.htaccess` actually configures: HTTP Basic Auth at the Apache
 edge with `AuthBasicProvider ldap` (plus an `ldap-group` require rule),
@@ -232,11 +272,12 @@ obligation to document what was there first.
   existing deployments and MUST preserve Principle III (legacy compatibility)
   or document the break.
 - **API contracts**: `openapi.json` MUST be regenerated
-  (`python scripts/generate_openapi.py`) whenever backend routes, request
-  bodies, or response shapes change. The CI action that refreshes it on push
-  is the authoritative source. Pre-release, changes to this app's own
-  routes are permitted per Principle VI, but the regenerated `openapi.json`
-  MUST land in the same PR so reviewers see the contract delta.
+  (`python -m flask_backend.generate_openapi`, run from the repository
+  root) whenever backend routes, request bodies, or response shapes
+  change. The CI action that refreshes it on push is the authoritative
+  source. Pre-release, changes to this app's own routes are permitted
+  per Principle VI, but the regenerated `openapi.json` MUST land in
+  the same PR so reviewers see the contract delta.
 - **Testing discipline**: New backend endpoints SHOULD have at least one
   integration test that exercises the role decorators with representative
   user fixtures. Frontend study-specific components SHOULD be verified under
@@ -282,4 +323,4 @@ obligation to document what was there first.
   operational reference for deploying new studies. This constitution governs
   *what* is allowed; that guide documents *how* to do it within those rules.
 
-**Version**: 1.1.1 | **Ratified**: 2026-04-14 | **Last Amended**: 2026-04-15
+**Version**: 1.1.2 | **Ratified**: 2026-04-14 | **Last Amended**: 2026-04-15
