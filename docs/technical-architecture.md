@@ -36,7 +36,7 @@ graph TB
     end
     
     subgraph "External Systems"
-        FHIR[FHIR Server]
+        FHIR[FHIR Server<br/>reserved — not currently used]
         EMAIL[SMTP Server]
         CNICS[CNICS Data Warehouse]
     end
@@ -65,10 +65,6 @@ graph TB
     VTE_BE --> LOGS
     CVA_BE --> LOGS
     
-    MCI_BE --> FHIR
-    VTE_BE --> FHIR
-    CVA_BE --> FHIR
-    
     MCI_BE --> EMAIL
     VTE_BE --> EMAIL
     CVA_BE --> EMAIL
@@ -77,6 +73,13 @@ graph TB
     VTE_DB --> CNICS
     CVA_DB --> CNICS
 ```
+
+> **Note on the FHIR Server node:** The FHIR node above is retained as a
+> reserved placeholder only. It is **not currently used** — retained for
+> backward compatibility; no runtime component reads this value, and no
+> study backend currently calls a FHIR server. The node is intentionally
+> drawn without edges to make that visually obvious. Any future FHIR
+> integration will be tracked as its own feature with its own spec.
 
 ## 2. Study Configuration Loading
 

@@ -47,7 +47,7 @@ services are built or started. The template defines the following variables:
 - `DB_PASSWORD` – password for `DB_USER`.
 - `VITE_API_URL` – base URL of the backend API (Application Programming Interface) consumed by the React frontend. For unified-domain deployments leave empty to use same-origin.
 - `FRONTEND_ORIGIN` – allowed origin for CORS (Cross‑Origin Resource Sharing) requests to the backend.
-- `FHIR_SERVER` – URL of the FHIR (Fast Healthcare Interoperability Resources) server used by the application.
+- `FHIR_SERVER` – **not currently used.** Retained for backward compatibility with deployments that still set it; no runtime component reads this value. Safe to omit.
 - `FILES_DIR` – directory containing instruction files served by the backend.
 - `DOWNLOADS_DIR` – writable directory where the backend saves generated/downloadable artifacts
   (e.g., uploaded scrubbed ZIPs). Defaults to a subdirectory under `FILES_DIR` if not set.
