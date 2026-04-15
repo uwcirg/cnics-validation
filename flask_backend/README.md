@@ -44,9 +44,22 @@ python -m flask_backend.app
 
 The API exposes `/api/tables/<name>` which returns all rows from the specified table. Results can be limited using optional `limit` and `offset` query parameters.
 
-If the environment variable `KEYCLOAK_REALM` is set, requests are validated
-against a Keycloak server. Configure `KEYCLOAK_URL`, `KEYCLOAK_CLIENT_ID` and
-`KEYCLOAK_CLIENT_SECRET` accordingly.
+**Keycloak is deferred — not part of the first release.** Keycloak
+integration code remains in this package (gated on `KEYCLOAK_REALM`
+being set, default off) but is **not supported** for any first-release
+study deployment. The `KEYCLOAK_URL`, `KEYCLOAK_CLIENT_ID`, and
+`KEYCLOAK_CLIENT_SECRET` environment variables are retained so local
+experimentation continues to work; they MUST NOT be set in a
+first-release deployment. Enabling Keycloak in any study deployment
+requires a prior amendment to
+[`.specify/memory/constitution.md`](../.specify/memory/constitution.md)
+under **Security & Data Governance → Authentication (future
+releases)**. The first-release authentication mechanism is HTTP Basic
+Auth at the Apache edge with `AuthBasicProvider ldap` (per the
+repository-root [`.htaccess`](../.htaccess)), with the authenticated
+identity forwarded to this backend as the `X-Remote-User` header. See
+the root [`README.md`](../README.md) Authentication and Authorization
+section for the full contract.
 
 The repo includes a sample CNICS dump `cnics.sql` for reference. When the
 database container initializes it runs `init/04-create-patients.sql`, which
