@@ -78,11 +78,39 @@ See [docs/separation_of_duties.md](docs/separation_of_duties.md) for details on 
 
 ### Authentication and Authorization
 
-The backend supports header-based authentication via an Apache/Ldap front-end that injects an `X-Remote-User` header. When this header is present, the app looks up the authenticated user in the `users` table by the `login` field and attaches a compact identity to the Flask request context. Role flags (`admin`, `uploader`, `reviewer`, `third_reviewer`) are enforced via decorators:
+For the first release, authentication is a two-layer contract and both
+halves are load-bearing:
+
+1. **Apache edge (HTTP Basic Auth + LDAP)**: the repository's
+   [`.htaccess`](./.htaccess) configures `AuthType basic` with
+   `AuthBasicProvider ldap`, an `AuthLDAPURL` pointing at the CNICS
+   LDAP servers, and a `require ldap-group` rule that restricts
+   access to members of the appropriate LDAP group. A request that
+   fails the basic-auth prompt or is not in the group never reaches
+   the backend.
+2. **Flask backend (`X-Remote-User` + role decorators)**: after a
+   successful bind, Apache forwards the authenticated identity to
+   the Flask backend as the `X-Remote-User` request header. The
+   backend looks the user up in the `users` table by the `login`
+   field, attaches a compact identity to the Flask request context,
+   and enforces role flags (`admin`, `uploader`, `reviewer`,
+   `third_reviewer`) via decorators:
 
 - `@requires_auth` – required for all API endpoints; if `X-Remote-User` is present, the user must exist in the database or a 403 is returned.
 - `@requires_roles("role1", ...)` – require all named roles (enforced only when header auth is in use).
 - `@requires_any_role("role1", ...)` – require at least one of the named roles (enforced only when header auth is in use).
+
+The authoritative decision record for this contract is
+[`.specify/memory/constitution.md`](./.specify/memory/constitution.md)
+under **Security & Data Governance → Authentication (first release)**.
+
+**Keycloak is deferred to a later release** and is **not supported in
+first-release deployments**. The `flask_backend/` tree still contains
+Keycloak integration code gated on `KEYCLOAK_REALM` being set; those
+paths default off and are explicitly marked as deferred — see
+[`flask_backend/README.md`](./flask_backend/README.md) for the current
+status of the `KEYCLOAK_*` environment variables. Enabling Keycloak
+in any study deployment requires a prior amendment to the constitution.
 
 Current role protections applied:
 
@@ -97,7 +125,6 @@ Outstanding next steps:
 - Confirm Apache is consistently sending `X-Remote-User` and decide on normalization (email vs. netid); ensure `users.login` values match.
 - Add/seed required users (e.g., Satinder) with `login` filled and appropriate role flags.
 - Review and refine per-endpoint role requirements; extend decorators where needed.
-- Decide whether to require header auth in all environments or keep the permissive dev/Keycloak fallback.
 
 ### OpenAPI Documentation
 
