@@ -7,9 +7,8 @@ app/config/database.php
 app/tmp/*
 # app/tmp/logs
 *.log
-frontend/node_modules/*
+node_modules/
 frontend/dist
-backend/node_modules/*
 .env
 docker-compose.yaml
 app/webroot/files/*.pdf
