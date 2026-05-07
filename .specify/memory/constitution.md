@@ -1,7 +1,86 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: 1.1.1 → 1.1.2
+Version change: 1.1.2 → 1.2.0
+Rationale: MINOR bump. Materially expands Principle V (Workflow and
+Role Parity Across Studies) to permit configuration-driven *selective
+bypass* of specific shared lifecycle stages, in addition to the
+already-permitted *extension* of the lifecycle. Introduces three new
+named feature flags (`ENABLE_SCRUBBING`, `ENABLE_SCREENING`,
+`REVIEWER_COUNT`) and a named example study type, `scans`, that
+exercises all three. The MUST-NOT-redefine/remove/rename constraint on
+shared states and roles is preserved verbatim — bypassed states still
+exist in the schema and shared state machine; configuration only
+controls whether a given deployment enters them. A new normative
+allowance is added on top of prior guidance, so MINOR rather than
+PATCH; nothing is rescinded, so not MAJOR.
+
+---- v1.1.2 → v1.2.0 (this amendment) ----
+
+Modified principles:
+  - I, II, III, IV, VI: unchanged.
+  - V. Workflow and Role Parity Across Studies — extended. The shared
+    primitives + MUST NOT redefine/remove/rename rules are unchanged.
+    A new "Selective bypass" allowance is added alongside the existing
+    "Extension" allowance, with three named flags
+    (`ENABLE_SCRUBBING`, `ENABLE_SCREENING`, `REVIEWER_COUNT`) and an
+    explicit clarification that bypass means "not entered for this
+    deployment", not "deleted from the system". The `scans` study
+    type is named as the canonical instance of selective bypass.
+
+Modified sections:
+  - Core Principles → IV. Configuration Over Code Forks — flag
+    example list extended to include `ENABLE_SCRUBBING`,
+    `ENABLE_SCREENING`, `REVIEWER_COUNT` alongside the existing
+    `STUDY_TYPE`, `ENABLE_PRE_SCRUB`, `ENABLE_QUESTIONNAIRES`.
+  - Development Workflow & Quality Gates → "Feature-flag discipline"
+    bullet — same flags added to the example list, and "safer/off"
+    softened to "safer/conservative" because for these new flags the
+    safer default is on (full workflow) rather than off.
+
+Added sections: N/A (no new top-level sections; Principle V is
+expanded in place).
+Removed sections: N/A.
+
+Source material: user amendment input 2026-04-28 ("I want a new type
+of study called 'scans' which involves a subset of workflows... no
+screening, no scrubbing, one reviewer."). The flag names follow the
+established `ENABLE_*` pattern already used by `ENABLE_PRE_SCRUB` and
+`ENABLE_QUESTIONNAIRES`; `REVIEWER_COUNT` is named as a count rather
+than a boolean to leave room for future single/double/triple-reviewer
+protocols without requiring another amendment.
+
+Templates requiring updates:
+  - ✅ .specify/templates/plan-template.md — no change needed; it
+    references the constitution generically via "Constitution Check"
+    and does not hardcode principle content.
+  - ✅ .specify/templates/spec-template.md — no change needed.
+  - ✅ .specify/templates/tasks-template.md — no change needed.
+  - ✅ .specify/templates/constitution-template.md — no change needed
+    (this amendment uses existing template structure).
+  - ⚠ docs/template-setup-guide.md — currently documents
+    `ENABLE_PRE_SCRUB` and per-study env files but does not yet show
+    a `scans`-style configuration with the new flags. A follow-up
+    edit SHOULD add a `scans` example block (analogous to the
+    existing VTE / CVA / HF / AFIB / Malignancy blocks) showing
+    `ENABLE_SCRUBBING=false`, `ENABLE_SCREENING=false`,
+    `REVIEWER_COUNT=1`. Not blocking — the constitution change
+    governs *what* is allowed; the guide documents *how*.
+  - ⚠ README.md — does not need to change for governance, but if a
+    `scans` deployment is shipped first, README env-var documentation
+    should be expanded to list the three new flags.
+
+Deferred / TODO:
+  - Implementation work to actually wire `STUDY_TYPE=scans` and the
+    three flags through the shared configuration layer, the event
+    state machine, the assignment logic, and the frontend study
+    factory is out of scope for this amendment and belongs in a
+    feature spec / plan / tasks cycle. This amendment grants
+    governance permission for that work, it does not perform it.
+  - RATIFICATION_DATE preserved at 2026-04-14.
+
+---- v1.1.1 → v1.1.2 (prior amendment, preserved for history) ----
+
 Rationale: PATCH bump. Updates the "API contracts" bullet in the
 Development Workflow & Quality Gates section to point at the canonical
 location of the OpenAPI generator, which now lives inside the
@@ -9,10 +88,7 @@ location of the OpenAPI generator, which now lives inside the
 rather than at a repo-root `scripts/` directory that existed nowhere
 except in stale references. No new rule is introduced, no principle is
 added or removed, and no prior normative guidance is rescinded — this
-is a command-path precision fix, hence PATCH. Prior SYNC IMPACT REPORT
-for v1.1.0 → v1.1.1 is preserved below.
-
----- v1.1.1 → v1.1.2 (this amendment) ----
+is a command-path precision fix, hence PATCH.
 
 Modified principles: I–VI unchanged.
 
@@ -154,6 +230,7 @@ Any new study-specific behavior MUST be added via one of the following
 mechanisms, in order of preference:
 
 1. Environment variables (e.g., `STUDY_TYPE`, `ENABLE_PRE_SCRUB`,
+   `ENABLE_SCRUBBING`, `ENABLE_SCREENING`, `REVIEWER_COUNT`,
    `ENABLE_QUESTIONNAIRES`) consumed by shared code.
 2. Study-specific schema files under `init/` (e.g., `02-schema-<study>.sql`).
 3. Study-specific component directories under `frontend/src/studies/<study>/`
@@ -174,15 +251,61 @@ shared code reproduces the fork-era problem in miniature.
 All studies MUST share the same core validation workflow primitives: the
 event lifecycle, role-based access control (admin/uploader/reviewer/
 third_reviewer), file upload and download flows, and the header-based
-authentication contract (`X-Remote-User` injected by Apache/LDAP). Studies MAY
-extend the lifecycle (e.g., VTE's `prescrubbed`/`prescrub_rejected` states) or
-add study-specific review fields, but they MUST NOT redefine, remove, or
-rename shared states or roles.
+authentication contract (`X-Remote-User` injected by Apache/LDAP). The
+shared state names and shared role names MUST NOT be redefined, removed,
+or renamed in any study.
+
+Studies MAY adapt the lifecycle in two configuration-driven ways:
+
+- **Extension**: a study MAY add new states or fields to the lifecycle
+  (e.g., VTE's `prescrubbed`/`prescrub_rejected` states, or
+  study-specific review form fields).
+- **Selective bypass**: a study MAY skip specific shared stages of the
+  event lifecycle when those stages do not apply to its protocol.
+  Bypass MUST be expressed through named configuration flags read by
+  the shared configuration layer (Principle IV), not by branching on
+  `STUDY_TYPE` inside pipeline modules. The recognized bypass flags
+  are:
+  - `ENABLE_SCRUBBING` (default `true`) — when `false`, the `scrubbed`
+    state is not entered; uploaded events advance directly past
+    scrubbing in the shared state machine.
+  - `ENABLE_SCREENING` (default `true`) — when `false`, the `screened`
+    state is not entered; events become eligible for assignment
+    without a screening pass.
+  - `REVIEWER_COUNT` (default `2`) — when set to `1`, an event is
+    considered fully reviewed once `reviewer1_done` is reached; the
+    `reviewer2_done` and `third_review_*` states are not entered, and
+    the `third_reviewer` role is unused for that deployment. Values
+    other than `1` or `2` are reserved for future protocols and MUST
+    be rejected at startup until explicitly supported.
+
+The `scans` study type is the canonical instance of selective bypass:
+it deploys with `ENABLE_SCRUBBING=false`, `ENABLE_SCREENING=false`,
+and `REVIEWER_COUNT=1`. Other studies MAY combine these flags
+independently as their protocol requires; "screening only", "single
+reviewer only", or any other combination is a legitimate
+configuration so long as it is expressed through these flags.
+
+Bypassed states MUST remain present in the schema and in the shared
+state-machine code so cross-study tooling (auth middleware, logging,
+admin views, downstream consumers covered by Principle III) continues
+to recognize them. **Bypass means "not entered for this deployment",
+not "deleted from the system."** Removing a shared state from the
+schema or from the shared state machine to satisfy a single study's
+needs is prohibited and falls back under the redefine/remove/rename
+ban above.
 
 **Rationale**: Reviewers, admins, and uploaders work across studies. A
-consistent mental model and consistent API contracts reduce training cost,
-reduce bug surface, and let shared infrastructure (auth middleware, logging,
-monitoring) apply uniformly.
+consistent mental model and consistent API contracts reduce training
+cost, reduce bug surface, and let shared infrastructure (auth
+middleware, logging, monitoring) apply uniformly. At the same time,
+not every clinical validation protocol needs every stage — a
+scan-review study may have nothing to scrub, nothing to screen, and
+may be staffed for single-reviewer adjudication. Allowing those
+studies to opt out by configuration preserves parity (same primitives,
+same names, same shared code) without forcing ceremony that does not
+apply to their protocol, and without re-introducing the per-study
+forking that Principle I exists to prevent.
 
 ### VI. Pre-Release Iteration and Discovery
 
@@ -288,10 +411,16 @@ obligation to document what was there first.
   require a developer to run `flask` directly against a bespoke DB) MUST be
   accompanied by compose updates so other contributors can reproduce them.
 - **Feature-flag discipline**: Study-specific feature flags
-  (`ENABLE_PRE_SCRUB`, `ENABLE_QUESTIONNAIRES`, etc.) MUST default to the
-  safer/off value for unknown studies and MUST be read through the shared
-  configuration layer, not via direct `os.environ` reads scattered across
-  modules.
+  (`ENABLE_PRE_SCRUB`, `ENABLE_QUESTIONNAIRES`, `ENABLE_SCRUBBING`,
+  `ENABLE_SCREENING`, `REVIEWER_COUNT`, etc.) MUST default to the
+  safer/conservative value for unknown studies — for opt-in extensions
+  that means off (e.g., `ENABLE_PRE_SCRUB=false`), and for
+  bypass-of-shared-stages flags that means the full-workflow value
+  (e.g., `ENABLE_SCRUBBING=true`, `ENABLE_SCREENING=true`,
+  `REVIEWER_COUNT=2`) so an unconfigured deployment runs the complete
+  validation pipeline rather than silently skipping stages. All flags
+  MUST be read through the shared configuration layer, not via direct
+  `os.environ` reads scattered across modules.
 - **Unused subsystem hygiene**: Per Principle VI, environment variables,
   endpoints, or modules that exist in the tree but are not read by any
   runtime component MUST be either documented as unused (with a note on
@@ -323,4 +452,4 @@ obligation to document what was there first.
   operational reference for deploying new studies. This constitution governs
   *what* is allowed; that guide documents *how* to do it within those rules.
 
-**Version**: 1.1.2 | **Ratified**: 2026-04-14 | **Last Amended**: 2026-04-15
+**Version**: 1.2.0 | **Ratified**: 2026-04-14 | **Last Amended**: 2026-04-28
