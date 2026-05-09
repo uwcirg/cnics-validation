@@ -67,17 +67,6 @@ def get_study_config():
         #         'questionnaires': False,
         #         'status': 'inactive'
         #     }
-        # },
-        # 'malignancy': {
-        #     'name': 'Malignancy Validation',
-        #     'abbreviation': 'MALIGNANCY',
-        #     'models_module': 'flask_backend.models.studies.malignancy',
-        #     'schema_file': 'init/02-schema-malignancy.sql',
-        #     'features': {
-        #         'pre_scrub': False,
-        #         'questionnaires': False,
-        #         'architecture': 'novel'
-        #     }
         # }
     }
     

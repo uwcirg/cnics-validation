@@ -1,18 +1,122 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: 1.1.1 → 1.1.2
-Rationale: PATCH bump. Updates the "API contracts" bullet in the
-Development Workflow & Quality Gates section to point at the canonical
-location of the OpenAPI generator, which now lives inside the
-`flask_backend` package (`python -m flask_backend.generate_openapi`)
-rather than at a repo-root `scripts/` directory that existed nowhere
-except in stale references. No new rule is introduced, no principle is
-added or removed, and no prior normative guidance is rescinded — this
-is a command-path precision fix, hence PATCH. Prior SYNC IMPACT REPORT
-for v1.1.0 → v1.1.1 is preserved below.
+Version change: 1.1.3 → 1.2.0
+Rationale: MINOR bump. Narrows Principle IV's "Configuration Over
+Code Forks" preference list from four mechanisms to three by removing
+item 4 (per-study `.env.<study>` files and per-study compose overrides
+`docker-compose.<study>.yaml`), and adds a new normative paragraph
+requiring each deployment to use a single canonical `.env` and a
+single canonical `docker-compose.yaml`. Side-by-side deployments on
+one host are now required to differentiate via `COMPOSE_PROJECT_NAME`,
+not filename suffixes. The combination of removing a previously
+permitted mechanism and adding a new MUST clause materially expands
+existing normative guidance, hence MINOR rather than PATCH. No prior
+constitutional principle is rescinded; no governance authority changes.
+Prior SYNC IMPACT REPORTs for v1.1.0 → v1.1.1, v1.1.1 → v1.1.2, and
+v1.1.2 → v1.1.3 are preserved below.
 
----- v1.1.1 → v1.1.2 (this amendment) ----
+---- v1.1.3 → v1.2.0 (this amendment) ----
+
+Modified principles:
+  - IV. Configuration Over Code Forks — preference list narrowed
+    from four mechanisms to three. Item 4 ("Docker-compose overrides
+    (`docker-compose.<study>.yaml`) and per-study `.env.<study>`
+    files") is removed; the deployment-overlay pattern is no longer
+    a permitted mechanism for study-specific differentiation. A new
+    normative paragraph is added requiring each deployment to use a
+    single canonical `.env` and a single canonical `docker-compose.yaml`,
+    with side-by-side deployments differentiated via
+    `COMPOSE_PROJECT_NAME` rather than filename suffixes. The
+    rationale paragraph is extended to explain why the overlay
+    pattern is being ruled out.
+  - I, II, III, V, VI. unchanged.
+
+Source material: user direction 2026-05-08 ("I do not want the system
+to use .env files that are named per-study; instead, I only want it
+to use .env. The docs should indicate how to modify .env to accommodate
+the specific study that the deployment is targeting"; "Drop both
+docker-compose overrides (`docker-compose.<study>.yaml`) and per-study
+`.env.<study>` files."). The narrowing reflects an architectural
+decision made before any in-tree code or deployment depends on the
+overlay pattern; the prior developer scaffolded overlay references
+in docs but never wired them up at the application layer.
+
+Modified sections: N/A (Principle IV body changes only).
+Added sections: N/A
+Removed sections: N/A
+
+Templates requiring updates:
+  - ✅ docs/template-setup-guide.md — four changes:
+    (1) "Current implementation status" banner added at top of
+    file explaining the single-`.env` / single-`docker-compose.yaml`
+    rule; (2) "### 3. Deployment Configuration" subsection rewritten
+    from overlay-pattern documentation to single-`.env` framing;
+    (3) "Step-by-Step Multi-Study Deployment Process" and
+    "Deployment Commands" sections rewritten around
+    `cp default.env .env` and plain `docker compose up -d`, with
+    VTE as the worked alt-study example. Steps that depend on
+    runtime study selection logic (currently scaffolding-only)
+    are tagged as such; (4) inline `stroke` → `vte` normalizations
+    in scaffolding examples (`### 1. Study Configuration System`
+    and `### 2. Study-Specific Components` directory listings,
+    plus a stale `# or docker-compose overrides` Best Practices
+    bullet replaced with a `COMPOSE_PROJECT_NAME` reference) so
+    the file consistently uses VTE as the alt-study example.
+  - ✅ default.env — already documents `COMPOSE_PROJECT_NAME` as the
+    differentiation mechanism for side-by-side deployments on one
+    host (added in earlier session work; no further change needed
+    for this amendment).
+  - ✅ docs/architecture-overview.md — Diagram 1's "Configuration
+    Layer" subgraph had its `Docker Compose Overrides` node and
+    associated edges removed, since deployment-overlay configs are
+    no longer a permitted differentiation mechanism.
+
+Deferred / TODO:
+  - None.
+
+---- v1.1.2 → v1.1.3 (prior amendment, preserved for history) ----
+
+Modified principles:
+  - I. Single Codebase, Many Studies — enumerated study list narrowed
+    from "MI, VTE, CVA, Heart Failure, AFIB, Malignancy" to "MI, VTE,
+    CVA, Heart Failure, AFIB". The principle's normative requirement
+    is unchanged for the remaining studies.
+  - II–VI. unchanged.
+
+Source material: user direction 2026-05-08 ("remove the Malignancy
+section altogether, as that study does not use this codebase");
+`flask_backend/models/studies/malignancy.py` was committed with a
+header stating the module "is commented out until Malignancy study
+migration is needed" and was never imported by any runtime code;
+`flask_backend/study_config.py`'s Malignancy block was already
+commented out from inception.
+
+Modified sections: N/A (only the Principle I enumerated list).
+Added sections: N/A
+Removed sections: N/A
+
+Templates requiring updates:
+  - ✅ docs/template-setup-guide.md — Malignancy "Example" deployment
+    section removed; "Novel Systems" subheading removed (Malignancy
+    was its only entry); Malignancy entry removed from the
+    "Deployment Commands" block; illustrative 'cancer' references in
+    scaffolding examples removed.
+  - ✅ docs/architecture-overview.md — Malignancy nodes removed from
+    the overall-system, configuration-flow, deployment, and
+    migration-timeline mermaid diagrams.
+  - ✅ flask_backend/models/studies/malignancy.py — dormant module
+    removed; was never imported by any runtime code.
+  - ✅ flask_backend/study_config.py — commented-out Malignancy entry
+    removed.
+  - ✅ init/02-schema-malignancy.sql — dormant schema file removed
+    (was no longer referenced by any in-tree code or doc after the
+    above changes).
+
+Deferred / TODO:
+  - None. RATIFICATION_DATE preserved at 2026-04-14.
+
+---- v1.1.1 → v1.1.2 (prior amendment, preserved for history) ----
 
 Modified principles: I–VI unchanged.
 
@@ -101,7 +205,7 @@ Deferred / TODO:
 ### I. Single Codebase, Many Studies
 
 The repository MUST host every supported clinical validation study (MI, VTE,
-CVA, Heart Failure, AFIB, Malignancy, and any future studies) from one shared
+CVA, Heart Failure, AFIB, and any future studies) from one shared
 codebase. Forking or long-lived study branches is prohibited. Study-specific
 behavior MUST be expressed through configuration (environment variables,
 docker-compose overrides, schema files, and study-scoped component
@@ -159,15 +263,27 @@ mechanisms, in order of preference:
 3. Study-specific component directories under `frontend/src/studies/<study>/`
    and model files under `flask_backend/models/<study>.py`, loaded by a
    factory keyed on `STUDY_TYPE`.
-4. Docker-compose overrides (`docker-compose.<study>.yaml`) and per-study
-   `.env.<study>` files.
 
 Adding a study-specific `if/elif` chain inside a shared module is a code smell
 and MUST be refactored into a factory, a config flag, or a study-scoped file.
 
+Each deployment MUST use a single canonical `.env` file and a single
+canonical `docker-compose.yaml`. Per-study deployment overlays —
+including filenames like `.env.<study>` or `docker-compose.<study>.yaml`,
+and `--env-file` / `-f` flag combinations that select among them — are
+NOT a permitted mechanism for study-specific differentiation. To target
+a specific study, a deployment edits the contents of its `.env` (study
+selector, study identity, feature flags); to differentiate side-by-side
+deployments on the same host, set distinct `COMPOSE_PROJECT_NAME` values
+in each deployment's `.env`.
+
 **Rationale**: Configuration-driven differentiation is what makes the "one
 codebase, many deployments" model maintainable. Sprinkling study checks across
-shared code reproduces the fork-era problem in miniature.
+shared code reproduces the fork-era problem in miniature. The single-`.env`
+single-`docker-compose.yaml` rule eliminates a class of deployment confusion
+where operators forget which `--env-file` or `-f` combination matches their
+target study, and ensures the deployment artifact (`.env`) is unambiguous
+about which study and which host the deployment is for.
 
 ### V. Workflow and Role Parity Across Studies
 
@@ -323,4 +439,4 @@ obligation to document what was there first.
   operational reference for deploying new studies. This constitution governs
   *what* is allowed; that guide documents *how* to do it within those rules.
 
-**Version**: 1.1.2 | **Ratified**: 2026-04-14 | **Last Amended**: 2026-04-15
+**Version**: 1.2.0 | **Ratified**: 2026-04-14 | **Last Amended**: 2026-05-08

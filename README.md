@@ -6,8 +6,8 @@ SRC:
 
 DOCKER DATABASE:
 
-        cp .env.example .env
-        docker-compose up -d mariadb
+        cp default.env .env
+        docker compose up -d mariadb
         # Initialization scripts load `init/04-create-patients.sql` which
         # populates the `patients` table from `uw_patients2` if it does not
         # already exist
@@ -18,17 +18,17 @@ This repository includes a lightweight Docker configuration based on the setup u
 
 ### Build and Run
 
-1. Copy `.env.example` to `.env` and edit if necessary. For unified-domain deployments, leave `VITE_API_URL` (API: Application Programming Interface) empty (same-origin) so the frontend calls `/api/...` on the same host.
+1. Copy `default.env` to `.env` and edit if necessary. Note that `VITE_API_URL` (API: Application Programming Interface) is the frontend's API base URL and is loaded from `frontend/default.env`, not from the root `.env`. For unified-domain deployments, leave `VITE_API_URL` empty (same-origin) so the frontend calls `/api/...` on the same host.
 2. Build the Docker images:
 
    ```bash
-   docker-compose build
+   docker compose build
    ```
 
 3. Start the stack:
 
    ```bash
-    docker-compose up
+    docker compose up
     ```
 
     The application will be served on `https://cnics-validation.pm.ssingh20.dev.cirg.uw.edu/` and the API (Application Programming Interface) under the same origin at `/api/...`.
@@ -37,21 +37,25 @@ This repository includes a lightweight Docker configuration based on the setup u
 
 ### Environment Variables
 
-Runtime configuration is provided via a `.env` file that you create by
-copying `.env.example`. Docker Compose automatically loads this file when the
-services are built or started. The template defines the following variables:
+Project-level runtime configuration is provided via a `.env` file at the
+repository root that you create by copying `default.env`. Docker Compose
+automatically loads this file for variable interpolation when the services
+are built or started. The template defines the following variables:
 
 - `DB_ROOT_PASSWORD` – password for the MariaDB root user.
 - `DB_NAME` – name of the application's database.
 - `DB_USER` – database user for the application.
 - `DB_PASSWORD` – password for `DB_USER`.
-- `VITE_API_URL` – base URL of the backend API (Application Programming Interface) consumed by the React frontend. For unified-domain deployments leave empty to use same-origin.
 - `FRONTEND_ORIGIN` – allowed origin for CORS (Cross‑Origin Resource Sharing) requests to the backend.
 - `FHIR_SERVER` – **not currently used.** Retained for backward compatibility with deployments that still set it; no runtime component reads this value. Safe to omit.
 - `FILES_DIR` – directory containing instruction files served by the backend.
 - `DOWNLOADS_DIR` – writable directory where the backend saves generated/downloadable artifacts
   (e.g., uploaded scrubbed ZIPs). Defaults to a subdirectory under `FILES_DIR` if not set.
 - `EXTERNAL_DB_URL` – optional SQLAlchemy URL for a secondary database.
+
+Frontend client variables (those with the `VITE_` prefix, including
+`VITE_API_URL`) are loaded from `frontend/default.env`, not the root
+`.env`. Edit `frontend/default.env` to override them.
 
 Override these values in your copied `.env` file as needed.
 
@@ -156,7 +160,7 @@ Two small scripts illustrate the difference:
 Run them after your database is up (e.g., with Docker Compose). If running directly, ensure the project root is on `PYTHONPATH` or run via `python -m` from the repo root:
 
 ```bash
-docker-compose up -d mariadb
+docker compose up -d mariadb
 export DB_USER=root
 export DB_PASSWORD=${DB_ROOT_PASSWORD}
 export DB_HOST=127.0.0.1
