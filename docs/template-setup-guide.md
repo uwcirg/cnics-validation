@@ -119,35 +119,113 @@ ENABLE_CARDIAC_INTERVENTIONS=true  # MCI-specific feature
 
 ### 2. Study-Specific Components
 
+The three sub-sections below describe the **actual current state** of
+per-study artifacts in the repo. As of the first release, only the
+default (MCI) layer is loaded by the running stack; the per-study
+files for VTE, CVA, HF, and AFIB exist as scaffolding in varying
+degrees of completeness but are not yet wired into the runtime.
+Bringing any of them online requires the runtime selection work
+flagged in the implementation-status banner at the top of this guide,
+plus removing the per-file "commented out until needed" gates noted
+below.
+
 #### Database Schemas (`init/` directory)
 ```
 init/
-├── 01-create-db.sql          # Shared
-├── 02-schema-mci.sql         # MI-specific schema
-├── 02-schema-vte.sql         # VTE-specific schema
-└── 03-data-mci.sql          # MI-specific seed data
+├── 01-create-db.sql               # Shared: creates the database.
+├── 02-schema.sql                  # Default schema (MCI). The only
+│                                  #   schema actually applied today.
+├── 02-schema-<study>.sql          # Scaffolding for vte, cva, hf, afib.
+│                                  #   Each is entirely wrapped in a
+│                                  #   /* ... */ block comment, so it
+│                                  #   is inert when MariaDB processes
+│                                  #   it at first start.
+├── 03-data.sql                    # Seed data.
+├── 04-create-patients.sql         # Patient table population.
+└── 05-add-indexes.sql             # Index creation.
 ```
 
-#### Backend Models (`flask_backend/models/`)
+> **Wiring gap.** MariaDB processes everything in
+> `/docker-entrypoint-initdb.d/` (which `init/` is bind-mounted to)
+> at first start. The per-study files are inert today only because
+> they're wrapped in SQL block comments. Bringing per-study schemas
+> online requires (a) uncommenting the relevant file *and* (b)
+> ensuring only the right `02-schema-<STUDY_TYPE>.sql` runs — e.g.,
+> an entrypoint that picks the right file at startup. Uncommenting
+> all of them would collide on the `reviews` table definition.
+
+#### Backend Models
+
+Current layout in the repo:
+
 ```
-flask_backend/models/
-├── base.py                   # Shared base models
-├── mci.py                    # MI-specific models
-└── vte.py                    # VTE-specific models
+flask_backend/
+├── models.py                      # Active: contains the MCI models
+│                                  #   loaded by the running stack
+│                                  #   (~15 KB, single file).
+├── models2.py                     # Alternative SQLAlchemy variant
+│                                  #   (back_populates removed). Not
+│                                  #   currently imported — see the
+│                                  #   README "Alternative SQLAlchemy
+│                                  #   models" section.
+└── models/
+    └── studies/                   # Per-study scaffolding files
+                                   #   (afib.py, cva.py, hf.py,
+                                   #   vte.py). Each file's class
+                                   #   definitions are wrapped in a
+                                   #   triple-quoted string, so the
+                                   #   file would import as a no-op
+                                   #   even if it were reachable.
 ```
 
-#### Frontend Components (`frontend/src/studies/`)
+> **Reachability gap.** `flask_backend/models/studies/*.py` files
+> exist on disk but are **not currently importable** as Python
+> modules. The file `flask_backend/models.py` is found before the
+> directory `flask_backend/models/` during import resolution, so
+> `from flask_backend.models.studies import vte` raises
+> `ModuleNotFoundError: 'flask_backend.models' is not a package`.
+> Bringing per-study models online (Step 3 of the deployment
+> walkthrough) therefore requires:
+>
+> 1. Consolidating `models.py` into the `models/` package — e.g.,
+>    move its contents into `models/__init__.py` (or split into
+>    `models/base.py`, `models/mci.py`, etc.) and delete the
+>    standalone `models.py`. Constitution Principle IV item 3
+>    prescribes the package layout (`flask_backend/models/<study>.py`).
+> 2. Removing the triple-quoted-string gates inside each per-study
+>    file so the class definitions actually execute.
+
+#### Frontend Components
+
+Current layout under `frontend/src/`:
+
 ```
-frontend/src/studies/
-├── mci/
-│   ├── EventReview.jsx       # MI-specific review form
-│   ├── Home.jsx              # MI-specific home page
-│   └── instructions/         # MI-specific documentation
-├── vte/
-│   ├── EventReview.jsx       # VTE-specific review form
-│   └── Home.jsx              # VTE-specific home page
-└── shared/                   # Shared components
+frontend/src/
+├── components/                    # Study-agnostic shared components.
+├── pages/                         # Currently holds the MCI flow.
+│                                  #   No `studies/mci/` subdirectory
+│                                  #   exists; MCI is the default.
+└── studies/
+    ├── cva/                       # CVA scaffolding (1 file:
+    │                              #   EventReview.jsx, wrapped in a
+    │                              #   /* ... */ gate).
+    └── vte/                       # VTE scaffolding (~24 files
+                                   #   including Admin.jsx,
+                                   #   EventReview.jsx, Home.jsx,
+                                   #   plus many other routes —
+                                   #   these are real React
+                                   #   components, not commented-out
+                                   #   shells).
 ```
+
+> **Routing gap.** Nothing under `frontend/src/` outside of
+> `studies/` imports from `studies/`. The study-specific components
+> are not loaded by the frontend router. Bringing them online
+> requires extending the router to dispatch on a study selector
+> (e.g., a `VITE_STUDY_TYPE` env var, mirroring the backend's
+> `STUDY_TYPE`) before mounting the per-study component tree. Note
+> the asymmetry: the VTE tree is real, executable code awaiting a
+> caller, while the CVA tree is a commented-out shell.
 
 ### 3. Deployment Configuration
 

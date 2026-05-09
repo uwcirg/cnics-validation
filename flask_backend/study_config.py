@@ -1,6 +1,21 @@
-# Study Configuration Factory
-# This module provides study-specific configuration loading
-# Uncomment and modify as needed for each study deployment
+# Study Configuration Factory — SCAFFOLDING ONLY
+#
+# Not currently imported by any runtime code. Preserved as the dispatch
+# scaffolding that the multi-study pattern mandated by Constitution
+# Principle IV ("Configuration Over Code Forks") will eventually need
+# to load per-study models, schemas, and feature flags based on the
+# `STUDY_TYPE` environment variable.
+#
+# As of the first release, only MCI is implemented; calling this module
+# is a no-op for the running stack. See `docs/template-setup-guide.md`
+# (Step 3 of the Step-by-Step Multi-Study Deployment Process) for how
+# this would be wired up when a second study (e.g., VTE) is brought
+# online.
+#
+# Per Constitution Principle VI ("unused subsystem hygiene"), if this
+# module is still unused at the time of the first tagged release and
+# no near-term plan exists to wire it up, it should be either deleted
+# or this banner re-evaluated.
 
 import os
 
