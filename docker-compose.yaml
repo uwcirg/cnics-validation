@@ -18,7 +18,7 @@ services:
   backend:
     build: ./flask_backend
     environment:
-      ALLOW_DEV_HEADER: "1"
+      ALLOW_DEV_HEADER: "${ALLOW_DEV_HEADER:-0}"
       DB_HOST: mariadb
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
@@ -47,7 +47,7 @@ services:
     depends_on:
       - mariadb
     ports:
-      - "3001:3000"
+      - "127.0.0.1:${BACKEND_EXTERNAL_PORT:-3001}:3000"
     networks:
       - internal
     volumes:

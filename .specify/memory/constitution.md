@@ -1,18 +1,167 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: 1.1.1 → 1.1.2
-Rationale: PATCH bump. Updates the "API contracts" bullet in the
-Development Workflow & Quality Gates section to point at the canonical
-location of the OpenAPI generator, which now lives inside the
-`flask_backend` package (`python -m flask_backend.generate_openapi`)
-rather than at a repo-root `scripts/` directory that existed nowhere
-except in stale references. No new rule is introduced, no principle is
-added or removed, and no prior normative guidance is rescinded — this
-is a command-path precision fix, hence PATCH. Prior SYNC IMPACT REPORT
-for v1.1.0 → v1.1.1 is preserved below.
+Version change: 1.2.0 → 1.3.0
+Rationale: MINOR bump. Adds an explicit "Network exposure boundaries"
+clause to the Security & Data Governance section, requiring non-edge
+services in `docker-compose.yaml` to bind their host ports to the
+loopback interface (`127.0.0.1`) rather than all interfaces
+(`0.0.0.0`). The rule makes testable an obligation that was
+previously only implicit in "Removing or short-circuiting either
+half of the basic+ldap → `X-Remote-User` chain in a study deployment
+is prohibited" — it explicitly closes the loophole where a non-edge
+service could expose a parallel network path that bypasses the
+Apache auth gate without "removing" the basic+ldap chain itself. No
+prior rule is rescinded; no governance authority changes. The
+combination of an existing rule being sharpened plus a new specific
+MUST clause warrants MINOR rather than PATCH. Prior SYNC IMPACT
+REPORTs for v1.1.0 → v1.1.1 through v1.1.3 → v1.2.0 are preserved
+below.
 
----- v1.1.1 → v1.1.2 (this amendment) ----
+---- v1.2.0 → v1.3.0 (this amendment) ----
+
+Modified principles:
+  - I–VI. unchanged.
+
+Modified sections:
+  - Security & Data Governance — new bullet ("Network exposure
+    boundaries") added between "Authentication (future releases)"
+    and "Authorization", requiring `127.0.0.1` binding for non-edge
+    services and explaining the basic+ldap-bypass loophole the rule
+    closes.
+
+Source material: branch `fix-deploy-20260507` commit `e7278c6`
+("Network protections suggested by Claude"), which implemented the
+binding rule in `docker-compose.yaml` (the `backend` service port
+mapping changed from `"3001:3000"` to
+`"127.0.0.1:${BACKEND_EXTERNAL_PORT:-3001}:3000"`, matching the
+existing `web` service pattern) and documented it in `default.env`
+(both `EXTERNAL_PORT` and `BACKEND_EXTERNAL_PORT` comment blocks now
+state the binding behavior). The same commit also parameterized
+`ALLOW_DEV_HEADER` with a safe-default-off in
+`docker-compose.yaml` — that change is already covered by the
+existing "Authentication (first release)" rule on dev shims and is
+not separately codified by this amendment.
+
+Added sections: N/A
+Removed sections: N/A
+
+Templates requiring updates:
+  - ✅ docker-compose.yaml — already binds `web` and `backend`
+    services to `127.0.0.1:` (branch commit `e7278c6`).
+  - ✅ default.env — `EXTERNAL_PORT` and `BACKEND_EXTERNAL_PORT`
+    comment blocks already document the 127.0.0.1 binding (branch
+    commit `e7278c6`).
+  - ✅ docs/template-setup-guide.md — implementation-status banner
+    refreshed in this amendment: removed the now-stale "Walkthroughs
+    below need restructure" bullet (those walkthroughs were
+    rewritten in branch commit `e8371cd`); added a new bullet
+    referencing the v1.3.0 network-exposure rule.
+
+Deferred / TODO:
+  - None.
+
+---- v1.1.3 → v1.2.0 (prior amendment, preserved for history) ----
+
+Modified principles:
+  - IV. Configuration Over Code Forks — preference list narrowed
+    from four mechanisms to three. Item 4 ("Docker-compose overrides
+    (`docker-compose.<study>.yaml`) and per-study `.env.<study>`
+    files") is removed; the deployment-overlay pattern is no longer
+    a permitted mechanism for study-specific differentiation. A new
+    normative paragraph is added requiring each deployment to use a
+    single canonical `.env` and a single canonical `docker-compose.yaml`,
+    with side-by-side deployments differentiated via
+    `COMPOSE_PROJECT_NAME` rather than filename suffixes. The
+    rationale paragraph is extended to explain why the overlay
+    pattern is being ruled out.
+  - I, II, III, V, VI. unchanged.
+
+Source material: user direction 2026-05-08 ("I do not want the system
+to use .env files that are named per-study; instead, I only want it
+to use .env. The docs should indicate how to modify .env to accommodate
+the specific study that the deployment is targeting"; "Drop both
+docker-compose overrides (`docker-compose.<study>.yaml`) and per-study
+`.env.<study>` files."). The narrowing reflects an architectural
+decision made before any in-tree code or deployment depends on the
+overlay pattern; the prior developer scaffolded overlay references
+in docs but never wired them up at the application layer.
+
+Modified sections: N/A (Principle IV body changes only).
+Added sections: N/A
+Removed sections: N/A
+
+Templates requiring updates:
+  - ✅ docs/template-setup-guide.md — four changes:
+    (1) "Current implementation status" banner added at top of
+    file explaining the single-`.env` / single-`docker-compose.yaml`
+    rule; (2) "### 3. Deployment Configuration" subsection rewritten
+    from overlay-pattern documentation to single-`.env` framing;
+    (3) "Step-by-Step Multi-Study Deployment Process" and
+    "Deployment Commands" sections rewritten around
+    `cp default.env .env` and plain `docker compose up -d`, with
+    VTE as the worked alt-study example. Steps that depend on
+    runtime study selection logic (currently scaffolding-only)
+    are tagged as such; (4) inline `stroke` → `vte` normalizations
+    in scaffolding examples (`### 1. Study Configuration System`
+    and `### 2. Study-Specific Components` directory listings,
+    plus a stale `# or docker-compose overrides` Best Practices
+    bullet replaced with a `COMPOSE_PROJECT_NAME` reference) so
+    the file consistently uses VTE as the alt-study example.
+  - ✅ default.env — already documents `COMPOSE_PROJECT_NAME` as the
+    differentiation mechanism for side-by-side deployments on one
+    host (added in earlier session work; no further change needed
+    for this amendment).
+  - ✅ docs/architecture-overview.md — Diagram 1's "Configuration
+    Layer" subgraph had its `Docker Compose Overrides` node and
+    associated edges removed, since deployment-overlay configs are
+    no longer a permitted differentiation mechanism.
+
+Deferred / TODO:
+  - None.
+
+---- v1.1.2 → v1.1.3 (prior amendment, preserved for history) ----
+
+Modified principles:
+  - I. Single Codebase, Many Studies — enumerated study list narrowed
+    from "MI, VTE, CVA, Heart Failure, AFIB, Malignancy" to "MI, VTE,
+    CVA, Heart Failure, AFIB". The principle's normative requirement
+    is unchanged for the remaining studies.
+  - II–VI. unchanged.
+
+Source material: user direction 2026-05-08 ("remove the Malignancy
+section altogether, as that study does not use this codebase");
+`flask_backend/models/studies/malignancy.py` was committed with a
+header stating the module "is commented out until Malignancy study
+migration is needed" and was never imported by any runtime code;
+`flask_backend/study_config.py`'s Malignancy block was already
+commented out from inception.
+
+Modified sections: N/A (only the Principle I enumerated list).
+Added sections: N/A
+Removed sections: N/A
+
+Templates requiring updates:
+  - ✅ docs/template-setup-guide.md — Malignancy "Example" deployment
+    section removed; "Novel Systems" subheading removed (Malignancy
+    was its only entry); Malignancy entry removed from the
+    "Deployment Commands" block; illustrative 'cancer' references in
+    scaffolding examples removed.
+  - ✅ docs/architecture-overview.md — Malignancy nodes removed from
+    the overall-system, configuration-flow, deployment, and
+    migration-timeline mermaid diagrams.
+  - ✅ flask_backend/models/studies/malignancy.py — dormant module
+    removed; was never imported by any runtime code.
+  - ✅ flask_backend/study_config.py — commented-out Malignancy entry
+    removed.
+  - ✅ init/02-schema-malignancy.sql — dormant schema file removed
+    (was no longer referenced by any in-tree code or doc after the
+    above changes).
+
+Deferred / TODO:
+  - None. RATIFICATION_DATE preserved at 2026-04-14.
+
+---- v1.1.1 → v1.1.2 (prior amendment, preserved for history) ----
 
 Modified principles: I–VI unchanged.
 
@@ -101,7 +250,7 @@ Deferred / TODO:
 ### I. Single Codebase, Many Studies
 
 The repository MUST host every supported clinical validation study (MI, VTE,
-CVA, Heart Failure, AFIB, Malignancy, and any future studies) from one shared
+CVA, Heart Failure, AFIB, and any future studies) from one shared
 codebase. Forking or long-lived study branches is prohibited. Study-specific
 behavior MUST be expressed through configuration (environment variables,
 docker-compose overrides, schema files, and study-scoped component
@@ -159,15 +308,27 @@ mechanisms, in order of preference:
 3. Study-specific component directories under `frontend/src/studies/<study>/`
    and model files under `flask_backend/models/<study>.py`, loaded by a
    factory keyed on `STUDY_TYPE`.
-4. Docker-compose overrides (`docker-compose.<study>.yaml`) and per-study
-   `.env.<study>` files.
 
 Adding a study-specific `if/elif` chain inside a shared module is a code smell
 and MUST be refactored into a factory, a config flag, or a study-scoped file.
 
+Each deployment MUST use a single canonical `.env` file and a single
+canonical `docker-compose.yaml`. Per-study deployment overlays —
+including filenames like `.env.<study>` or `docker-compose.<study>.yaml`,
+and `--env-file` / `-f` flag combinations that select among them — are
+NOT a permitted mechanism for study-specific differentiation. To target
+a specific study, a deployment edits the contents of its `.env` (study
+selector, study identity, feature flags); to differentiate side-by-side
+deployments on the same host, set distinct `COMPOSE_PROJECT_NAME` values
+in each deployment's `.env`.
+
 **Rationale**: Configuration-driven differentiation is what makes the "one
 codebase, many deployments" model maintainable. Sprinkling study checks across
-shared code reproduces the fork-era problem in miniature.
+shared code reproduces the fork-era problem in miniature. The single-`.env`
+single-`docker-compose.yaml` rule eliminates a class of deployment confusion
+where operators forget which `--env-file` or `-f` combination matches their
+target study, and ensures the deployment artifact (`.env`) is unambiguous
+about which study and which host the deployment is for.
 
 ### V. Workflow and Role Parity Across Studies
 
@@ -250,6 +411,19 @@ obligation to document what was there first.
   constitution MUST be amended (MINOR bump at minimum) to describe the
   new mode, its role-mapping, and its rollout plan before it is enabled
   in any study deployment.
+- **Network exposure boundaries**: Non-edge services in
+  `docker-compose.yaml` MUST bind their host ports to the loopback
+  interface (`127.0.0.1`), not to all interfaces (`0.0.0.0`). External
+  traffic reaches the `web` (frontend) and `backend` (Flask API) services
+  only via the Apache `.htaccess` edge that performs basic+ldap
+  authentication and forwards `X-Remote-User`. Binding either of those
+  services — or any future non-edge service — to `0.0.0.0` exposes a
+  network path that bypasses the Apache auth gate and is prohibited;
+  this is a corollary of the basic+ldap→`X-Remote-User` chain rule
+  above. The `mariadb` service has no host port binding at all and is
+  reachable only on Docker's internal network, which is the correct
+  treatment for any service that has no reason to be reached from
+  outside the Compose stack.
 - **Authorization**: Endpoints MUST be protected with `@requires_auth` plus
   explicit role decorators (`@requires_roles` / `@requires_any_role`). New
   endpoints that touch events, reviews, users, or files MUST declare their
@@ -323,4 +497,4 @@ obligation to document what was there first.
   operational reference for deploying new studies. This constitution governs
   *what* is allowed; that guide documents *how* to do it within those rules.
 
-**Version**: 1.1.2 | **Ratified**: 2026-04-14 | **Last Amended**: 2026-04-15
+**Version**: 1.3.0 | **Ratified**: 2026-04-14 | **Last Amended**: 2026-05-08
