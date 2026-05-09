@@ -6,6 +6,8 @@
 >   Failure, and AFIB describe how those studies *would* be wired up
 >   when each is brought online; their per-study schema files, models,
 >   and frontend component directories are scaffolding-only or absent.
+>   See `### 2. Study-Specific Components` below for the per-layer
+>   reachability/wiring gaps.
 > - **One `.env`, one `docker-compose.yaml`** (Constitution Principle
 >   IV, v1.2.0). To target a specific study, edit the `.env` in your
 >   deployment directory: set `STUDY_TYPE`, study identity, and any
@@ -14,11 +16,12 @@
 >   Per-study overlay files (`.env.<study>`, `docker-compose.<study>.yaml`)
 >   and `--env-file` / `-f` flag combinations that select among them
 >   are not a permitted pattern.
-> - **Walkthroughs below need restructure.** The "Step-by-Step
->   Multi-Study Deployment Process" and "Deployment Commands" sections
->   still describe the overlay pattern v1.2.0 ruled out; they are
->   pending rewrite. Until then, treat them as illustrative of intent
->   only — not as commands to run.
+> - **Non-edge services bind to `127.0.0.1`** (Constitution Security &
+>   Data Governance → Network exposure boundaries, v1.3.0). Both `web`
+>   and `backend` are bound to the loopback interface in
+>   `docker-compose.yaml`; external traffic must traverse the Apache
+>   `.htaccess` edge that performs basic+ldap auth and forwards
+>   `X-Remote-User`.
 >
 > See `.specify/memory/constitution.md` for normative scope; this
 > guide is the operational *how*.

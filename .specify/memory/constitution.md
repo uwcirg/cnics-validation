@@ -1,22 +1,67 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: 1.1.3 → 1.2.0
-Rationale: MINOR bump. Narrows Principle IV's "Configuration Over
-Code Forks" preference list from four mechanisms to three by removing
-item 4 (per-study `.env.<study>` files and per-study compose overrides
-`docker-compose.<study>.yaml`), and adds a new normative paragraph
-requiring each deployment to use a single canonical `.env` and a
-single canonical `docker-compose.yaml`. Side-by-side deployments on
-one host are now required to differentiate via `COMPOSE_PROJECT_NAME`,
-not filename suffixes. The combination of removing a previously
-permitted mechanism and adding a new MUST clause materially expands
-existing normative guidance, hence MINOR rather than PATCH. No prior
-constitutional principle is rescinded; no governance authority changes.
-Prior SYNC IMPACT REPORTs for v1.1.0 → v1.1.1, v1.1.1 → v1.1.2, and
-v1.1.2 → v1.1.3 are preserved below.
+Version change: 1.2.0 → 1.3.0
+Rationale: MINOR bump. Adds an explicit "Network exposure boundaries"
+clause to the Security & Data Governance section, requiring non-edge
+services in `docker-compose.yaml` to bind their host ports to the
+loopback interface (`127.0.0.1`) rather than all interfaces
+(`0.0.0.0`). The rule makes testable an obligation that was
+previously only implicit in "Removing or short-circuiting either
+half of the basic+ldap → `X-Remote-User` chain in a study deployment
+is prohibited" — it explicitly closes the loophole where a non-edge
+service could expose a parallel network path that bypasses the
+Apache auth gate without "removing" the basic+ldap chain itself. No
+prior rule is rescinded; no governance authority changes. The
+combination of an existing rule being sharpened plus a new specific
+MUST clause warrants MINOR rather than PATCH. Prior SYNC IMPACT
+REPORTs for v1.1.0 → v1.1.1 through v1.1.3 → v1.2.0 are preserved
+below.
 
----- v1.1.3 → v1.2.0 (this amendment) ----
+---- v1.2.0 → v1.3.0 (this amendment) ----
+
+Modified principles:
+  - I–VI. unchanged.
+
+Modified sections:
+  - Security & Data Governance — new bullet ("Network exposure
+    boundaries") added between "Authentication (future releases)"
+    and "Authorization", requiring `127.0.0.1` binding for non-edge
+    services and explaining the basic+ldap-bypass loophole the rule
+    closes.
+
+Source material: branch `fix-deploy-20260507` commit `e7278c6`
+("Network protections suggested by Claude"), which implemented the
+binding rule in `docker-compose.yaml` (the `backend` service port
+mapping changed from `"3001:3000"` to
+`"127.0.0.1:${BACKEND_EXTERNAL_PORT:-3001}:3000"`, matching the
+existing `web` service pattern) and documented it in `default.env`
+(both `EXTERNAL_PORT` and `BACKEND_EXTERNAL_PORT` comment blocks now
+state the binding behavior). The same commit also parameterized
+`ALLOW_DEV_HEADER` with a safe-default-off in
+`docker-compose.yaml` — that change is already covered by the
+existing "Authentication (first release)" rule on dev shims and is
+not separately codified by this amendment.
+
+Added sections: N/A
+Removed sections: N/A
+
+Templates requiring updates:
+  - ✅ docker-compose.yaml — already binds `web` and `backend`
+    services to `127.0.0.1:` (branch commit `e7278c6`).
+  - ✅ default.env — `EXTERNAL_PORT` and `BACKEND_EXTERNAL_PORT`
+    comment blocks already document the 127.0.0.1 binding (branch
+    commit `e7278c6`).
+  - ✅ docs/template-setup-guide.md — implementation-status banner
+    refreshed in this amendment: removed the now-stale "Walkthroughs
+    below need restructure" bullet (those walkthroughs were
+    rewritten in branch commit `e8371cd`); added a new bullet
+    referencing the v1.3.0 network-exposure rule.
+
+Deferred / TODO:
+  - None.
+
+---- v1.1.3 → v1.2.0 (prior amendment, preserved for history) ----
 
 Modified principles:
   - IV. Configuration Over Code Forks — preference list narrowed
@@ -366,6 +411,19 @@ obligation to document what was there first.
   constitution MUST be amended (MINOR bump at minimum) to describe the
   new mode, its role-mapping, and its rollout plan before it is enabled
   in any study deployment.
+- **Network exposure boundaries**: Non-edge services in
+  `docker-compose.yaml` MUST bind their host ports to the loopback
+  interface (`127.0.0.1`), not to all interfaces (`0.0.0.0`). External
+  traffic reaches the `web` (frontend) and `backend` (Flask API) services
+  only via the Apache `.htaccess` edge that performs basic+ldap
+  authentication and forwards `X-Remote-User`. Binding either of those
+  services — or any future non-edge service — to `0.0.0.0` exposes a
+  network path that bypasses the Apache auth gate and is prohibited;
+  this is a corollary of the basic+ldap→`X-Remote-User` chain rule
+  above. The `mariadb` service has no host port binding at all and is
+  reachable only on Docker's internal network, which is the correct
+  treatment for any service that has no reason to be reached from
+  outside the Compose stack.
 - **Authorization**: Endpoints MUST be protected with `@requires_auth` plus
   explicit role decorators (`@requires_roles` / `@requires_any_role`). New
   endpoints that touch events, reviews, users, or files MUST declare their
@@ -439,4 +497,4 @@ obligation to document what was there first.
   operational reference for deploying new studies. This constitution governs
   *what* is allowed; that guide documents *how* to do it within those rules.
 
-**Version**: 1.2.0 | **Ratified**: 2026-04-14 | **Last Amended**: 2026-05-08
+**Version**: 1.3.0 | **Ratified**: 2026-04-14 | **Last Amended**: 2026-05-08
