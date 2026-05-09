@@ -544,9 +544,9 @@ directories, each with its own `.env`. Differentiate them by:
    (e.g., `cnics-mci`, `cnics-vte`). This namespaces each
    deployment's containers, network, and named volumes so the two
    stacks don't collide.
-2. **Host ports** — set distinct `EXTERNAL_PORT` (and any other
-   externally-bound port variables) in each `.env`. Two containers
-   cannot bind the same host port.
+2. **Host ports** — set distinct `EXTERNAL_PORT` (web/frontend
+   service) and `BACKEND_EXTERNAL_PORT` (Flask API service) in
+   each `.env`. Two containers cannot bind the same host port.
 
 Then run `docker compose up -d` from each deployment directory
 independently. The two stacks are fully isolated; commands run from
