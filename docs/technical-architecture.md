@@ -4,10 +4,6 @@
 
 ```mermaid
 graph TB
-    subgraph "Load Balancer Layer"
-        LB[Traefik Load Balancer]
-    end
-    
     subgraph "Application Layer"
         subgraph "MCI Instance"
             MCI_FE[MCI Frontend Container]
@@ -40,10 +36,6 @@ graph TB
         EMAIL[SMTP Server]
         CNICS[CNICS Data Warehouse]
     end
-    
-    LB --> MCI_FE
-    LB --> VTE_FE
-    LB --> CVA_FE
     
     MCI_FE --> MCI_BE
     VTE_FE --> VTE_BE

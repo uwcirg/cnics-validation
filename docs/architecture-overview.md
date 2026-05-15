@@ -277,14 +277,13 @@ graph TB
         F[Flask Backend]
         G[MariaDB]
         H[Docker Containers]
-        I[Traefik Load Balancer]
-        J[Automated Deployment]
+        I[Automated Deployment]
     end
     
     A -.->|Migrate| E
     B -.->|Migrate| G
     C -.->|Migrate| H
-    D -.->|Migrate| J
+    D -.->|Migrate| I
 ```
 
 ## 8. Benefits of Single Repository Approach
