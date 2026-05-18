@@ -8,9 +8,11 @@ DOCKER DATABASE:
 
         cp default.env .env
         docker compose up -d mariadb
-        # Initialization scripts load `init/04-create-patients.sql` which
-        # populates the `patients` table from `uw_patients2` if it does not
-        # already exist
+        # Initialization scripts under init/ create the schema and define
+        # the `patients_view` view, which UNIONs the locally-owned
+        # `uw_patients2` table with a FEDERATED proxy of the upstream
+        # `cnics_data.Patient` table. See init/06-create-patients-view.sh
+        # and default.env's CNICS_DATA_DB_* block for configuration.
 
 ## Container Setup
 
@@ -51,7 +53,18 @@ are built or started. The template defines the following variables:
 - `FILES_DIR` – directory containing instruction files served by the backend.
 - `DOWNLOADS_DIR` – writable directory where the backend saves generated/downloadable artifacts
   (e.g., uploaded scrubbed ZIPs). Defaults to a subdirectory under `FILES_DIR` if not set.
-- `EXTERNAL_DB_URL` – optional SQLAlchemy URL for a secondary database.
+- `CNICS_DATA_DB_HOST` / `_PORT` / `_NAME` / `_TABLE` / `_USER` / `_PASSWORD` –
+  connection parameters for the upstream `cnics_data.Patient` table. The
+  mariadb container's init step builds a FEDERATED proxy table from these
+  values, and the `patients_view` view UNIONs that proxy with the
+  locally-owned `uw_patients2` table. Leaving `CNICS_DATA_DB_HOST` empty
+  disables the bridge; `patients_view` is then defined over
+  `uw_patients2` only (single-instance / dev fallback). When `cnics_data`
+  runs on the host VM rather than in a sibling container, set
+  `CNICS_DATA_DB_HOST=host.docker.internal` — Docker Compose maps that
+  name to the host gateway. The upstream bridge user only needs `SELECT`
+  on `cnics_data.Patient`, and on MySQL 8.0+ should be created with
+  `mysql_native_password` to keep FederatedX's handshake happy.
 
 Frontend client variables (those with the `VITE_` prefix, including
 `VITE_API_URL`) are loaded from `frontend/default.env`, not the root

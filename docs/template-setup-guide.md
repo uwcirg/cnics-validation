@@ -68,7 +68,10 @@ The existing studies (MI, VTE, CVA, Heart Failure, AFIB) are currently running o
 
 #### Data Migration
 - **Backwards Compatibility**: Existing tables must remain compatible or require migration scripts
-- **Patient Data**: All systems use views on `cnics_data.Patients` table
+- **Patient Data**: All systems read patient identity via the `patients_view`
+  view, which UNIONs the locally-owned `uw_patients2` table with a FEDERATED
+  proxy of the upstream `cnics_data.Patient` table. Both halves are read-only
+  from the application; new patient records originate upstream.
 - **Authentication**: Maintain existing Apache-edge auth contract — HTTP Basic Auth with `AuthBasicProvider ldap` and a `require ldap-group` rule (see repository-root [`.htaccess`](../.htaccess)), with the authenticated identity forwarded to the Flask backend as the `X-Remote-User` header. Keycloak is deferred to a later release and is NOT supported for first-release deployments.
 - **Authorization**: Preserve simple role-based access (uploader_flag, admin_flag)
 
@@ -144,8 +147,10 @@ init/
 │                                  #   is inert when MariaDB processes
 │                                  #   it at first start.
 ├── 03-data.sql                    # Seed data.
-├── 04-create-patients.sql         # Patient table population.
-└── 05-add-indexes.sql             # Index creation.
+├── 05-add-indexes.sql             # Index creation.
+└── 06-create-patients-view.sh     # Creates the FEDERATED proxy for
+                                   #   cnics_data.Patient and the
+                                   #   patients_view UNION view.
 ```
 
 > **Wiring gap.** MariaDB processes everything in

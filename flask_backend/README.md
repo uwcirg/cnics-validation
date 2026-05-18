@@ -61,6 +61,8 @@ identity forwarded to this backend as the `X-Remote-User` header. See
 the root [`README.md`](../README.md) Authentication and Authorization
 section for the full contract.
 
-The repo includes a sample CNICS dump `cnics.sql` for reference. When the
-database container initializes it runs `init/04-create-patients.sql`, which
-creates and populates the `patients` table from `uw_patients2` if it is missing.
+When the database container initializes it runs `init/06-create-patients-view.sh`,
+which creates the `patients_view` view as a UNION over the locally-owned
+`uw_patients2` table and a FEDERATED proxy of the upstream `cnics_data.Patient`
+table. The application reads patient identity via that view; it never writes to
+either side (both halves are treated as read-only).

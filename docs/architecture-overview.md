@@ -96,7 +96,7 @@ graph TB
         EVENTS["Events Table"]
         USERS["Users Table"]
         LOGS["Logs Table"]
-        PATIENTS["Patients Table"]
+        PATIENTS["patients_view<br/>(uw_patients2 ∪ cnics_data.Patient)"]
         CRITERIAS["Criterias Table"]
     end
     
@@ -135,7 +135,7 @@ graph TB
 - **Events Table**: id (PK), patient_id (FK), creator_id (FK), status, created_date
 - **Users Table**: id (PK), login, name, admin_flag, uploader_flag, reviewer_flag
 - **Logs Table**: id (PK), user_id (FK), action, timestamp
-- **Patients Table**: id (PK), site_patient_id, site
+- **patients_view** (read-only): id (PK), site_patient_id, site, last_update, create_date. UNIONs the locally-owned `uw_patients2` table with a FEDERATED proxy of the upstream `cnics_data.Patient` table (created by `init/06-create-patients-view.sh`). The application never writes to either half.
 - **Criterias Table**: id (PK), event_id (FK), criteria_text
 - **MCI Reviews**: id (PK), event_id (FK), reviewer_id (FK), outcome, chest_pain_flag, ecg_changes_flag, ecg_type
 - **VTE Reviews**: id (PK), event_id (FK), reviewer_id (FK), outcome, pe_flag, dvt_flag, vte_type, anticoagulation, risk_factors

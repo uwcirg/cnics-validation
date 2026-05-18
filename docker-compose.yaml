@@ -7,6 +7,21 @@ services:
       MYSQL_DATABASE: ${DB_NAME}
       MYSQL_USER: ${DB_USER}
       MYSQL_PASSWORD: ${DB_PASSWORD}
+      # Consumed by init/06-create-patients-view.sh to build the FEDERATED
+      # CONNECTION string for the cnics_data.Patient half of patients_view.
+      # See default.env for the var meanings and the read-only / native-auth
+      # requirements on the upstream user.
+      CNICS_DATA_DB_HOST: ${CNICS_DATA_DB_HOST}
+      CNICS_DATA_DB_PORT: ${CNICS_DATA_DB_PORT}
+      CNICS_DATA_DB_NAME: ${CNICS_DATA_DB_NAME}
+      CNICS_DATA_DB_TABLE: ${CNICS_DATA_DB_TABLE}
+      CNICS_DATA_DB_USER: ${CNICS_DATA_DB_USER}
+      CNICS_DATA_DB_PASSWORD: ${CNICS_DATA_DB_PASSWORD}
+    # Make `host.docker.internal` resolve to the VM's gateway so the
+    # FEDERATED proxy can reach a cnics_data MariaDB/MySQL instance
+    # running outside this Compose stack on the same VM.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - mariadb-data:/var/lib/mysql
       - logs-data:/var/log/mysql

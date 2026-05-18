@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 from typing import Optional
-from sqlalchemy import text, bindparam
+from sqlalchemy import text
 import logging
 import datetime
 import re
@@ -10,28 +10,11 @@ logger = logging.getLogger(__name__)
 try:
     from . import models  # type: ignore
 except Exception:  # pragma: no cover - models may not be importable during tests
-    models = SimpleNamespace(get_session=lambda: None, get_external_session=lambda: None)
+    models = SimpleNamespace(get_session=lambda: None)
 
 
 class ValidationError(Exception):
     """Raised when inputs are invalid or required resources are unavailable."""
-
-
-def _get_external_session_or_none():
-    """Return an external DB session if configured, else None.
-
-    This allows the service layer to gracefully fall back to the primary
-    database for patient lookups/creation when the external DB URL is not
-    configured or the external DB is unavailable.
-    """
-    try:
-        return models.get_external_session()
-    except Exception as exc:  # pragma: no cover - depends on env config
-        logger.warning(
-            "External DB not available; falling back to primary DB for patients: %s",
-            exc,
-        )
-        return None
 
 
 def get_session():
@@ -169,7 +152,7 @@ def get_events_by_status_with_total(
         "GROUP_CONCAT(c.name ORDER BY c.name SEPARATOR ', ') AS `Criteria`, "
         "p.site AS `Site` "
         "FROM events e "
-        "LEFT JOIN patients p ON e.patient_id = p.id "
+        "LEFT JOIN patients_view p ON e.patient_id = p.id "
         "LEFT JOIN criterias c ON e.id = c.event_id "
         f"WHERE {where_sql} "
         "GROUP BY e.id, e.event_date, e.add_date, e.upload_date, e.scrub_date, p.site "
@@ -198,7 +181,7 @@ def get_events_by_status_with_total(
     rows = session.execute(text(query), params).mappings().all()
 
     count_q = text(
-        "SELECT COUNT(DISTINCT e.id) FROM events e LEFT JOIN patients p ON e.patient_id = p.id "
+        "SELECT COUNT(DISTINCT e.id) FROM events e LEFT JOIN patients_view p ON e.patient_id = p.id "
         f"WHERE {where_sql}"
     )
     total = session.execute(count_q, params).scalar() or 0
@@ -215,7 +198,7 @@ def get_events_by_status(status: str, limit: Optional[int] = None, offset: int =
 def get_events_need_packets(limit: Optional[int] = None, offset: int = 0, site: Optional[str] = None):
     """Return events that still require packet uploads for the uploader's site.
 
-    Legacy behavior: events joined to patients where patients.site = <uploader site>
+    Legacy behavior: events joined to patients_view where p.site = <uploader site>
     and events.status = 'created', ordered by events.id ASC.
     """
     # Reuse the more general helper but enforce site filter and ordering by ID ASC
@@ -270,7 +253,7 @@ def get_event_status_summary():
 
 
 def get_events_with_patient_site(limit: Optional[int] = None, offset: int = 0):
-    """Return events with site info from the external database."""
+    """Return events with site info from `patients_view`."""
     logger.debug(
         "Fetching %sevents with patient site information starting at %d",
         f"up to {limit} " if limit is not None else "all ",
@@ -278,7 +261,10 @@ def get_events_with_patient_site(limit: Optional[int] = None, offset: int = 0):
     )
     session = get_session()
     try:
-        stmt = "SELECT id, patient_id FROM events"
+        stmt = (
+            "SELECT e.id, e.patient_id, p.site "
+            "FROM events e LEFT JOIN patients_view p ON p.id = e.patient_id"
+        )
         params = {}
         if limit is not None:
             stmt += " LIMIT :limit OFFSET :offset"
@@ -287,30 +273,7 @@ def get_events_with_patient_site(limit: Optional[int] = None, offset: int = 0):
             stmt += " LIMIT 18446744073709551615 OFFSET :offset"
             params["offset"] = offset
         rows = session.execute(text(stmt), params).mappings().all()
-        rows = [dict(r) for r in rows]
-
-        patient_ids = [row["patient_id"] for row in rows]
-        ext_session = _get_external_session_or_none()
-        if patient_ids:
-            stmt = text("SELECT id, site FROM patients WHERE id IN :ids").bindparams(
-                bindparam("ids", expanding=True)
-            )
-            if ext_session is not None:
-                ext_rows = ext_session.execute(stmt, {"ids": patient_ids}).mappings().all()
-                ext_rows = [dict(r) for r in ext_rows]
-            else:
-                ext_rows = session.execute(stmt, {"ids": patient_ids}).mappings().all()
-                ext_rows = [dict(r) for r in ext_rows]
-            logger.debug("Fetched site info for %d patients", len(ext_rows))
-        else:
-            ext_rows = []
-        if ext_session is not None:
-            ext_session.close()
-
-        lookup = {r["id"]: r["site"] for r in ext_rows}
-        for r in rows:
-            r["site"] = lookup.get(r["patient_id"]) 
-        return rows
+        return [dict(r) for r in rows]
     finally:
         session.close()
 
@@ -344,7 +307,7 @@ def get_events_with_patient_site_with_total(
         where_sql = " AND ".join(where)
 
         stmt = (
-            "SELECT e.id, e.patient_id, p.site FROM events e LEFT JOIN patients p ON e.patient_id = p.id "
+            "SELECT e.id, e.patient_id, p.site FROM events e LEFT JOIN patients_view p ON e.patient_id = p.id "
             f"WHERE {where_sql} "
         )
         # Optional ORDER BY
@@ -371,7 +334,7 @@ def get_events_with_patient_site_with_total(
         rows = [dict(r) for r in rows]
 
         count_q = text(
-            "SELECT COUNT(*) FROM events e LEFT JOIN patients p ON e.patient_id = p.id "
+            "SELECT COUNT(*) FROM events e LEFT JOIN patients_view p ON e.patient_id = p.id "
             f"WHERE {where_sql}"
         )
         total = session.execute(count_q, params).scalar() or 0
@@ -425,7 +388,7 @@ def _phase_rows_with_total(
             "SELECT e.id AS `ID`, e.event_date AS `Date`, e.add_date AS `Created`, "
             "e.upload_date AS `Uploaded`, e.scrub_date AS `Scrubbed`, "
             "GROUP_CONCAT(c.name ORDER BY c.name SEPARATOR ', ') AS `Criteria`, p.site AS `Site` "
-            "FROM events e LEFT JOIN patients p ON e.patient_id = p.id "
+            "FROM events e LEFT JOIN patients_view p ON e.patient_id = p.id "
             "LEFT JOIN criterias c ON e.id = c.event_id "
             f"WHERE {where_sql} "
             "GROUP BY e.id, e.event_date, e.add_date, e.upload_date, e.scrub_date, p.site "
@@ -456,7 +419,7 @@ def _phase_rows_with_total(
         rows = session.execute(text(query), params).mappings().all()
 
         count_q = text(
-            "SELECT COUNT(DISTINCT e.id) FROM events e LEFT JOIN patients p ON e.patient_id = p.id "
+            "SELECT COUNT(DISTINCT e.id) FROM events e LEFT JOIN patients_view p ON e.patient_id = p.id "
             f"WHERE {where_sql}"
         )
         total = session.execute(count_q, params).scalar() or 0
@@ -661,7 +624,7 @@ def get_events_export_rows() -> list[dict]:
               edd.false_positive_reason AS overall_false_positive_reason,
               edd.ci AS overall_ci
             FROM events e
-            LEFT JOIN patients p ON p.id = e.patient_id
+            LEFT JOIN patients_view p ON p.id = e.patient_id
             LEFT JOIN crit ON crit.event_id = e.id
             LEFT JOIN users cu ON cu.id = e.creator_id
             LEFT JOIN users uu ON uu.id = e.uploader_id
@@ -699,7 +662,7 @@ def get_events_awaiting_review(user_id: int, q: Optional[str] = None, site: Opti
         like_date = _derive_date_like(q)
         # Enforce stricter criteria to align with main branch expectations:
         # - Slots 1 & 2 require status 'sent' (in addition to send_date)
-        # - Optional site filter via patients.site
+        # - Optional site filter via patients_view.site
         # Match main behavior:
         # - reviewer1: status in ('sent','reviewer2_done') and review1_date is null
         # - reviewer2: status in ('sent','reviewer1_done') and review2_date is null
@@ -730,7 +693,7 @@ def get_events_awaiting_review(user_id: int, q: Optional[str] = None, site: Opti
             " WHEN (e.reviewer2_id = :uid AND e.status IN ('sent','reviewer1_done') AND e.review2_date IS NULL) THEN 2 "
             " WHEN (e.reviewer3_id = :uid AND e.status = 'third_review_assigned' AND e.review3_date IS NULL) THEN 3 "
             " ELSE NULL END AS slot "
-            "FROM events e LEFT JOIN patients p ON p.id = e.patient_id "
+            "FROM events e LEFT JOIN patients_view p ON p.id = e.patient_id "
             f"WHERE ({where_sql}){site_filter}{q_filter} "
             "ORDER BY e.id ASC"
         )
@@ -861,7 +824,7 @@ def get_event_details(event_id: int) -> dict:
               r2.username AS reviewer2_username,
               r3.username AS reviewer3_username
             FROM events e
-            LEFT JOIN patients p ON p.id = e.patient_id
+            LEFT JOIN patients_view p ON p.id = e.patient_id
             LEFT JOIN users cu ON cu.id = e.creator_id
             LEFT JOIN users uu ON uu.id = e.uploader_id
             LEFT JOIN users su ON su.id = e.scrubber_id
@@ -880,10 +843,14 @@ def get_event_details(event_id: int) -> dict:
         session.close()
 
 def create_event(data: dict) -> dict:
-    """Create a new event and associated criteria."""
+    """Create a new event and associated criteria.
+
+    The patient identified by (site_patient_id, site) must already exist
+    in `patients_view`. This application does not create patient records;
+    both halves of the view (uw_patients2 and cnics_data.Patient) are
+    treated as read-only.
+    """
     session = get_session()
-    ext_session = _get_external_session_or_none()
-    patients_session = ext_session or session
     try:
         site_patient_id = (data.get("site_patient_id") or "").strip()
         site = (data.get("site") or "").strip()
@@ -892,20 +859,15 @@ def create_event(data: dict) -> dict:
         if not site:
             raise ValidationError("site is required")
         patient = (
-            patients_session.query(models.Patients)
+            session.query(models.PatientsView)
             .filter_by(site_patient_id=site_patient_id, site=site)
             .first()
         )
         if not patient:
-            if ext_session is None:
-                # Primary DB's patients table is not designed for writes; without
-                # the external DB, we cannot create a new patient safely.
-                raise ValidationError(
-                    "Patient not found and external patient DB is unavailable"
-                )
-            patient = models.Patients(site_patient_id=site_patient_id, site=site)
-            patients_session.add(patient)
-            patients_session.commit()
+            raise ValidationError(
+                f"Patient not found in patients_view for site={site!r}, "
+                f"site_patient_id={site_patient_id!r}"
+            )
         patient_id = patient.id
 
         event_date_str = (data.get("event_date") or "").strip()
@@ -942,8 +904,6 @@ def create_event(data: dict) -> dict:
         return result
     finally:
         session.close()
-        if ext_session is not None:
-            ext_session.close()
 
 
 def create_user(data: dict) -> dict:

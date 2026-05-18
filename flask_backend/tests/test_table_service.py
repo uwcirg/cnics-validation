@@ -53,7 +53,7 @@ def test_get_events_need_packets(mock_get_session):
     # calls should include the expected status/limit/offset.
     all_queries = [str(c.args[0]) for c in mock_session.execute.call_args_list]
     all_params = [c.args[1] for c in mock_session.execute.call_args_list if len(c.args) > 1]
-    assert any('JOIN patients' in q for q in all_queries)
+    assert any('JOIN patients_view' in q for q in all_queries)
     assert any('e.status = :status' in q for q in all_queries)
     assert any(p.get('status') == 'created' for p in all_params)
     assert any(p.get('limit') == 5 and p.get('offset') == 0 for p in all_params)
@@ -132,25 +132,19 @@ def test_get_event_status_summary(mock_get_session):
     assert summary == {'created': 3}
 
 
-@patch('flask_backend.table_service.models.get_external_session')
 @patch('flask_backend.table_service.models.get_session')
-def test_get_events_with_patient_site(mock_get_session, mock_get_external_session):
+def test_get_events_with_patient_site(mock_get_session):
     mock_session = MagicMock()
     mock_session.execute.return_value.mappings.return_value.all.return_value = [
-        {'id': 1, 'patient_id': 10}
+        {'id': 1, 'patient_id': 10, 'site': 'UW'}
     ]
     mock_get_session.return_value = mock_session
-
-    mock_ext_session = MagicMock()
-    mock_ext_session.execute.return_value.mappings.return_value.all.return_value = [
-        {'id': 10, 'site': 'UW'}
-    ]
-    mock_get_external_session.return_value = mock_ext_session
 
     rows = ts.get_events_with_patient_site()
 
     mock_get_session.assert_called()
-    mock_get_external_session.assert_called()
+    query = str(mock_session.execute.call_args.args[0])
+    assert 'JOIN patients_view' in query
     assert rows == [{'id': 1, 'patient_id': 10, 'site': 'UW'}]
 
 

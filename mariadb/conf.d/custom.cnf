@@ -13,3 +13,10 @@ max_allowed_packet=64M
 table_definition_cache=400
 table_open_cache=400
 
+# Load the FederatedX storage engine at startup. The `patients_view` view
+# (init/06-create-patients-view.sh) is a UNION over `uw_patients2` (local)
+# and a FEDERATED proxy table that reads `cnics_data.Patient` from another
+# MariaDB/MySQL instance — the engine plugin must be loaded for that
+# proxy table to be CREATE-able.
+plugin-load-add = ha_federatedx.so
+

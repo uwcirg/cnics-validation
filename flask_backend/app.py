@@ -1028,7 +1028,13 @@ def events_update(event_id: int):
     site_patient_id = data.get('site_patient_id')
     site = data.get('site')
     event_date = data.get('event_date')
-    # Update fields on events and/or patients
+    # Patient identity fields are sourced from `patients_view`, which is a
+    # UNION over read-only sources (uw_patients2, cnics_data.Patient). Edits
+    # to those fields must happen upstream, not here.
+    if site_patient_id is not None or site is not None:
+        return jsonify({
+            'error': 'site_patient_id and site are read-only here; update them in the upstream patient roster'
+        }), 400
     session = models.get_session()
     try:
         e = session.query(models.Events).get(event_id)
@@ -1040,14 +1046,6 @@ def events_update(event_id: int):
                 e.event_date = datetime.date(y, m, d)
             except Exception:
                 return jsonify({'error': 'event_date must be YYYY-MM-DD'}), 400
-        # Update patient fields
-        if site_patient_id or site:
-            p = session.query(models.Patients).get(e.patient_id)
-            if p is not None:
-                if site_patient_id is not None:
-                    p.site_patient_id = site_patient_id
-                if site is not None:
-                    p.site = site
         session.commit()
         return jsonify({'data': {'updated': True}})
     except Exception:
@@ -1203,7 +1201,7 @@ def events_upload_raw(event_id: int):
             is_admin = bool(auth_user.get('admin'))
             if not is_admin:
                 # Enforce same-site rule for non-admin uploaders
-                patient = session.query(models.Patients).get(e.patient_id)
+                patient = session.query(models.PatientsView).get(e.patient_id)
                 user_site = (auth_user.get('site') or '').strip()
                 event_site = (getattr(patient, 'site', None) or '').strip()
                 if not user_site or not event_site or user_site != event_site:
