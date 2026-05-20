@@ -8,9 +8,11 @@ DOCKER DATABASE:
 
         cp default.env .env
         docker compose up -d mariadb
-        # Initialization scripts load `init/04-create-patients.sql` which
-        # populates the `patients` table from `uw_patients2` if it does not
-        # already exist
+        # Initialization scripts under init/ create the schema and define
+        # the `patients_view` view, which UNIONs the locally-owned
+        # `uw_patients2` table with a FEDERATED proxy of the upstream
+        # `cnics_data.Patient` table. See init/06-create-patients-view.sh
+        # and default.env's CNICS_DATA_DB_* block for configuration.
 
 ## Container Setup
 
@@ -51,7 +53,18 @@ are built or started. The template defines the following variables:
 - `FILES_DIR` – directory containing instruction files served by the backend.
 - `DOWNLOADS_DIR` – writable directory where the backend saves generated/downloadable artifacts
   (e.g., uploaded scrubbed ZIPs). Defaults to a subdirectory under `FILES_DIR` if not set.
-- `EXTERNAL_DB_URL` – optional SQLAlchemy URL for a secondary database.
+- `CNICS_DATA_SOCKET_DIR` / `CNICS_DATA_DB_NAME` / `_TABLE` / `_USER` /
+  `_PASSWORD` – connection parameters for the upstream `cnics_data.Patient`
+  table. The mariadb container's init step builds a FEDERATED proxy table
+  for it, and the `patients_view` view UNIONs that proxy with the
+  locally-owned `uw_patients2` table. Because the cnics_data server listens
+  only on the VM host's loopback interface, the proxy reaches it over the
+  host's MariaDB/MySQL Unix socket: `CNICS_DATA_SOCKET_DIR` is the host
+  directory containing that socket (`mysqld.sock`), bind-mounted into the
+  mariadb container. The bridge user only needs `SELECT` on
+  `cnics_data.Patient` — keep it read-only. Leaving `CNICS_DATA_DB_USER`
+  empty disables the bridge; `patients_view` is then defined over
+  `uw_patients2` only (single-instance / dev fallback).
 
 Frontend client variables (those with the `VITE_` prefix, including
 `VITE_API_URL`) are loaded from `frontend/default.env`, not the root

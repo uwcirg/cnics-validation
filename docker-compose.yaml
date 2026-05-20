@@ -7,11 +7,25 @@ services:
       MYSQL_DATABASE: ${DB_NAME}
       MYSQL_USER: ${DB_USER}
       MYSQL_PASSWORD: ${DB_PASSWORD}
+      # Consumed by init/06-create-patients-view.sh to build the FEDERATED
+      # bridge to the upstream cnics_data.Patient table. See default.env
+      # for the var meanings and the read-only requirement on the bridge
+      # user.
+      CNICS_DATA_DB_NAME: ${CNICS_DATA_DB_NAME}
+      CNICS_DATA_DB_TABLE: ${CNICS_DATA_DB_TABLE}
+      CNICS_DATA_DB_USER: ${CNICS_DATA_DB_USER}
+      CNICS_DATA_DB_PASSWORD: ${CNICS_DATA_DB_PASSWORD}
     volumes:
       - mariadb-data:/var/lib/mysql
       - logs-data:/var/log/mysql
       - ./mariadb/conf.d:/etc/mysql/conf.d:ro
       - ./init:/docker-entrypoint-initdb.d
+      # The cnics_data server listens only on the VM host's loopback, so
+      # the FEDERATED proxy reaches it over the host's MariaDB/MySQL Unix
+      # socket. Bind-mount the host socket directory in; init/06 reads
+      # /run/cnics_data_host/mysqld.sock. (A directory mount — not a file
+      # mount — so it survives the host server recreating its socket.)
+      - ${CNICS_DATA_SOCKET_DIR:-/var/run/mysqld}:/run/cnics_data_host
     networks:
       - internal
 

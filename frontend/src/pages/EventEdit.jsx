@@ -33,8 +33,8 @@ function EventEdit() {
         })
       })
       .catch(() => setDetails(null))
-    // Load sites from patients table (distinct)
-    fetch(`${apiUrl}/api/tables/patients?limit=2000`, { credentials: 'include' })
+    // Load sites from patients_view (distinct)
+    fetch(`${apiUrl}/api/tables/patients_view?limit=2000`, { credentials: 'include' })
       .then((res) => res.ok ? res.json() : Promise.reject(res))
       .then((json) => {
         const rows = json.data || []
