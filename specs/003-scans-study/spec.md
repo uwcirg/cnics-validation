@@ -36,6 +36,15 @@ four flags in `README.md` / `default.env`.
 This feature is that deferred cycle: it implements the `scans` study and lands
 the pending documentation updates.
 
+## Clarifications
+
+### Session 2026-05-20
+
+- Q: When `STUDY_TYPE=scans` is selected, how are the four workflow-stage controls' values determined? → A: Selecting `scans` auto-supplies the bypass profile (scrubbing/screening/sending off, `REVIEWER_COUNT=1`) as defaults; an operator may still override any individual control in `.env`.
+- Q: How should a bypassed stage appear in an individual event's history? → A: Per-event history omits bypassed states entirely — it records only states actually entered; the deployment configuration is the authoritative record of which stages are bypassed.
+- Q: What triggers the final `reviewer1_done → done` transition in a single-reviewer (`scans`) configuration? → A: Automatic — submitting the single review advances the event straight to `done`, with no separate admin completion step.
+- Q: Is the existing myocardial-infarction full-workflow study canonically `MI` or `MCI` in this spec? → A: `MCI` is canonical (enumerated as `MI` in the constitution's Principle I; both denote the same study).
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Run a complete scan-validation from upload to completion (Priority: P1)
@@ -237,8 +246,10 @@ the bypassed state names are still defined; run an existing full-workflow study
 - **FR-009**: When sending is disabled, an `assigned` event MUST become
   available to its assigned reviewer without entering the `sent` state.
 - **FR-010**: When reviewer count is 1, an event MUST be treated as fully
-  reviewed once the first reviewer completes (`reviewer1_done`), and MUST
-  advance to `done` without entering `reviewer2_done` or any third-review state.
+  reviewed once the first reviewer completes (`reviewer1_done`), and the act of
+  submitting that review MUST automatically advance the event to `done` — with
+  no separate admin completion step — without entering `reviewer2_done` or any
+  third-review state.
 - **FR-011**: The reviewer work queue MUST present every event available for
   review under the active configuration, including `assigned` events when
   sending is disabled.
@@ -298,8 +309,9 @@ the bypassed state names are still defined; run an existing full-workflow study
 ### Key Entities
 
 - **Study type**: the named configuration value identifying which clinical
-  validation study a deployment serves. `scans` is the new value, joining MI,
-  VTE, CVA, Heart Failure, and AFIB.
+  validation study a deployment serves. `scans` is the new value, joining MCI
+  (enumerated as `MI` in the constitution's Principle I), VTE, CVA, Heart
+  Failure, and AFIB.
 - **Workflow-stage controls**: the four named settings governing selective
   bypass — scrubbing, screening, sending, and reviewer count — read through the
   shared configuration layer and overridable per deployment.
@@ -307,7 +319,10 @@ the bypassed state names are still defined; run an existing full-workflow study
   subset is `created → uploaded → assigned → reviewer1_done → done`; the
   bypassed states (`scrubbed`, `screened`, `sent`, `reviewer2_done`, the
   third-review states) remain part of the shared set even when a deployment
-  never enters them.
+  never enters them. An individual event's history records only the states it
+  actually entered — bypassed states do not appear in per-event history — and
+  the deployment configuration is the authoritative record of which stages are
+  bypassed.
 - **Reviewer work queue**: the set of events a reviewer may pick up for
   adjudication; its membership depends on whether sending is enabled.
 - **Roles**: admin, uploader, reviewer, and third_reviewer — shared across all
@@ -354,9 +369,8 @@ the bypassed state names are still defined; run an existing full-workflow study
 - Selecting the `scans` study type supplies the bypass profile as the
   deployment's default control values; an operator may still override any
   individual control through `.env`. The setup-guide worked example shows the
-  controls explicitly for documentation clarity. *(This is the most
-  consequential design assumption — a candidate for `/speckit.clarify` if the
-  team prefers operators to set all four controls by hand.)*
+  controls explicitly for documentation clarity. (Confirmed in Clarifications
+  Session 2026-05-20.)
 - When sending is disabled, the dispatch-time reviewer-notification email is
   bypassed along with the send step; reviewers discover assigned work through
   their queue. Re-introducing a notification at assignment time for `scans`
