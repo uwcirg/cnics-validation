@@ -109,7 +109,7 @@ No new top-level directories — `scans` is pure selective bypass (spec Assumpti
 
 ### Implementation for User Story 3
 
-- [X] T020 [P] [US3] In `default.env`, document `STUDY_TYPE` and the four workflow-stage controls (`ENABLE_SCRUBBING`, `ENABLE_SCREENING`, `ENABLE_SENDING`, `REVIEWER_COUNT`), each with its conservative default (`true/true/true/2`) and a one-line description (FR-022; research Decision 10).
+- [X] T020 [P] [US3] In `default.env`, document `STUDY_TYPE` and the four workflow-stage controls (`ENABLE_SCRUBBING`, `ENABLE_SCREENING`, `ENABLE_SENDING`, `REVIEWER_COUNT`), each with its conservative default (`true/true/true/2`) and a one-line description (FR-022; research Decision 10). Note: documenting the variables here is necessary but not sufficient — they must also be passed into the `backend` container; that wiring gap was missed and is remediated in T029.
 - [X] T021 [P] [US3] In `README.md`, list the four workflow-stage controls in the Environment Variables documentation section (FR-023; research Decision 10).
 - [X] T022 [P] [US3] In `docs/template-setup-guide.md`, add a `scans` worked deployment example parallel to the existing VTE alternative-study example, showing the study selector set to `scans` and the four controls set to their bypass values (`false/false/false/1`) — document only the deltas from the canonical template, not the full content (FR-024; research Decision 10).
 
@@ -143,6 +143,14 @@ No new top-level directories — `scans` is pure selective bypass (spec Assumpti
 
 ---
 
+## Phase 8: Post-Implementation Corrections
+
+**Purpose**: Record gaps discovered after `/speckit.implement` and their fixes, as required by Constitution Principle VI (Pre-Release Iteration and Discovery).
+
+- [X] T029 [US3] **Docker Compose wiring gap.** `STUDY_TYPE` and the four controls were documented in `default.env` (T020) but never added to the `backend` service's `environment:` block in `docker-compose.yaml`. Docker Compose reads the root `.env` only for `${...}` substitution within the compose file — it does not auto-inject those keys into containers — so the backend process never received `STUDY_TYPE`, and `get_workflow_config()` always resolved the `mci` full-workflow profile regardless of `.env`. Effect: a `STUDY_TYPE=scans` deployment still ran scrubbing/screening/sending. Root cause: no task wired the variables through the runtime, and plan.md's source-file list omitted `docker-compose.yaml`. Fix: add `STUDY_TYPE`, `ENABLE_SCRUBBING`, `ENABLE_SCREENING`, `ENABLE_SENDING`, and `REVIEWER_COUNT` to the `backend` service `environment:` block as `${VAR:-}` passthroughs — `STUDY_TYPE` defaulting to `mci`, the four controls passing through empty (which `study_config` treats as "use the profile default"). Verify with `GET /api/config` reporting `study_type: scans` and `scrubbing: false`. This is what makes `STUDY_TYPE=scans` an actually-deployable configuration (spec Success Criteria — "a working, deployable configuration").
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
@@ -153,6 +161,7 @@ No new top-level directories — `scans` is pure selective bypass (spec Assumpti
   - US1 (P1) is the MVP and should be completed first.
   - US2 (P2), US3 (P2), US4 (P3) can then proceed in parallel or in priority order.
 - **Polish (Phase 7)**: Depends on US1 + US2 (route changes) being complete.
+- **Post-Implementation Corrections (Phase 8)**: gaps discovered after `/speckit.implement`; recorded as found, not pre-planned.
 
 ### User Story Dependencies
 
@@ -240,5 +249,6 @@ Task: "Add the scans worked example to docs/template-setup-guide.md"
 - This feature *builds* the shared assign→review→done back half for the first time (research Decision 1) — it is behavior *completion*, not behavior *change*; with controls at their conservative defaults no existing study regresses (FR-017, SC-006).
 - No database schema change, no migration (research Decision 9).
 - All bypass behavior is driven by the four resolved controls — never by branching on `STUDY_TYPE` in pipeline code (FR-003, Constitution Principle IV).
+- **Post-implementation gap (Phase 8, T029)**: documenting the workflow variables in `default.env` did not make them reach the backend container — `docker-compose.yaml` had to be wired too. A `.env` key only affects a container if the compose file passes it through.
 - `[P]` tasks = different files, no incomplete dependencies.
 - Commit after each task or logical group; `openapi.json` must be regenerated within the same change set as the route changes.

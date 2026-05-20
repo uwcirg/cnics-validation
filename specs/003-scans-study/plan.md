@@ -135,11 +135,21 @@ frontend/src/
 └── studies/             # UNCHANGED — vte/, cva/; scans adds NO directory
 
 init/                    # UNCHANGED — no scans schema file, no migration
+docker-compose.yaml      # CHANGED — inject STUDY_TYPE + the four controls into the backend service environment
 default.env              # CHANGED — STUDY_TYPE + four controls documented
 README.md                # CHANGED — four controls in Environment Variables
 docs/template-setup-guide.md  # CHANGED — scans worked example added
 openapi.json             # REGENERATED — new/changed routes
 ```
+
+> **Post-Implementation Correction (2026-05-20)**: `docker-compose.yaml` was
+> absent from this list as originally planned. `STUDY_TYPE` and the four
+> controls were documented in `default.env` but never added to the `backend`
+> service's `environment:` block, so Docker Compose read them only for
+> `${...}` substitution within the compose file and never injected them into
+> the container — every deployment silently resolved to the `mci`
+> full-workflow profile regardless of `.env`. Remediated by passing the five
+> variables through as `${VAR:-}` entries. Tracked as tasks.md Phase 8 / T029.
 
 **Structure Decision**: Web-application layout (`flask_backend/` +
 `frontend/`), used as-is. The feature is delivered by extending shared modules
