@@ -453,9 +453,14 @@ def events_need_packets():
     """
     limit = get_limit()
     offset = get_offset()
-    # Filter by the uploader's site as per legacy behavior
+    # Non-admin uploaders/reviewers are scoped to their own site (legacy
+    # behavior); admins act across all sites, matching the admin bypass in
+    # upload_raw so they can see every event they are allowed to upload.
     auth_user = getattr(g, 'auth_user', None) or {}
-    site = (auth_user.get('site') or '').strip() or None
+    if auth_user.get('admin'):
+        site = None
+    else:
+        site = (auth_user.get('site') or '').strip() or None
     try:
         rows = table_service.get_events_need_packets(limit, offset, site)
         # Optional: add total if we later add filtering here as well
@@ -499,9 +504,13 @@ def events_need_reupload():
     limit = get_limit()
     offset = get_offset()
     try:
-        # Filter by the uploader's site like legacy behavior
+        # Non-admins are scoped to their own site (legacy behavior); admins
+        # act across all sites, matching the admin bypass in upload_raw.
         auth_user = getattr(g, 'auth_user', None) or {}
-        site = (auth_user.get('site') or '').strip() or None
+        if auth_user.get('admin'):
+            site = None
+        else:
+            site = (auth_user.get('site') or '').strip() or None
         rows = table_service.get_events_for_reupload(limit, offset, site)
         return jsonify({'data': rows})
     except Exception:

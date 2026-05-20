@@ -196,10 +196,14 @@ def get_events_by_status(status: str, limit: Optional[int] = None, offset: int =
 
 
 def get_events_need_packets(limit: Optional[int] = None, offset: int = 0, site: Optional[str] = None):
-    """Return events that still require packet uploads for the uploader's site.
+    """Return events that still require packet uploads.
 
-    Legacy behavior: events joined to patients_view where p.site = <uploader site>
-    and events.status = 'created', ordered by events.id ASC.
+    Events joined to patients_view with events.status = 'created', ordered by
+    events.id ASC. When ``site`` is given, results are restricted to that
+    patient site (p.site = <site>); when it is None, all sites are returned.
+    The caller (events_need_packets in app.py) passes the requesting user's
+    site for non-admins and None for admins, so admins see every site --
+    matching the admin bypass in upload_raw.
     """
     # Reuse the more general helper but enforce site filter and ordering by ID ASC
     rows, _total = get_events_by_status_with_total(
@@ -224,10 +228,14 @@ def get_events_for_review(limit: Optional[int] = None, offset: int = 0):
 
 
 def get_events_for_reupload(limit: Optional[int] = None, offset: int = 0, site: Optional[str] = None):
-    """Return events eligible for re-upload by the uploader's site.
+    """Return events eligible for re-upload.
 
-    Align with main branch: rows are events at the uploader's site with
-    status 'uploaded', ordered by ID ascending.
+    Rows are events with status 'uploaded', ordered by ID ascending. When
+    ``site`` is given, results are restricted to that patient site
+    (p.site = <site>); when it is None, all sites are returned. The caller
+    (events_need_reupload in app.py) passes the requesting user's site for
+    non-admins and None for admins, so admins see every site -- matching the
+    admin bypass in upload_raw.
     """
     rows, _total = get_events_by_status_with_total(
         status="uploaded",
