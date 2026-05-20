@@ -18,7 +18,7 @@ chain). Role decorators are noted per endpoint.
 Exposes the resolved workflow configuration so the frontend can hide
 bypassed-stage UI by flag (FR-021).
 
-- **Auth**: `@requires_auth`
+- **Auth**: `@requires_auth`, `@requires_any_role('admin','uploader','reviewer','third_reviewer')`
 - **Response 200**:
   ```json
   {

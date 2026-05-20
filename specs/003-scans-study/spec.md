@@ -81,8 +81,9 @@ actions, independent of UI cosmetics or documentation.
 3. **Given** an assigned scans event, **When** its single reviewer completes
    their review, **Then** the event advances to `done` without waiting for a
    second reviewer.
-4. **Given** a scans deployment, **When** an admin opens the assignment action,
-   **Then** only a single (first) reviewer slot is offered.
+4. **Given** a scans deployment, **When** an admin assigns an event, **Then**
+   the event is assigned to a single (first) reviewer and any request to assign
+   a second or third reviewer is rejected.
 5. **Given** a deployment whose reviewer count is set to an unsupported value
    (e.g., 3), **When** the stack starts, **Then** it fails to start with a
    clear configuration error and serves no requests.

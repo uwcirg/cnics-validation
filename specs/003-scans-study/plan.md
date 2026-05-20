@@ -74,7 +74,7 @@ new violations.*
 
 Security & Data Governance: the new `/api/events/<id>/review` endpoint carries
 `@requires_auth` + `@requires_any_role('reviewer','admin')`; `/api/config`
-carries `@requires_auth` and exposes only non-sensitive workflow flags. No PHI
+carries `@requires_auth` + `@requires_any_role('admin','uploader','reviewer','third_reviewer')` and exposes only non-sensitive workflow flags. No PHI
 logging is added. Auth chain unchanged.
 
 Quality Gates: feature-flag discipline honored — conservative defaults are the
@@ -124,7 +124,8 @@ flask_backend/
                           #   /review endpoint, flag-aware queues
 
 frontend/src/
-├── App.jsx              # CHANGED — fetch GET /api/config; provide workflow config
+├── App.jsx              # CHANGED — fetch GET /api/config; provide workflow
+│                         #   config; guard bypassed-stage routes by flag
 ├── components/
 │   └── MenuBar.jsx      # CHANGED — hide bypassed-stage nav entries by flag
 ├── pages/

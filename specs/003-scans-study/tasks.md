@@ -87,12 +87,12 @@ No new top-level directories — `scans` is pure selective bypass (spec Assumpti
 
 ### Tests for User Story 2
 
-- [ ] T014 [P] [US2] Integration test for `GET /api/config` in new `flask_backend/tests/test_config_endpoint.py`: enforces `@requires_auth`; `200` returns `{ "data": { "study_type", "workflow": { "scrubbing", "screening", "sending", "reviewer_count" } } }` reflecting the resolved config; no secrets exposed (contracts "NEW GET /api/config").
+- [ ] T014 [P] [US2] Integration test for `GET /api/config` in new `flask_backend/tests/test_config_endpoint.py`: enforces `@requires_auth` + `@requires_any_role('admin','uploader','reviewer','third_reviewer')`; `200` returns `{ "data": { "study_type", "workflow": { "scrubbing", "screening", "sending", "reviewer_count" } } }` reflecting the resolved config; no secrets exposed (contracts "NEW GET /api/config").
 
 ### Implementation for User Story 2
 
-- [ ] T015 [US2] Add `GET /api/config` to `flask_backend/app.py` with `@requires_auth`, returning the resolved `get_workflow_config()` as `{ "data": { "study_type", "workflow": { "scrubbing", "screening", "sending", "reviewer_count" } } }` (FR-021; research Decision 7; contracts).
-- [ ] T016 [US2] In `frontend/src/App.jsx`, fetch `GET /api/config` once at load (alongside `/api/auth/me`) and make the resolved workflow config available to the component tree (context or props) (research Decision 7).
+- [ ] T015 [US2] Add `GET /api/config` to `flask_backend/app.py` with `@requires_auth` + `@requires_any_role('admin','uploader','reviewer','third_reviewer')`, returning the resolved `get_workflow_config()` as `{ "data": { "study_type", "workflow": { "scrubbing", "screening", "sending", "reviewer_count" } } }` (FR-021; research Decision 7; contracts).
+- [ ] T016 [US2] In `frontend/src/App.jsx`, fetch `GET /api/config` once at load (alongside `/api/auth/me`), make the resolved workflow config available to the component tree (context or props), and conditionally register the route tree so a bypassed-stage *view* is not reachable by direct URL — omit/guard the `EventScrub.jsx`, `EventScreen.jsx`, `EventSendMany.jsx`, and `EventAssignThird.jsx` routes when `scrubbing`/`screening`/`sending` are disabled or `reviewer_count==1` (FR-018, FR-019, FR-021; research Decision 7).
 - [ ] T017 [P] [US2] In `frontend/src/components/MenuBar.jsx`, hide the scrubbing, screening, and sending navigation entries when those controls are disabled, reading the config flags from T016 — never a hard-coded `study_type` check (FR-018, FR-021; research Decision 8).
 - [ ] T018 [P] [US2] In `frontend/src/pages/Admin.jsx`, hide the scrubbing/screening/sending queues and actions when those controls are disabled, reading the config flags from T016; keep upload, assignment, single review, and completion present (FR-018, FR-020, FR-021; research Decision 8).
 - [ ] T019 [P] [US2] In `frontend/src/pages/EventAssignMany.jsx`, offer only a single (first) reviewer slot — hide the second-/third-reviewer assignment controls — when `reviewer_count==1`, reading the config flag from T016 (FR-019, FR-021; research Decision 8).
