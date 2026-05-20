@@ -126,6 +126,8 @@ def test_uploader_can_access_need_packets(mock_get_session, mock_svc):
     res = client.get("/api/events/need_packets", headers={"X-Remote-User": "alice"})
     assert res.status_code == 200
     assert res.get_json() == {"data": [{"ID": 1}]}
+    # Non-admin uploaders stay scoped to their own site (FakeUser site='UW').
+    mock_svc.assert_called_with(None, 0, "UW")
 
 
 @patch("flask_backend.table_service.get_events_for_reupload")
@@ -141,6 +143,8 @@ def test_uploader_can_access_need_reupload(mock_get_session, mock_svc):
     res = client.get("/api/events/need_reupload", headers={"X-Remote-User": "alice"})
     assert res.status_code == 200
     assert res.get_json() == {"data": [{"ID": 2}]}
+    # Non-admin uploaders stay scoped to their own site (FakeUser site='UW').
+    mock_svc.assert_called_with(None, 0, "UW")
 
 
 @patch("flask_backend.table_service.get_events_for_review")

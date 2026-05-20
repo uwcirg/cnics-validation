@@ -54,9 +54,9 @@ def test_get_need_packets_route(mock_service, admin_client):
     res = admin_client.get('/api/events/need_packets?limit=2&offset=5')
     assert res.status_code == 200
     assert res.get_json() == {'data': [{'ID': 1}]}
-    # The endpoint forwards the authenticated user's site; the admin
-    # fixture sets site='TEST'.
-    mock_service.assert_called_with(2, 5, 'TEST')
+    # Admins act across all sites (no site filter), matching the admin
+    # bypass in upload_raw; site is therefore passed as None.
+    mock_service.assert_called_with(2, 5, None)
 
 
 @patch("flask_backend.table_service.get_table_data")
@@ -107,9 +107,9 @@ def test_get_for_reupload_route(mock_service, admin_client):
     res = admin_client.get('/api/events/need_reupload?limit=4&offset=0')
     assert res.status_code == 200
     assert res.get_json() == {'data': [{'ID': 3}]}
-    # The endpoint forwards the authenticated user's site; the admin
-    # fixture sets site='TEST'.
-    mock_service.assert_called_with(4, 0, 'TEST')
+    # Admins act across all sites (no site filter), matching the admin
+    # bypass in upload_raw; site is therefore passed as None.
+    mock_service.assert_called_with(4, 0, None)
 
 
 @patch('flask_backend.table_service.get_events_for_reupload')
