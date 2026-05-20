@@ -70,6 +70,30 @@ paths:
   /api/events/{int:event_id}: {}
   /api/users: {}
   /api/auth/me: {}
+  /api/config:
+    get:
+      responses:
+        '200':
+          description: Resolved workflow configuration
+          schema:
+            type: object
+            properties:
+              data:
+                type: object
+                properties:
+                  study_type:
+                    type: string
+                  workflow:
+                    type: object
+                    properties:
+                      scrubbing:
+                        type: boolean
+                      screening:
+                        type: boolean
+                      sending:
+                        type: boolean
+                      reviewer_count:
+                        type: integer
   /api/auth/dev_login: {}
   /api/auth/dev_logout: {}
   /api/auth/dev_set_roles: {}
@@ -85,6 +109,33 @@ paths:
   /api/events/{int:event_id}/upload_raw: {}
   /api/events/assign_many: {}
   /api/events/send_many: {}
+  /api/events/{int:event_id}/review:
+    post:
+      parameters:
+      - name: event_id
+        in: path
+        type: integer
+        required: true
+        description: ID of the event being reviewed
+      responses:
+        '200':
+          description: Review recorded; event lifecycle advanced
+          schema:
+            type: object
+            properties:
+              data:
+                type: object
+                properties:
+                  event_id:
+                    type: integer
+                  status:
+                    type: string
+        '400':
+          description: Invalid review body
+        '403':
+          description: Submitter is not an assigned reviewer for this event
+        '404':
+          description: Event not found
   /files/{path:filename}: {}
   /: {}
 info:

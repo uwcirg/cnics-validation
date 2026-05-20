@@ -546,6 +546,43 @@ CREATE TABLE `reviews` (
 );
 ```
 
+### Example: scans (Scan Validation) Study Deployment
+
+`scans` is the canonical *selective-bypass* study (Constitution v1.4.0,
+Principle V): it runs the lifecycle `created → uploaded → assigned →
+reviewer1_done → done`, skipping scrubbing, screening, sending, and
+second-/third-reviewer adjudication. It contrasts with the VTE example
+above: VTE *extends* the workflow (and therefore carries a per-study
+schema file and component directory), whereas `scans` only *removes*
+stages and so adds no per-study artifacts at all — it reuses the shared
+schema and the shared interface with bypassed-stage elements hidden.
+
+Selecting `STUDY_TYPE=scans` supplies the bypass profile as the default;
+the four workflow-stage controls are shown explicitly below for clarity.
+An operator may still override any individual control.
+
+#### Environment Configuration
+```bash
+STUDY_TYPE=scans
+STUDY_NAME="Scan Validation"
+STUDY_ABBREVIATION="SCANS"
+ENABLE_SCRUBBING=false    # scans has nothing to scrub
+ENABLE_SCREENING=false    # scans has nothing to screen
+ENABLE_SENDING=false      # no separate dispatch step
+REVIEWER_COUNT=1          # single-reviewer adjudication
+```
+
+#### Study-Specific Artifacts
+
+None. Because `scans` is pure selective bypass, Steps 2–5 of the
+deployment walkthrough do not apply: there is no
+`init/02-schema-scans.sql`, no `flask_backend/models/studies/scans.py`,
+and no `frontend/src/studies/scans/` directory. The bypassed states
+(`scrubbed`, `screened`, `sent`, `reviewer2_done`, and the third-review
+states) remain defined in the shared schema and state machine — a
+`scans` deployment simply never enters them ("bypass means *not entered*
+for this deployment, not *deleted from the system*").
+
 ## Best Practices for Multi-Study Deployments
 
 ### 1. Maintain Core Workflow
