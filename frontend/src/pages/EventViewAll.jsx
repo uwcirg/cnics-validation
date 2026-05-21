@@ -311,7 +311,11 @@ function EventViewAll() {
           </>
         )}
       />
-      {/* To Be Assigned = awaiting assignment -> status 'screened' */}
+      {/* To Be Assigned = awaiting reviewer assignment. Backend by_status is
+          flag-aware (T010): with scrubbing/screening bypassed it surfaces
+          'uploaded' events here. The action goes to the normal reviewer
+          assignment page, which adapts to REVIEWER_COUNT (T019) — not the
+          separate third-reviewer page. */}
       <TableSection
         title="To Be Assigned"
         endpoint="/api/events/by_status/screened"
@@ -320,7 +324,7 @@ function EventViewAll() {
             <button onClick={(e) => { e.stopPropagation(); window.location.href = `/events/edit?event_id=${row['ID']}` }}>edit</button>
             {' '}
             |{' '}
-            <button onClick={(e) => { e.stopPropagation(); window.location.href = `/events/assignThird` }}>assign 3rd</button>
+            <button onClick={(e) => { e.stopPropagation(); window.location.href = `/events/assignMany` }}>assign</button>
           </>
         )}
       />
