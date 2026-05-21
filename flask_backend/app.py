@@ -13,6 +13,8 @@ import uuid
 from .logging_config import configure_logging
 from . import table_service
 from . import models
+from . import study_config
+from .study_config import get_workflow_config
 try:
     from flask_authorize import Authorize
 except Exception:
@@ -46,6 +48,12 @@ if Authorize is not None:
 
 load_dotenv()
 configure_logging()
+
+# Resolve and validate the workflow configuration at import time. An invalid
+# configuration (e.g. REVIEWER_COUNT=3, or a malformed boolean control) raises
+# `WorkflowConfigError` here, so importing this module fails and the WSGI app
+# is never constructed — the deployment serves no request (FR-005, SC-004).
+WORKFLOW_CONFIG = get_workflow_config()
 
 # Request lifecycle hooks for structured access logging
 @app.before_request
@@ -131,6 +139,16 @@ def get_offset(default: int = 0) -> int:
         return int(request.args.get("offset", default))
     except (TypeError, ValueError):
         return default
+
+
+def _coerce_flag(value) -> int:
+    """Coerce a truthy/falsy review-form value to a 0/1 TINYINT."""
+    if isinstance(value, bool):
+        return 1 if value else 0
+    if isinstance(value, (int, float)):
+        return 1 if value else 0
+    token = str(value or "").strip().lower()
+    return 1 if token in {"1", "true", "yes", "on"} else 0
 
 
 def ensure_pdf(doc_path: str, pdf_path: str) -> None:
@@ -634,6 +652,51 @@ def auth_me():
     if not auth_user:
         abort(401)
     return jsonify({"data": auth_user})
+
+
+@app.route('/api/config')
+@requires_auth
+@requires_any_role('admin', 'uploader', 'reviewer', 'third_reviewer')
+def get_config():
+    """Return the resolved workflow configuration for this deployment.
+
+    Exposes only the four non-sensitive workflow-stage controls and the
+    study type — no secrets — so the frontend can hide bypassed-stage UI
+    by flag rather than by a hard-coded study-name check (FR-021).
+    ---
+    responses:
+      200:
+        description: Resolved workflow configuration
+        schema:
+          type: object
+          properties:
+            data:
+              type: object
+              properties:
+                study_type:
+                  type: string
+                workflow:
+                  type: object
+                  properties:
+                    scrubbing:
+                      type: boolean
+                    screening:
+                      type: boolean
+                    sending:
+                      type: boolean
+                    reviewer_count:
+                      type: integer
+    """
+    cfg = get_workflow_config()
+    return jsonify({'data': {
+        'study_type': cfg.study_type,
+        'workflow': {
+            'scrubbing': cfg.scrubbing,
+            'screening': cfg.screening,
+            'sending': cfg.sending,
+            'reviewer_count': cfg.reviewer_count,
+        },
+    }})
 
 
 @app.route('/api/auth/dev_login', methods=['POST', 'GET'])
@@ -1249,6 +1312,12 @@ def events_assign_many():
     slot = (data.get('slot') or '').strip()
     if not isinstance(event_ids, list) or not reviewer_id or not slot:
         return jsonify({'error': 'event_ids, reviewer_id, and slot are required'}), 400
+    # In a single-reviewer configuration there is no second or third reviewer,
+    # so those assignment slots are unavailable (FR-013).
+    if get_workflow_config().reviewer_count == 1 and slot in ('second', 'third'):
+        return jsonify({
+            'error': 'Second- and third-reviewer assignment is unavailable when reviewer count is 1'
+        }), 400
     auth_user = getattr(g, 'auth_user', None) or {}
     assigner_id = auth_user.get('id') or 0
     try:
@@ -1277,6 +1346,130 @@ def events_send_many():
     except Exception:
         app.logger.exception('Failed to send events')
         return jsonify({'error': 'Failed to send events'}), 500
+
+
+# Review-row fields accepted from a review-submission body. The review form
+# and the `reviews` table are the existing shared artifact — `scans` carries
+# no study-specific review fields (spec Assumption). `mci` is required and
+# handled explicitly below; `cardiac_cath` is a NOT NULL flag also handled
+# explicitly. The rest are optional and copied through when present.
+_REVIEW_FLAG_FIELDS = {
+    'abnormal_ce_values_flag', 'chest_pain_flag', 'ecg_changes_flag',
+    'lvm_by_imaging_flag', 'ci', 'false_positive_flag',
+    'current_tobacco_use_flag', 'past_tobacco_use_flag', 'cocaine_use_flag',
+    'family_history_flag',
+}
+_REVIEW_TEXT_FIELDS = {
+    'ce_criteria', 'type', 'secondary_cause', 'other_cause',
+    'false_positive_reason', 'false_positive_other_cause', 'ci_type', 'ecg_type',
+}
+
+
+@app.route('/api/events/<int:event_id>/review', methods=['POST'])
+@requires_auth
+@requires_any_role('reviewer', 'admin')
+def events_review(event_id: int):
+    """Submit a reviewer's adjudication for an event and advance the lifecycle.
+
+    Records one row in the shared `reviews` table for the submitting
+    reviewer, stamps the reviewer's `reviewN_date`, and advances
+    `events.status`. The submitter's slot is derived from the event's
+    `reviewer1_id`/`reviewer2_id` assignment columns — never from the study
+    name (FR-003). When reviewer count is 1, submitting the single review
+    advances the event straight to `done` (FR-010, FR-014).
+    ---
+    parameters:
+      - name: event_id
+        in: path
+        type: integer
+        required: true
+        description: ID of the event being reviewed
+    responses:
+      200:
+        description: Review recorded; event lifecycle advanced
+        schema:
+          type: object
+          properties:
+            data:
+              type: object
+              properties:
+                event_id:
+                  type: integer
+                status:
+                  type: string
+      400:
+        description: Invalid review body
+      403:
+        description: Submitter is not an assigned reviewer for this event
+      404:
+        description: Event not found
+    """
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not data:
+        return jsonify({'error': 'A review body is required'}), 400
+    mci = str(data.get('mci') or '').strip()
+    if not mci:
+        return jsonify({'error': 'mci is required'}), 400
+
+    auth_user = getattr(g, 'auth_user', None) or {}
+    user_id = int(auth_user.get('id') or 0)
+    cfg = get_workflow_config()
+    session = models.get_session()
+    try:
+        e = session.query(models.Events).get(event_id)
+        if e is None:
+            return jsonify({'error': 'Event not found'}), 404
+
+        # Determine the submitter's reviewer slot from the event's
+        # assignment columns (FR-003). A caller — even an admin — who is
+        # not an assigned reviewer for this event cannot submit a review.
+        if e.reviewer1_id == user_id:
+            slot = 1
+        elif e.reviewer2_id == user_id:
+            slot = 2
+        else:
+            return jsonify({
+                'error': 'Submitter is not an assigned reviewer for this event'
+            }), 403
+
+        # Build and insert one row in the shared `reviews` table.
+        review_kwargs = {
+            'event_id': event_id,
+            'reviewer_id': user_id,
+            'mci': mci,
+            'cardiac_cath': _coerce_flag(data.get('cardiac_cath')),
+        }
+        for field in _REVIEW_FLAG_FIELDS:
+            if data.get(field) is not None:
+                review_kwargs[field] = _coerce_flag(data.get(field))
+        for field in _REVIEW_TEXT_FIELDS:
+            value = data.get(field)
+            if value is not None and str(value).strip() != '':
+                review_kwargs[field] = str(value).strip()
+        session.add(models.Reviews(**review_kwargs))
+
+        # Advance the lifecycle.
+        today = datetime.date.today()
+        if slot == 1:
+            e.review1_date = today
+            e.status = 'reviewer1_done'
+            # Single-reviewer configuration: the one review completes the
+            # event — no second reviewer, no separate admin completion
+            # step, and no disagreement/third-review check (FR-010, FR-014).
+            if cfg.reviewer_count == 1:
+                e.status = 'done'
+        else:
+            e.review2_date = today
+            e.status = 'reviewer2_done'
+
+        session.commit()
+        return jsonify({'data': {'event_id': event_id, 'status': e.status}})
+    except Exception:
+        session.rollback()
+        app.logger.exception('Failed to submit review for event %d', event_id)
+        return jsonify({'error': 'Failed to submit review'}), 500
+    finally:
+        session.close()
 
 
 @app.route('/files/<path:filename>')

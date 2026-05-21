@@ -48,6 +48,20 @@ are built or started. The template defines the following variables:
 - `DB_NAME` – name of the application's database.
 - `DB_USER` – database user for the application.
 - `DB_PASSWORD` – password for `DB_USER`.
+- `STUDY_TYPE` – selects the clinical validation study this deployment serves
+  (`mci`, `vte`, `cva`, `hf`, `afib`, `scans`); defaults to `mci`. The chosen
+  study supplies the default profile for the four workflow-stage controls below.
+- `ENABLE_SCRUBBING` – whether uploaded packets pass through the `scrubbed`
+  stage (`true`/`false`/`1`/`0`/`yes`/`no`). Defaults to `true`.
+- `ENABLE_SCREENING` – whether events pass through the `screened` stage
+  (`true`/`false`/`1`/`0`/`yes`/`no`). Defaults to `true`.
+- `ENABLE_SENDING` – whether assigned events pass through a separate `sent`
+  dispatch stage (`true`/`false`/`1`/`0`/`yes`/`no`). Defaults to `true`.
+- `REVIEWER_COUNT` – how many reviewers adjudicate each event; must be `1` or
+  `2` (any other value aborts startup). Defaults to `2`. The four controls are
+  resolved through the shared configuration layer; leaving them unset runs the
+  full validation pipeline, while `STUDY_TYPE=scans` defaults them to the
+  selective-bypass profile.
 - `FRONTEND_ORIGIN` – allowed origin for CORS (Cross‑Origin Resource Sharing) requests to the backend.
 - `FHIR_SERVER` – **not currently used.** Retained for backward compatibility with deployments that still set it; no runtime component reads this value. Safe to omit.
 - `FILES_DIR` – directory containing instruction files served by the backend.

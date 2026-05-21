@@ -35,6 +35,8 @@ function EventReview() {
   const [cardiacCath, setCardiacCath] = useState('')
 
   const [eventDetails, setEventDetails] = useState(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitMessage, setSubmitMessage] = useState(null)
 
   // Option lists (could be loaded from API; inline for now)
   const mcis = ['Definite', 'Probable', 'No', 'No [resuscitated cardiac arrest]']
@@ -116,9 +118,58 @@ function EventReview() {
     return res
   }, [mci, ci, ciType, type, secondaryCause, abnormalCeValues, chestPain, ecgChanges, lvmByImaging, ceCriteria, currentTobacco, falsePositive, falsePositiveReason])
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    alert('Review submitted (placeholder).')
+    if (!eventId) {
+      setSubmitMessage({ type: 'error', text: 'No event selected.' })
+      return
+    }
+    setSubmitting(true)
+    setSubmitMessage(null)
+    // Map the form state onto the shared `reviews` columns the backend
+    // expects. Submitting advances the event lifecycle (POST .../review);
+    // in a single-reviewer study this completes the event.
+    const body = {
+      mci,
+      cardiac_cath: cardiacCath,
+      abnormal_ce_values_flag: abnormalCeValues,
+      ce_criteria: ceCriteria,
+      chest_pain_flag: chestPain,
+      ecg_changes_flag: ecgChanges,
+      lvm_by_imaging_flag: lvmByImaging,
+      ci,
+      ci_type: ciType,
+      type,
+      secondary_cause: secondaryCause,
+      other_cause: otherCause,
+      false_positive_flag: falsePositive,
+      false_positive_reason: falsePositiveReason,
+      false_positive_other_cause: falsePositiveOtherCause,
+      ecg_type: ecgType,
+      current_tobacco_use_flag: currentTobacco,
+      past_tobacco_use_flag: pastTobacco,
+      cocaine_use_flag: cocaine,
+      family_history_flag: familyHistory,
+    }
+    try {
+      const res = await fetch(`${apiUrl}/api/events/${eventId}/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(body),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (res.ok) {
+        const status = json?.data?.status || 'updated'
+        setSubmitMessage({ type: 'success', text: `Review submitted. Event status: ${status}.` })
+      } else {
+        setSubmitMessage({ type: 'error', text: json?.error || `Submission failed (${res.status}).` })
+      }
+    } catch {
+      setSubmitMessage({ type: 'error', text: 'Submission failed: network error.' })
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -402,7 +453,21 @@ function EventReview() {
 
               {show.submit && (
                 <tr id="submit">
-                  <td colSpan={2}><button type="submit">Submit</button></td>
+                  <td colSpan={2}>
+                    <button type="submit" disabled={submitting}>
+                      {submitting ? 'Submitting…' : 'Submit'}
+                    </button>
+                    {submitMessage && (
+                      <span
+                        style={{
+                          marginLeft: '12px',
+                          color: submitMessage.type === 'success' ? '#1a7f37' : '#b3261e',
+                        }}
+                      >
+                        {submitMessage.text}
+                      </span>
+                    )}
+                  </td>
                 </tr>
               )}
             </tbody>

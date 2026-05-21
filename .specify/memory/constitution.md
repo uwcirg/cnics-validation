@@ -1,24 +1,123 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: 1.2.0 → 1.3.0
-Rationale: MINOR bump. Adds an explicit "Network exposure boundaries"
-clause to the Security & Data Governance section, requiring non-edge
-services in `docker-compose.yaml` to bind their host ports to the
-loopback interface (`127.0.0.1`) rather than all interfaces
-(`0.0.0.0`). The rule makes testable an obligation that was
-previously only implicit in "Removing or short-circuiting either
-half of the basic+ldap → `X-Remote-User` chain in a study deployment
-is prohibited" — it explicitly closes the loophole where a non-edge
-service could expose a parallel network path that bypasses the
-Apache auth gate without "removing" the basic+ldap chain itself. No
-prior rule is rescinded; no governance authority changes. The
-combination of an existing rule being sharpened plus a new specific
-MUST clause warrants MINOR rather than PATCH. Prior SYNC IMPACT
-REPORTs for v1.1.0 → v1.1.1 through v1.1.3 → v1.2.0 are preserved
-below.
+Version change: 1.3.0 → 1.4.0
+Rationale: MINOR bump. Materially expands Principle V (Workflow and
+Role Parity Across Studies) to permit configuration-driven *selective
+bypass* of specific shared lifecycle stages, in addition to the
+already-permitted *extension* of the lifecycle. Introduces four named
+feature flags (`ENABLE_SCRUBBING`, `ENABLE_SCREENING`,
+`ENABLE_SENDING`, `REVIEWER_COUNT`) and a named study type, `scans`,
+that exercises all four. The MUST-NOT-redefine/remove/rename
+constraint on shared states and roles is preserved verbatim —
+bypassed states still exist in the schema and the shared state
+machine; configuration only controls whether a given deployment
+enters them. A new normative allowance is added on top of prior
+guidance, so MINOR rather than PATCH; nothing is rescinded, so not
+MAJOR. Prior SYNC IMPACT REPORTs for v1.1.0 → v1.1.1 through
+v1.2.0 → v1.3.0 are preserved below.
 
----- v1.2.0 → v1.3.0 (this amendment) ----
+CROSSWALK NOTE: This amendment reconciles the substantive design on
+the stale `add-scans-constitution-only` branch (branch commit
+`cc72101`, which amended a v1.1.2-era base to its own divergent
+"v1.2.0") against the current v1.3.0 constitution on `main`. That
+branch and `main` independently reused the label "v1.2.0" for two
+different documents; the branch never received the Malignancy removal
+(`main` v1.1.3), the single-`.env` / single-`docker-compose.yaml`
+rule (`main` v1.2.0), or the network-exposure-boundaries bullet
+(`main` v1.3.0). This amendment adopts that branch's Principle V
+"selective bypass" design but rebases it onto the current v1.3.0
+text, so none of those three intervening amendments is regressed.
+It also adds one flag the branch lacked — `ENABLE_SENDING` — because
+the branch's three-flag design (`ENABLE_SCRUBBING` +
+`ENABLE_SCREENING` + `REVIEWER_COUNT`) leaves the `sent` state in
+the path, yielding `created → uploaded → assigned → sent →
+reviewer1_done → done`, whereas the current request specifies
+`created → uploaded → assigned → reviewer1_done → done` with no
+`sent` stage. `ENABLE_SENDING` closes that gap. The
+`add-scans-constitution-only` branch's constitution is superseded by
+this file; that branch SHOULD NOT be merged.
+
+---- v1.3.0 → v1.4.0 (this amendment) ----
+
+Modified principles:
+  - I. Single Codebase, Many Studies — the enumerated study list in
+    the principle body gains `scans` at its end ("… AFIB, `scans`,
+    and any future studies"). List extension only; the principle's
+    normative requirement is unchanged.
+  - II, III, VI. unchanged.
+  - IV. Configuration Over Code Forks — the environment-variable
+    example list in mechanism 1 is extended to include
+    `ENABLE_SCRUBBING`, `ENABLE_SCREENING`, `ENABLE_SENDING`, and
+    `REVIEWER_COUNT` alongside the existing `STUDY_TYPE`,
+    `ENABLE_PRE_SCRUB`, and `ENABLE_QUESTIONNAIRES`. Illustrative
+    only; the single-`.env` / single-`docker-compose.yaml` paragraph
+    and the three-item preference list are untouched.
+  - V. Workflow and Role Parity Across Studies — materially
+    expanded. The shared-primitives requirement and the
+    MUST-NOT-redefine/remove/rename rule are preserved (the latter
+    promoted to its own sentence). A new "Selective bypass"
+    allowance is added alongside the existing "Extension" allowance,
+    with four named flags (`ENABLE_SCRUBBING`, `ENABLE_SCREENING`,
+    `ENABLE_SENDING`, `REVIEWER_COUNT`), an explicit statement that
+    bypassed states remain in the schema and shared state machine
+    ("not entered" ≠ "deleted"), and `scans` named as the canonical
+    bypass instance with its resulting lifecycle spelled out.
+
+Modified sections:
+  - Development Workflow & Quality Gates → "Feature-flag discipline"
+    bullet — the four new flags are added to the example list, and
+    "safer/off" is refined to "safer/conservative" because for the
+    bypass flags the conservative default is on (full workflow),
+    not off.
+
+Added sections: N/A (no new top-level sections; Principle V is
+expanded in place).
+Removed sections: N/A.
+
+Source material: user amendment input 2026-05-20 ("We need a new
+study type … named 'scans' … a much simpler flow than the others:
+created → uploaded → assigned → reviewer1_done → done"), and the
+prior `add-scans-constitution-only` branch (commit `cc72101`) whose
+Principle V "selective bypass" design is adopted and corrected here
+(see CROSSWALK NOTE above). The flag names follow the established
+`ENABLE_*` pattern already used by `ENABLE_PRE_SCRUB` and
+`ENABLE_QUESTIONNAIRES`; `REVIEWER_COUNT` is named as a count rather
+than a boolean to leave room for future single/double/triple-reviewer
+protocols without requiring another amendment. The `sent` state's
+existence as a distinct stage between `assigned` and `reviewer1_done`
+is confirmed by `flask_backend/models.py` (the `events.status` enum)
+and `flask_backend/table_service.py` (reviewer-pickup logic keys on
+`status IN ('sent', …)`).
+
+Templates requiring updates:
+  - ✅ .specify/templates/plan-template.md — no change needed; its
+    "Constitution Check" gate references the constitution generically
+    and hardcodes no principle content.
+  - ✅ .specify/templates/spec-template.md — no change needed.
+  - ✅ .specify/templates/tasks-template.md — no change needed.
+  - ✅ .specify/templates/constitution-template.md — no change needed;
+    this amendment uses the existing template structure.
+  - ⚠ docs/template-setup-guide.md — pending. SHOULD gain a `scans`
+    worked example showing `STUDY_TYPE=scans` with
+    `ENABLE_SCRUBBING=false`, `ENABLE_SCREENING=false`,
+    `ENABLE_SENDING=false`, `REVIEWER_COUNT=1`, analogous to the
+    existing VTE alt-study example. Not blocking — the constitution
+    governs *what* is allowed; the guide documents *how*.
+  - ⚠ README.md / default.env — pending. If a `scans` deployment is
+    shipped, env-var documentation SHOULD list the four new flags and
+    their defaults. Not blocking for this governance amendment.
+
+Deferred / TODO:
+  - Implementation work to wire `STUDY_TYPE=scans` and the four flags
+    through the shared configuration layer, the event state machine,
+    the assignment/send logic, and the frontend study factory is out
+    of scope for this amendment and belongs in a
+    spec → plan → tasks → implement cycle. This amendment grants
+    governance permission for that work; it does not perform it.
+  - RATIFICATION_DATE preserved at 2026-04-14.
+
+---- v1.2.0 → v1.3.0 (prior amendment, preserved for history) ----
 
 Modified principles:
   - I–VI. unchanged.
@@ -250,7 +349,7 @@ Deferred / TODO:
 ### I. Single Codebase, Many Studies
 
 The repository MUST host every supported clinical validation study (MI, VTE,
-CVA, Heart Failure, AFIB, and any future studies) from one shared
+CVA, Heart Failure, AFIB, `scans`, and any future studies) from one shared
 codebase. Forking or long-lived study branches is prohibited. Study-specific
 behavior MUST be expressed through configuration (environment variables,
 docker-compose overrides, schema files, and study-scoped component
@@ -303,7 +402,8 @@ Any new study-specific behavior MUST be added via one of the following
 mechanisms, in order of preference:
 
 1. Environment variables (e.g., `STUDY_TYPE`, `ENABLE_PRE_SCRUB`,
-   `ENABLE_QUESTIONNAIRES`) consumed by shared code.
+   `ENABLE_SCRUBBING`, `ENABLE_SCREENING`, `ENABLE_SENDING`,
+   `REVIEWER_COUNT`, `ENABLE_QUESTIONNAIRES`) consumed by shared code.
 2. Study-specific schema files under `init/` (e.g., `02-schema-<study>.sql`).
 3. Study-specific component directories under `frontend/src/studies/<study>/`
    and model files under `flask_backend/models/<study>.py`, loaded by a
@@ -335,15 +435,63 @@ about which study and which host the deployment is for.
 All studies MUST share the same core validation workflow primitives: the
 event lifecycle, role-based access control (admin/uploader/reviewer/
 third_reviewer), file upload and download flows, and the header-based
-authentication contract (`X-Remote-User` injected by Apache/LDAP). Studies MAY
-extend the lifecycle (e.g., VTE's `prescrubbed`/`prescrub_rejected` states) or
-add study-specific review fields, but they MUST NOT redefine, remove, or
-rename shared states or roles.
+authentication contract (`X-Remote-User` injected by Apache/LDAP). The
+shared state names and shared role names MUST NOT be redefined, removed, or
+renamed in any study.
+
+Studies MAY adapt the lifecycle in two configuration-driven ways:
+
+- **Extension**: a study MAY add new states or fields to the lifecycle
+  (e.g., VTE's `prescrubbed`/`prescrub_rejected` states, or study-specific
+  review form fields).
+- **Selective bypass**: a study MAY skip specific shared stages of the
+  event lifecycle when those stages do not apply to its protocol. Bypass
+  MUST be expressed through named configuration flags read by the shared
+  configuration layer (Principle IV), not by branching on `STUDY_TYPE`
+  inside pipeline modules. The recognized bypass flags are:
+  - `ENABLE_SCRUBBING` (default `true`) — when `false`, the `scrubbed`
+    state is not entered; uploaded events advance past scrubbing in the
+    shared state machine.
+  - `ENABLE_SCREENING` (default `true`) — when `false`, the `screened`
+    state is not entered; events become eligible for assignment without a
+    screening pass.
+  - `ENABLE_SENDING` (default `true`) — when `false`, the `sent` state is
+    not entered; an assigned event becomes directly available to its
+    reviewer without a separate send/dispatch step.
+  - `REVIEWER_COUNT` (default `2`) — when set to `1`, an event is
+    considered fully reviewed once `reviewer1_done` is reached; the
+    `reviewer2_done` and `third_review_*` states are not entered, and the
+    `third_reviewer` role is unused for that deployment. Values other than
+    `1` or `2` are reserved for future protocols and MUST be rejected at
+    startup until explicitly supported.
+
+The `scans` study type is the canonical instance of selective bypass: it
+deploys with `ENABLE_SCRUBBING=false`, `ENABLE_SCREENING=false`,
+`ENABLE_SENDING=false`, and `REVIEWER_COUNT=1`, yielding the lifecycle
+`created → uploaded → assigned → reviewer1_done → done`. Other studies MAY
+combine these flags independently as their protocol requires; "screening
+only", "single reviewer only", or any other combination is a legitimate
+configuration so long as it is expressed through these flags.
+
+Bypassed states MUST remain present in the schema and in the shared
+state-machine code so cross-study tooling (auth middleware, logging, admin
+views, downstream consumers covered by Principle III) continues to
+recognize them. **Bypass means "not entered for this deployment", not
+"deleted from the system."** Removing a shared state from the schema or
+from the shared state machine to satisfy a single study's needs is
+prohibited and falls back under the redefine/remove/rename ban above.
 
 **Rationale**: Reviewers, admins, and uploaders work across studies. A
 consistent mental model and consistent API contracts reduce training cost,
 reduce bug surface, and let shared infrastructure (auth middleware, logging,
-monitoring) apply uniformly.
+monitoring) apply uniformly. At the same time, not every clinical validation
+protocol needs every stage — a scan-review study may have nothing to scrub,
+nothing to screen, no separate dispatch step, and may be staffed for
+single-reviewer adjudication. Allowing those studies to opt out by
+configuration preserves parity (same primitives, same names, same shared
+code) without forcing ceremony that does not apply to their protocol, and
+without re-introducing the per-study forking that Principle I exists to
+prevent.
 
 ### VI. Pre-Release Iteration and Discovery
 
@@ -462,10 +610,16 @@ obligation to document what was there first.
   require a developer to run `flask` directly against a bespoke DB) MUST be
   accompanied by compose updates so other contributors can reproduce them.
 - **Feature-flag discipline**: Study-specific feature flags
-  (`ENABLE_PRE_SCRUB`, `ENABLE_QUESTIONNAIRES`, etc.) MUST default to the
-  safer/off value for unknown studies and MUST be read through the shared
-  configuration layer, not via direct `os.environ` reads scattered across
-  modules.
+  (`ENABLE_PRE_SCRUB`, `ENABLE_QUESTIONNAIRES`, `ENABLE_SCRUBBING`,
+  `ENABLE_SCREENING`, `ENABLE_SENDING`, `REVIEWER_COUNT`, etc.) MUST
+  default to the safer/conservative value for unknown studies — for
+  opt-in extensions that means off (e.g., `ENABLE_PRE_SCRUB=false`), and
+  for bypass-of-shared-stages flags that means the full-workflow value
+  (e.g., `ENABLE_SCRUBBING=true`, `ENABLE_SCREENING=true`,
+  `ENABLE_SENDING=true`, `REVIEWER_COUNT=2`) so an unconfigured deployment
+  runs the complete validation pipeline rather than silently skipping
+  stages. All flags MUST be read through the shared configuration layer,
+  not via direct `os.environ` reads scattered across modules.
 - **Unused subsystem hygiene**: Per Principle VI, environment variables,
   endpoints, or modules that exist in the tree but are not read by any
   runtime component MUST be either documented as unused (with a note on
@@ -497,4 +651,4 @@ obligation to document what was there first.
   operational reference for deploying new studies. This constitution governs
   *what* is allowed; that guide documents *how* to do it within those rules.
 
-**Version**: 1.3.0 | **Ratified**: 2026-04-14 | **Last Amended**: 2026-05-08
+**Version**: 1.4.0 | **Ratified**: 2026-04-14 | **Last Amended**: 2026-05-20
