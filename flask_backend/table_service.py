@@ -12,6 +12,8 @@ try:
 except Exception:  # pragma: no cover - models may not be importable during tests
     models = SimpleNamespace(get_session=lambda: None)
 
+from . import study_config
+
 
 class ValidationError(Exception):
     """Raised when inputs are invalid or required resources are unavailable."""
@@ -221,10 +223,14 @@ def get_events_need_packets(limit: Optional[int] = None, offset: int = 0, site: 
 def get_events_for_review(limit: Optional[int] = None, offset: int = 0):
     """Return events with packets ready for reviewer action.
 
-    Align with main branch behavior: events are considered ready for review
-    when they have been sent to reviewers. This corresponds to status 'sent'.
+    The gating status is flag-aware (FR-009, FR-011): when sending is enabled
+    an event is ready for review once it has been sent (`status = 'sent'`);
+    when sending is disabled (e.g. a `scans` deployment) there is no send
+    step, so an `assigned` event is directly review-eligible.
     """
-    return get_events_by_status("sent", limit, offset)
+    cfg = study_config.get_workflow_config()
+    status = "sent" if cfg.sending else "assigned"
+    return get_events_by_status(status, limit, offset)
 
 
 def get_events_for_reupload(limit: Optional[int] = None, offset: int = 0, site: Optional[str] = None):
@@ -436,8 +442,40 @@ def _phase_rows_with_total(
         session.close()
 
 
+def _empty_phase() -> tuple[list[dict], int]:
+    """Return the empty (rows, total) result for a bypassed phase.
+
+    A phase whose workflow-stage control is disabled surfaces no queue
+    (FR-007, FR-008, FR-009) — there is nothing for that stage to do.
+    """
+    return [], 0
+
+
+def _ready_to_assign_predicate() -> str:
+    """Return the flag-aware "ready to assign" SQL predicate.
+
+    An event is ready for assignment once every *enabled* pre-assignment
+    stage is complete and it has not yet been assigned. Scrubbing and
+    screening contribute a `*_date IS NOT NULL` term only when their
+    control is enabled, so a `scans` deployment (both disabled) reduces
+    this to `upload_date IS NOT NULL AND assign_date IS NULL` (FR-007,
+    FR-008; research Decision 6). The terms read column names only — no
+    user input — so this string is safe to interpolate.
+    """
+    cfg = study_config.get_workflow_config()
+    parts = ["e.upload_date IS NOT NULL"]
+    if cfg.scrubbing:
+        parts.append("e.scrub_date IS NOT NULL")
+    if cfg.screening:
+        parts.append("e.screen_date IS NOT NULL")
+    parts.append("e.assign_date IS NULL")
+    return " AND ".join(parts)
+
+
 def get_to_be_scrubbed_with_total(limit: Optional[int], offset: int, q: Optional[str], site: Optional[str], sort_by: Optional[str] = None, sort_dir: Optional[str] = None):
-    # Uploaded but not scrubbed
+    # Uploaded but not scrubbed. Bypassed (no queue) when scrubbing is off.
+    if not study_config.get_workflow_config().scrubbing:
+        return _empty_phase()
     return _phase_rows_with_total(
         "e.upload_date IS NOT NULL AND e.scrub_date IS NULL",
         {},
@@ -452,7 +490,9 @@ def get_to_be_scrubbed_with_total(limit: Optional[int], offset: int, q: Optional
 
 
 def get_to_be_screened_with_total(limit: Optional[int], offset: int, q: Optional[str], site: Optional[str], sort_by: Optional[str] = None, sort_dir: Optional[str] = None):
-    # Scrubbed but not screened
+    # Scrubbed but not screened. Bypassed (no queue) when screening is off.
+    if not study_config.get_workflow_config().screening:
+        return _empty_phase()
     return _phase_rows_with_total(
         "e.scrub_date IS NOT NULL AND e.screen_date IS NULL",
         {},
@@ -467,9 +507,9 @@ def get_to_be_screened_with_total(limit: Optional[int], offset: int, q: Optional
 
 
 def get_to_be_assigned_with_total(limit: Optional[int], offset: int, q: Optional[str], site: Optional[str], sort_by: Optional[str] = None, sort_dir: Optional[str] = None):
-    # Screened but not assigned
+    # Ready for assignment: all enabled pre-assignment stages complete.
     return _phase_rows_with_total(
-        "e.screen_date IS NOT NULL AND e.assign_date IS NULL",
+        _ready_to_assign_predicate(),
         {},
         limit,
         offset,
@@ -482,7 +522,9 @@ def get_to_be_assigned_with_total(limit: Optional[int], offset: int, q: Optional
 
 
 def get_to_be_sent_with_total(limit: Optional[int], offset: int, q: Optional[str], site: Optional[str], sort_by: Optional[str] = None, sort_dir: Optional[str] = None):
-    # Assigned but not sent
+    # Assigned but not sent. Bypassed (no queue) when sending is off.
+    if not study_config.get_workflow_config().sending:
+        return _empty_phase()
     return _phase_rows_with_total(
         "e.assign_date IS NOT NULL AND e.send_date IS NULL",
         {},
@@ -497,9 +539,18 @@ def get_to_be_sent_with_total(limit: Optional[int], offset: int, q: Optional[str
 
 
 def get_to_be_reviewed_with_total(limit: Optional[int], offset: int, q: Optional[str], site: Optional[str], sort_by: Optional[str] = None, sort_dir: Optional[str] = None):
-    # Sent but not yet fully reviewed (at least one reviewer pending)
+    # Ready for review but not yet fully reviewed. The gate column is
+    # flag-aware: `send_date` when sending is enabled, otherwise `assign_date`
+    # (FR-009, FR-011). The "fully reviewed" bar depends on reviewer count —
+    # a single-reviewer study is complete once review 1 lands (FR-010).
+    cfg = study_config.get_workflow_config()
+    gate = "e.send_date IS NOT NULL" if cfg.sending else "e.assign_date IS NOT NULL"
+    if cfg.reviewer_count == 2:
+        pending = "(e.review1_date IS NULL OR e.review2_date IS NULL)"
+    else:
+        pending = "e.review1_date IS NULL"
     return _phase_rows_with_total(
-        "e.send_date IS NOT NULL AND (e.review1_date IS NULL OR e.review2_date IS NULL)",
+        f"{gate} AND {pending}",
         {},
         limit,
         offset,
@@ -668,16 +719,23 @@ def get_events_awaiting_review(user_id: int, q: Optional[str] = None, site: Opti
     try:
         like = f"%{q}%" if q else None
         like_date = _derive_date_like(q)
-        # Enforce stricter criteria to align with main branch expectations:
-        # - Slots 1 & 2 require status 'sent' (in addition to send_date)
-        # - Optional site filter via patients_view.site
-        # Match main behavior:
-        # - reviewer1: status in ('sent','reviewer2_done') and review1_date is null
-        # - reviewer2: status in ('sent','reviewer1_done') and review2_date is null
-        # - reviewer3: status 'third_review_assigned' and review3_date is null
+        # Reviewer-queue membership is flag-aware (FR-009, FR-011):
+        # - reviewer1: review pending and the event has reached a
+        #   review-eligible status. When sending is enabled that is
+        #   'sent'; when sending is disabled (e.g. `scans`) there is no
+        #   send step, so an 'assigned' event is directly pickable.
+        # - reviewer2: likewise, for the second slot.
+        # - reviewer3: status 'third_review_assigned' and review3 pending.
+        # The status lists below hold SQL literals only (no user input).
+        cfg = study_config.get_workflow_config()
+        slot1_statuses = "'sent','reviewer2_done'"
+        slot2_statuses = "'sent','reviewer1_done'"
+        if not cfg.sending:
+            slot1_statuses = "'assigned','sent','reviewer2_done'"
+            slot2_statuses = "'assigned','sent','reviewer1_done'"
         where_parts = [
-            "(e.reviewer1_id = :uid AND e.status IN ('sent','reviewer2_done') AND e.review1_date IS NULL)",
-            "(e.reviewer2_id = :uid AND e.status IN ('sent','reviewer1_done') AND e.review2_date IS NULL)",
+            f"(e.reviewer1_id = :uid AND e.status IN ({slot1_statuses}) AND e.review1_date IS NULL)",
+            f"(e.reviewer2_id = :uid AND e.status IN ({slot2_statuses}) AND e.review2_date IS NULL)",
             "(e.reviewer3_id = :uid AND e.status = 'third_review_assigned' AND e.review3_date IS NULL)",
         ]
         params = {"uid": int(user_id)}
@@ -697,8 +755,8 @@ def get_events_awaiting_review(user_id: int, q: Optional[str] = None, site: Opti
         stmt = text(
             "SELECT e.id AS id, e.event_date AS event_date, "
             "CASE "
-            " WHEN (e.reviewer1_id = :uid AND e.status IN ('sent','reviewer2_done') AND e.review1_date IS NULL) THEN 1 "
-            " WHEN (e.reviewer2_id = :uid AND e.status IN ('sent','reviewer1_done') AND e.review2_date IS NULL) THEN 2 "
+            f" WHEN (e.reviewer1_id = :uid AND e.status IN ({slot1_statuses}) AND e.review1_date IS NULL) THEN 1 "
+            f" WHEN (e.reviewer2_id = :uid AND e.status IN ({slot2_statuses}) AND e.review2_date IS NULL) THEN 2 "
             " WHEN (e.reviewer3_id = :uid AND e.status = 'third_review_assigned' AND e.review3_date IS NULL) THEN 3 "
             " ELSE NULL END AS slot "
             "FROM events e LEFT JOIN patients_view p ON p.id = e.patient_id "
@@ -736,6 +794,9 @@ def assign_events(event_ids: list[int], reviewer_id: int, slot: str, assigner_id
                 # keep an audit of who assigned
                 e.assigner_id = assigner_id
                 e.assign_date = now
+                # Advance the lifecycle: first-reviewer assignment moves the
+                # event into the shared `assigned` state (research Decision 4).
+                e.status = "assigned"
             elif slot == "second":
                 e.reviewer2_id = reviewer_id
                 e.assigner_id = assigner_id
@@ -775,9 +836,16 @@ def send_events(event_ids: list[int], sender_id: int) -> dict:
             .filter(models.Events.id.in_(event_ids))
             .all()
         )
+        # Advancing `status` to 'sent' is gated on the sending control: a
+        # deployment with sending disabled has no send step in its lifecycle
+        # (research Decision 4), so the status is not advanced even if this
+        # helper is reached. With sending enabled it is the new transition.
+        sending_enabled = study_config.get_workflow_config().sending
         for e in events:
             e.sender_id = sender_id
             e.send_date = now
+            if sending_enabled:
+                e.status = "sent"
             updated += 1
         session.commit()
 

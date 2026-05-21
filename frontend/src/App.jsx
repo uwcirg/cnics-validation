@@ -55,6 +55,17 @@ import VTEUsersViewAll from './studies/vte/UsersViewAll'
 
 function App() {
   const [auth, setAuth] = useState({})
+  // Conservative full-workflow default (FR-004): used until GET /api/config
+  // resolves and as the fallback if it cannot be fetched. The bypassed-stage
+  // routes below are dropped only once the resolved config reports a stage
+  // off, so hide/show decisions are driven by the controls, not a study
+  // name (FR-021).
+  const [workflow, setWorkflow] = useState({
+    scrubbing: true,
+    screening: true,
+    sending: true,
+    reviewer_count: 2,
+  })
   const apiUrl = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || '')
 
   useEffect(() => {
@@ -72,7 +83,20 @@ function App() {
         if (!cancelled) setAuth({})
       }
     }
+    async function fetchConfig() {
+      try {
+        const res = await fetch(`${apiUrl}/api/config`, { credentials: 'include' })
+        if (!cancelled && res.ok) {
+          const json = await res.json()
+          const wf = json && json.data && json.data.workflow
+          if (wf) setWorkflow(wf)
+        }
+      } catch {
+        // Keep the conservative full-workflow default on any failure.
+      }
+    }
     fetchMe()
+    fetchConfig()
     return () => {
       cancelled = true
     }
@@ -137,14 +161,18 @@ function App() {
           } />
           <Route path="/events/assignMany" element={
             <ProtectedRoute requiredRoles={['admin']} auth={auth}>
-              <EventAssignMany />
+              <EventAssignMany workflow={workflow} />
             </ProtectedRoute>
           } />
-          <Route path="/events/sendMany" element={
-            <ProtectedRoute requiredRoles={['admin']} auth={auth}>
-              <EventSendMany />
-            </ProtectedRoute>
-          } />
+          {/* Sending is a bypassable stage — the send route is registered
+              only when the sending control is enabled (FR-018, FR-021). */}
+          {workflow.sending && (
+            <Route path="/events/sendMany" element={
+              <ProtectedRoute requiredRoles={['admin']} auth={auth}>
+                <EventSendMany />
+              </ProtectedRoute>
+            } />
+          )}
           <Route path="/events/export" element={
             <ProtectedRoute requiredRoles={['admin']} auth={auth}>
               <EventExport />
@@ -234,28 +262,38 @@ function App() {
               <VTEEventReview />
             </ProtectedRoute>
           } />
-          <Route path="/events/screen" element={
-            <ProtectedRoute requiredRoles={['reviewer', 'admin']} auth={auth}>
-              <EventScreen />
-            </ProtectedRoute>
-          } />
+          {/* Screening is a bypassable stage (FR-018, FR-021). */}
+          {workflow.screening && (
+            <Route path="/events/screen" element={
+              <ProtectedRoute requiredRoles={['reviewer', 'admin']} auth={auth}>
+                <EventScreen />
+              </ProtectedRoute>
+            } />
+          )}
           <Route path="/vte/screen" element={
             <ProtectedRoute requiredRoles={['reviewer', 'admin']} auth={auth}>
               <VTEEventScreen />
             </ProtectedRoute>
           } />
-          <Route path="/events/assignThird" element={
-            <ProtectedRoute requiredRoles={['reviewer', 'admin']} auth={auth}>
-              <EventAssignThird />
-            </ProtectedRoute>
-          } />
-          
+          {/* Third-reviewer assignment exists only in a multi-reviewer
+              configuration (FR-019, FR-021). */}
+          {workflow.reviewer_count > 1 && (
+            <Route path="/events/assignThird" element={
+              <ProtectedRoute requiredRoles={['reviewer', 'admin']} auth={auth}>
+                <EventAssignThird />
+              </ProtectedRoute>
+            } />
+          )}
+
           {/* Multi-role routes (reviewer, uploader, or admin) */}
-          <Route path="/events/scrub" element={
-            <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
-              <EventScrub />
-            </ProtectedRoute>
-          } />
+          {/* Scrubbing is a bypassable stage (FR-018, FR-021). */}
+          {workflow.scrubbing && (
+            <Route path="/events/scrub" element={
+              <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
+                <EventScrub />
+              </ProtectedRoute>
+            } />
+          )}
           <Route path="/vte/scrub" element={
             <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
               <VTEEventScrub />
