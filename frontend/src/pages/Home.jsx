@@ -129,8 +129,6 @@ function Home({ auth }) {
 
   return (
     <div className="home-container">
-      {/* Top-right CNICS logo */}
-      <img className="cnics-logo" src="/cnics_logo.png" alt="CNICS" />
       <h1>CNICS Validation</h1>
       <p>Welcome to the CNICS Validation application.</p>
 
