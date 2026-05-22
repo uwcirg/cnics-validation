@@ -70,9 +70,11 @@ load `/events/viewAll`.
 `.env`: `STUDY_TYPE=scans` (or `ENABLE_SCRUBBING=false`,
 `ENABLE_SCREENING=false`, `ENABLE_SENDING=false`, `REVIEWER_COUNT=1`).
 
-Expect on `/events/viewAll` — **exactly 6 sections**:
-To Be Uploaded · Not Yet Reviewed · To Be Assigned · All Done ·
-No Packet Available · Rejected.
+Expect on `/events/viewAll` — **exactly 6 sections, in this order**:
+To Be Uploaded · To Be Assigned · Not Yet Reviewed · All Done ·
+No Packet Available · Rejected. (Order follows the canonical event lifecycle;
+in Scans it collapses to Uploaded → Assigned → Not Yet Reviewed → Done with
+the bypassed stages removed.)
 
 Confirm **absent**: To Be Scrubbed, To Be Screened, To Be Sent,
 Third Review Needed, Third Reviewer Assigned — each gone in its entirety

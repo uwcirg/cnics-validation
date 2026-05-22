@@ -59,14 +59,16 @@ reviewer_count:2}` (also: config not yet resolved / fetch failed):
 
 ```
 Event Status Summary  (count table)
-1. To Be Uploaded            6. To Be Sent
-2. Not Yet Reviewed          7. Third Review Needed
-3. To Be Scrubbed            8. Third Reviewer Assigned
-4. To Be Screened            9. All Done
-5. To Be Assigned           10. No Packet Available
+1. To Be Uploaded            6. Not Yet Reviewed
+2. To Be Scrubbed            7. Third Review Needed
+3. To Be Screened            8. Third Reviewer Assigned
+4. To Be Assigned            9. All Done
+5. To Be Sent               10. No Packet Available
                             11. Rejected
 ```
-→ **11 sections** (SC-002).
+→ **11 sections** (SC-002). Order matches the canonical event lifecycle
+(`uploaded → scrubbed → screened → assigned → sent → reviewer*_done →
+(third_review_*) → done`).
 
 **Scans deployment** — `{scrubbing:false, screening:false, sending:false,
 reviewer_count:1}`:
@@ -74,14 +76,17 @@ reviewer_count:1}`:
 ```
 Event Status Summary  (count table)
 1. To Be Uploaded            (To Be Sent          — hidden, R3)
-2. Not Yet Reviewed          (Third Review Needed  — hidden, R4)
-(To Be Scrubbed — hidden, R1) (Third Reviewer Assigned — hidden, R4)
-(To Be Screened — hidden, R2) 9. All Done
-5. To Be Assigned           10. No Packet Available
+(To Be Scrubbed — hidden, R1) 6. Not Yet Reviewed
+(To Be Screened — hidden, R2) (Third Review Needed  — hidden, R4)
+4. To Be Assigned            (Third Reviewer Assigned — hidden, R4)
+                             9. All Done
+                            10. No Packet Available
                             11. Rejected
 ```
-→ **6 sections**: To Be Uploaded, Not Yet Reviewed, To Be Assigned, All Done,
-No Packet Available, Rejected (SC-001).
+→ **6 sections** in order: To Be Uploaded, To Be Assigned, Not Yet Reviewed,
+All Done, No Packet Available, Rejected (SC-001). The lifecycle collapses to
+Uploaded → Assigned → Not Yet Reviewed → Done with the bypassed stages
+removed.
 
 **Screening-only deployment** — `{scrubbing:false, screening:true,
 sending:false, reviewer_count:2}` (illustrates FR-007 — no study name is

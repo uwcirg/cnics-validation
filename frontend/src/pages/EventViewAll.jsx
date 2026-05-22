@@ -204,60 +204,6 @@ function EventViewAll({ workflow }) {
           </>
         )}
       />
-      <TableSection
-        title="Not Yet Reviewed"
-        endpoint="/api/events/by_status/sent"
-        mergeEndpoints={["/api/events/by_status/reviewer1_done", "/api/events/by_status/reviewer2_done"]}
-        columns={['Event Number', 'Event Date', 'Sent/Last Review', 'Yet to review']}
-        augmentRows={async (rows) => {
-          const fetchDetails = async (id) => {
-            try {
-              const res = await fetch(`${API_BASE}/api/events/${id}`, { credentials: 'include' })
-              if (!res.ok) return null
-              const json = await res.json()
-              return json.data || null
-            } catch { return null }
-          }
-          const now = new Date()
-          const msPerDay = 24 * 60 * 60 * 1000
-          const toISO = (d) => d ? String(d) : ''
-          const maxDate = (values) => {
-            const ds = values.filter(Boolean).map((v) => new Date(v))
-            if (!ds.length) return ''
-            const latest = new Date(Math.max(...ds.map((x) => x.getTime())))
-            return latest.toISOString().slice(0, 10)
-          }
-          const augmented = await Promise.all(rows.map(async (r) => {
-            const id = r['ID'] || r.id
-            const d = await fetchDetails(id)
-            const eventDate = r['Date'] || (d && d.event_date) || ''
-            const sent = d && d.send_date
-            const lastReview = maxDate([sent, d && d.review1_date, d && d.review2_date])
-            const pending = []
-            if (d) {
-              if (!d.review1_date && d.reviewer1_username) {
-                const days = sent ? Math.floor((now - new Date(sent)) / msPerDay) : null
-                pending.push(`${d.reviewer1_username}${days !== null ? ` (${days})` : ''}`)
-              }
-              if (!d.review2_date && d.reviewer2_username) {
-                const days = sent ? Math.floor((now - new Date(sent)) / msPerDay) : null
-                pending.push(`${d.reviewer2_username}${days !== null ? ` (${days})` : ''}`)
-              }
-            }
-            return {
-              'Event Number': id,
-              'Event Date': toISO(eventDate),
-              'Sent/Last Review': lastReview,
-              'Yet to review': pending.join('   '),
-              ID: id, // keep original key for actions
-            }
-          }))
-          return augmented
-        }}
-        renderActions={(row) => (
-          <button onClick={(e) => { e.stopPropagation(); window.location.href = `/events/edit?event_id=${row['ID']}` }}>edit</button>
-        )}
-      />
       {/* To Be Scrubbed — gated on the scrubbing control (FR-002) */}
       {showScrubbing && (
       <TableSection
@@ -331,7 +277,9 @@ function EventViewAll({ workflow }) {
           flag-aware (T010): with scrubbing/screening bypassed it surfaces
           'uploaded' events here. The action goes to the normal reviewer
           assignment page, which adapts to REVIEWER_COUNT (T019) — not the
-          separate third-reviewer page. */}
+          separate third-reviewer page. Placed between the screening and
+          sending stages to follow the event lifecycle
+          (uploaded → scrubbed → screened → assigned → sent). */}
       <TableSection
         title="To Be Assigned"
         endpoint="/api/events/by_status/screened"
@@ -359,6 +307,62 @@ function EventViewAll({ workflow }) {
         )}
       />
       )}
+      {/* "Not Yet Reviewed" follows "To Be Sent" in the lifecycle: an event
+          becomes a review-in-progress queue entry after it has been sent. */}
+      <TableSection
+        title="Not Yet Reviewed"
+        endpoint="/api/events/by_status/sent"
+        mergeEndpoints={["/api/events/by_status/reviewer1_done", "/api/events/by_status/reviewer2_done"]}
+        columns={['Event Number', 'Event Date', 'Sent/Last Review', 'Yet to review']}
+        augmentRows={async (rows) => {
+          const fetchDetails = async (id) => {
+            try {
+              const res = await fetch(`${API_BASE}/api/events/${id}`, { credentials: 'include' })
+              if (!res.ok) return null
+              const json = await res.json()
+              return json.data || null
+            } catch { return null }
+          }
+          const now = new Date()
+          const msPerDay = 24 * 60 * 60 * 1000
+          const toISO = (d) => d ? String(d) : ''
+          const maxDate = (values) => {
+            const ds = values.filter(Boolean).map((v) => new Date(v))
+            if (!ds.length) return ''
+            const latest = new Date(Math.max(...ds.map((x) => x.getTime())))
+            return latest.toISOString().slice(0, 10)
+          }
+          const augmented = await Promise.all(rows.map(async (r) => {
+            const id = r['ID'] || r.id
+            const d = await fetchDetails(id)
+            const eventDate = r['Date'] || (d && d.event_date) || ''
+            const sent = d && d.send_date
+            const lastReview = maxDate([sent, d && d.review1_date, d && d.review2_date])
+            const pending = []
+            if (d) {
+              if (!d.review1_date && d.reviewer1_username) {
+                const days = sent ? Math.floor((now - new Date(sent)) / msPerDay) : null
+                pending.push(`${d.reviewer1_username}${days !== null ? ` (${days})` : ''}`)
+              }
+              if (!d.review2_date && d.reviewer2_username) {
+                const days = sent ? Math.floor((now - new Date(sent)) / msPerDay) : null
+                pending.push(`${d.reviewer2_username}${days !== null ? ` (${days})` : ''}`)
+              }
+            }
+            return {
+              'Event Number': id,
+              'Event Date': toISO(eventDate),
+              'Sent/Last Review': lastReview,
+              'Yet to review': pending.join('   '),
+              ID: id, // keep original key for actions
+            }
+          }))
+          return augmented
+        }}
+        renderActions={(row) => (
+          <button onClick={(e) => { e.stopPropagation(); window.location.href = `/events/edit?event_id=${row['ID']}` }}>edit</button>
+        )}
+      />
       {/* Third-reviewer sections — multi-reviewer escalation only (FR-005) */}
       {showThirdReviewer && (
       <TableSection

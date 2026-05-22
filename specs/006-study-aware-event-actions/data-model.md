@@ -36,16 +36,18 @@ buttons. There are eleven, in fixed render order.
 | Order | Section title | Visibility rule | Requirement |
 |---|---|---|---|
 | 1 | To Be Uploaded | Always visible | FR-006 |
-| 2 | Not Yet Reviewed | Always visible | FR-006 |
-| 3 | To Be Scrubbed | Visible unless `scrubbing === false` | FR-002 |
-| 4 | To Be Screened | Visible unless `screening === false` | FR-003 |
-| 5 | To Be Assigned | Always visible | FR-006 |
-| 6 | To Be Sent | Visible unless `sending === false` | FR-004 |
+| 2 | To Be Scrubbed | Visible unless `scrubbing === false` | FR-002 |
+| 3 | To Be Screened | Visible unless `screening === false` | FR-003 |
+| 4 | To Be Assigned | Always visible | FR-006 |
+| 5 | To Be Sent | Visible unless `sending === false` | FR-004 |
+| 6 | Not Yet Reviewed | Always visible | FR-006 |
 | 7 | Third Review Needed | Visible unless `reviewer_count === 1` | FR-005 |
 | 8 | Third Reviewer Assigned | Visible unless `reviewer_count === 1` | FR-005 |
 | 9 | All Done | Always visible | FR-006 |
 | 10 | No Packet Available | Always visible | FR-006 |
 | 11 | Rejected | Always visible | FR-006 |
+
+**Order note**: The render order matches the canonical event lifecycle from the constitution — `uploaded → scrubbed → screened → assigned → sent → reviewer*_done → (third_review_*) → done` — followed by the terminal queues (No Packet Available, Rejected). In the Scans configuration with all stage gates off, the visible six collapse to Uploaded → Assigned → Not Yet Reviewed → All Done → No Packet Available → Rejected — the same lifecycle, with the bypassed stages removed.
 
 **Render-order invariant**: visible sections keep this relative order; gating
 is purely subtractive — a hidden section leaves no gap, no placeholder, and
@@ -63,7 +65,7 @@ Resolved Workflow Configuration, recomputed on every render:
 
 ```text
 visible(section) =
-    section is in {1,2,5,9,10,11}                      → true   (always)
+    section is in {1,4,6,9,10,11}                      → true   (always)
     section is "To Be Scrubbed"                        → workflow.scrubbing !== false
     section is "To Be Screened"                        → workflow.screening !== false
     section is "To Be Sent"                            → workflow.sending  !== false
