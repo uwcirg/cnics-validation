@@ -769,11 +769,18 @@ def get_events_awaiting_review(user_id: int, q: Optional[str] = None, site: Opti
         session.close()
 
 
-def assign_events(event_ids: list[int], reviewer_id: int, slot: str, assigner_id: int) -> dict:
+def assign_events(event_ids: list[int], reviewer_id: int, slot: str, assigner_id: int, reviewer2_id: Optional[int] = None) -> dict:
     """Assign a reviewer to many events for the given slot (first|second|third).
 
     Updates reviewerN_id and corresponding assign date/assigner fields where applicable.
     Returns { updated: N }.
+
+    When ``slot == "first"`` and ``reviewer2_id`` is supplied, the second
+    reviewer is assigned together with the first in the same transaction
+    (research Decision 4) — the queue predicate is ``assign_date IS NULL``,
+    so a per-slot call would drop the event from the queue before the second
+    reviewer could be assigned. ``reviewer2_id`` is ignored for the
+    ``second``/``third`` slots; existing positional callers are unaffected.
     """
     if slot not in {"first", "second", "third"}:
         raise ValidationError("slot must be one of: first, second, third")
@@ -791,6 +798,10 @@ def assign_events(event_ids: list[int], reviewer_id: int, slot: str, assigner_id
         for e in events:
             if slot == "first":
                 e.reviewer1_id = reviewer_id
+                # Two-reviewer deployments assign both reviewers atomically:
+                # set the second reviewer in the same loop / same commit.
+                if reviewer2_id is not None:
+                    e.reviewer2_id = reviewer2_id
                 # keep an audit of who assigned
                 e.assigner_id = assigner_id
                 e.assign_date = now

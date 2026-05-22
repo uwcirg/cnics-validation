@@ -23,7 +23,7 @@ Web application: `frontend/src/` (React 19) and `flask_backend/` (Flask). Paths 
 
 **Purpose**: Pre-flight confirmation. No new dependencies and no new files — the `/events/assignMany` route already exists.
 
-- [ ] T001 Pre-flight check (read-only, no code change): confirm in `frontend/src/App.jsx` that the `/events/assignMany` route is wrapped in `ProtectedRoute requiredRoles={['admin']}` and renders `<EventAssignMany workflow={workflow} />`, and that `workflow.reviewer_count` is populated from `GET /api/config`. Record any deviation before proceeding.
+- [X] T001 Pre-flight check (read-only, no code change): confirm in `frontend/src/App.jsx` that the `/events/assignMany` route is wrapped in `ProtectedRoute requiredRoles={['admin']}` and renders `<EventAssignMany workflow={workflow} />`, and that `workflow.reviewer_count` is populated from `GET /api/config`. Record any deviation before proceeding.
 
 ---
 
@@ -33,9 +33,9 @@ Web application: `frontend/src/` (React 19) and `flask_backend/` (Flask). Paths 
 
 **⚠️ CRITICAL**: T003 and T004 must complete before any user story phase — US1/US2/US3 all extend this page.
 
-- [ ] T002 [P] Add an admin-only "Assign Charts" link to `frontend/src/components/MenuBar.jsx` pointing to `/events/assignMany` (FR-003). Gate it on the `admin` prop, alongside the existing "Admin Tools" link. (The View All Events page already links to the page via its per-row "assign" button — no task needed there.)
-- [ ] T003 Replace the placeholder body of `frontend/src/pages/EventAssignMany.jsx` with a working component scaffold that keeps the `{ workflow }` prop: on mount, fetch the To-Be-Assigned queue from `GET /api/events/by_status/screened` (`credentials: 'include'`, with `limit`/`offset`) storing `rows` and `total`, and fetch reviewers from `GET /api/tables/users?limit=2000` filtered client-side to truthy `reviewer_flag`. Use `API_BASE = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || '')`.
-- [ ] T004 In `frontend/src/pages/EventAssignMany.jsx`, render the queue as a selectable event table — a checkbox per row plus a select-all control — showing event id, event date, patient identifier, and site. Render a clear empty-state message when the queue is empty, and a notice when no users hold the reviewer role (spec Edge Cases).
+- [X] T002 [P] Add an admin-only "Assign Charts" link to `frontend/src/components/MenuBar.jsx` pointing to `/events/assignMany` (FR-003). Gate it on the `admin` prop, alongside the existing "Admin Tools" link. (The View All Events page already links to the page via its per-row "assign" button — no task needed there.)
+- [X] T003 Replace the placeholder body of `frontend/src/pages/EventAssignMany.jsx` with a working component scaffold that keeps the `{ workflow }` prop: on mount, fetch the To-Be-Assigned queue from `GET /api/events/by_status/screened` (`credentials: 'include'`, with `limit`/`offset`) storing `rows` and `total`, and fetch reviewers from `GET /api/tables/users?limit=2000` filtered client-side to truthy `reviewer_flag`. Use `API_BASE = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || '')`.
+- [X] T004 In `frontend/src/pages/EventAssignMany.jsx`, render the queue as a selectable event table — a checkbox per row plus a select-all control — showing event id, event date, patient identifier, and site. Render a clear empty-state message when the queue is empty, and a notice when no users hold the reviewer role (spec Edge Cases).
 
 **Checkpoint**: The page loads, lists awaiting events with checkboxes, and lists reviewers — but cannot yet assign.
 
@@ -49,9 +49,9 @@ Web application: `frontend/src/` (React 19) and `flask_backend/` (Flask). Paths 
 
 ### Implementation for User Story 1
 
-- [ ] T005 [US1] In `frontend/src/pages/EventAssignMany.jsx`, render the first-reviewer `<select>` (always shown), populated from the fetched reviewers as `username (site)`. Drive slot rendering off `workflow.reviewer_count` so a single-reviewer deployment shows exactly one slot and no second/third slot (FR-008, FR-009).
-- [ ] T006 [US1] In `frontend/src/pages/EventAssignMany.jsx`, implement the confirm action for the single-reviewer path: `POST /api/events/assign_many` with body `{ event_ids, reviewer_id, slot: "first" }`. Disable the confirm button until at least one event is selected and a reviewer is chosen; indicate what is missing otherwise (FR-005, FR-007, FR-018).
-- [ ] T007 [US1] In `frontend/src/pages/EventAssignMany.jsx`, handle the assign response: on success show a confirmation via `showToast` (from `components/Toast`) and re-fetch the queue so assigned events leave it without a manual reload (FR-013, FR-014); on `400`/`401`/`403`/`500` surface the response's `error` message (or an auth/network message) as human-readable feedback and claim no success (FR-017, spec Edge Cases).
+- [X] T005 [US1] In `frontend/src/pages/EventAssignMany.jsx`, render the first-reviewer `<select>` (always shown), populated from the fetched reviewers as `username (site)`. Drive slot rendering off `workflow.reviewer_count` so a single-reviewer deployment shows exactly one slot and no second/third slot (FR-008, FR-009).
+- [X] T006 [US1] In `frontend/src/pages/EventAssignMany.jsx`, implement the confirm action for the single-reviewer path: `POST /api/events/assign_many` with body `{ event_ids, reviewer_id, slot: "first" }`. Disable the confirm button until at least one event is selected and a reviewer is chosen; indicate what is missing otherwise (FR-005, FR-007, FR-018).
+- [X] T007 [US1] In `frontend/src/pages/EventAssignMany.jsx`, handle the assign response: on success show a confirmation via `showToast` (from `components/Toast`) and re-fetch the queue so assigned events leave it without a manual reload (FR-013, FR-014); on `400`/`401`/`403`/`500` surface the response's `error` message (or an auth/network message) as human-readable feedback and claim no success (FR-017, spec Edge Cases).
 
 **Checkpoint**: User Story 1 is fully functional — a single-reviewer deployment can assign reviewers end to end. **This is the MVP.**
 
@@ -67,15 +67,15 @@ Web application: `frontend/src/` (React 19) and `flask_backend/` (Flask). Paths 
 
 ### Tests for User Story 2
 
-- [ ] T008 [P] [US2] Add a backend test in `flask_backend/tests/test_table_service.py` (or a new `test_assign_many.py`) for the atomic two-reviewer path: assert `table_service.assign_events(event_ids, reviewer_id, "first", assigner_id, reviewer2_id=<id>)` sets `reviewer1_id`, `reviewer2_id`, `assigner_id`, `assign_date`, and `status="assigned"` on every event; and assert `POST /api/events/assign_many` returns `400` when `reviewer2_id` is given with `reviewer_count==1`, with `slot != "first"`, and when `reviewer2_id == reviewer_id`. Write this before T009–T010 and confirm it fails first.
+- [X] T008 [P] [US2] Add a backend test in `flask_backend/tests/test_table_service.py` (or a new `test_assign_many.py`) for the atomic two-reviewer path: assert `table_service.assign_events(event_ids, reviewer_id, "first", assigner_id, reviewer2_id=<id>)` sets `reviewer1_id`, `reviewer2_id`, `assigner_id`, `assign_date`, and `status="assigned"` on every event; and assert `POST /api/events/assign_many` returns `400` when `reviewer2_id` is given with `reviewer_count==1`, with `slot != "first"`, and when `reviewer2_id == reviewer_id`. Write this before T009–T010 and confirm it fails first.
 
 ### Implementation for User Story 2
 
-- [ ] T009 [US2] Extend `table_service.assign_events` in `flask_backend/table_service.py` with a trailing optional parameter `reviewer2_id=None`. When `slot == "first"` and `reviewer2_id` is provided, set `reviewer1_id`, `reviewer2_id`, `assigner_id`, `assign_date`, and `status = "assigned"` for all matched events within the single existing `session.commit()` (atomic). Existing positional callers are unaffected.
-- [ ] T010 [US2] Extend `events_assign_many` in `flask_backend/app.py` to read optional `reviewer2_id` from the request body and pass it to `assign_events`. Return `400` with a human-readable `error` when: `reviewer2_id` is present and `get_workflow_config().reviewer_count == 1`; `reviewer2_id` is present and `slot != "first"`; or `reviewer2_id == reviewer_id` (server-side FR-011). Update the endpoint docstring's Swagger block to document `reviewer2_id`.
-- [ ] T011 [US2] Regenerate the API contract: run `python -m flask_backend.generate_openapi` from the repository root and commit the updated `openapi.json` (Constitution quality gate).
-- [ ] T012 [US2] In `frontend/src/pages/EventAssignMany.jsx`, render the second-reviewer `<select>` only when `workflow.reviewer_count >= 2` (never a third slot — FR-010, FR-020). Require both slots filled before confirm is enabled (FR-012), and block confirmation with an explanatory message when the same person is selected in both slots (FR-011).
-- [ ] T013 [US2] In `frontend/src/pages/EventAssignMany.jsx`, send the two-reviewer assignment as a single request `{ event_ids, reviewer_id, slot: "first", reviewer2_id }` and surface the new `400` validation messages from T010 (FR-017). Reuse the success/queue-refresh handling from T007.
+- [X] T009 [US2] Extend `table_service.assign_events` in `flask_backend/table_service.py` with a trailing optional parameter `reviewer2_id=None`. When `slot == "first"` and `reviewer2_id` is provided, set `reviewer1_id`, `reviewer2_id`, `assigner_id`, `assign_date`, and `status = "assigned"` for all matched events within the single existing `session.commit()` (atomic). Existing positional callers are unaffected.
+- [X] T010 [US2] Extend `events_assign_many` in `flask_backend/app.py` to read optional `reviewer2_id` from the request body and pass it to `assign_events`. Return `400` with a human-readable `error` when: `reviewer2_id` is present and `get_workflow_config().reviewer_count == 1`; `reviewer2_id` is present and `slot != "first"`; or `reviewer2_id == reviewer_id` (server-side FR-011). Update the endpoint docstring's Swagger block to document `reviewer2_id`.
+- [X] T011 [US2] Regenerate the API contract: run `python -m flask_backend.generate_openapi` from the repository root and commit the updated `openapi.json` (Constitution quality gate).
+- [X] T012 [US2] In `frontend/src/pages/EventAssignMany.jsx`, render the second-reviewer `<select>` only when `workflow.reviewer_count >= 2` (never a third slot — FR-010, FR-020). Require both slots filled before confirm is enabled (FR-012), and block confirmation with an explanatory message when the same person is selected in both slots (FR-011).
+- [X] T013 [US2] In `frontend/src/pages/EventAssignMany.jsx`, send the two-reviewer assignment as a single request `{ event_ids, reviewer_id, slot: "first", reviewer2_id }` and surface the new `400` validation messages from T010 (FR-017). Reuse the success/queue-refresh handling from T007.
 
 **Checkpoint**: Both single-reviewer (US1) and two-reviewer (US2) deployments assign reviewers correctly and independently.
 
@@ -89,8 +89,8 @@ Web application: `frontend/src/` (React 19) and `flask_backend/` (Flask). Paths 
 
 ### Implementation for User Story 3
 
-- [ ] T014 [US3] In `frontend/src/pages/EventAssignMany.jsx`, add a site-filter `<select>` whose options derive from the distinct `Site` values in the loaded queue rows (the View All Events pattern). On change, re-fetch the queue with the `site` query parameter and clear the current event selection so a confirm never acts on hidden events (FR-015, spec Edge Cases / Assumptions).
-- [ ] T015 [US3] In `frontend/src/pages/EventAssignMany.jsx`, add Previous/Next pagination (page size 20) driven by the endpoint's `total`, re-fetching with `limit`/`offset`; clear the event selection on page change (FR-016).
+- [X] T014 [US3] In `frontend/src/pages/EventAssignMany.jsx`, add a site-filter `<select>` whose options derive from the distinct `Site` values in the loaded queue rows (the View All Events pattern). On change, re-fetch the queue with the `site` query parameter and clear the current event selection so a confirm never acts on hidden events (FR-015, spec Edge Cases / Assumptions).
+- [X] T015 [US3] In `frontend/src/pages/EventAssignMany.jsx`, add Previous/Next pagination (page size 20) driven by the endpoint's `total`, re-fetching with `limit`/`offset`; clear the event selection on page change (FR-016).
 
 **Checkpoint**: All three user stories are independently functional.
 
@@ -100,9 +100,9 @@ Web application: `frontend/src/` (React 19) and `flask_backend/` (Flask). Paths 
 
 **Purpose**: Verification and quality gates across the whole feature.
 
-- [ ] T016 [P] Run `npm run lint` in `frontend/` and resolve any issues introduced in `EventAssignMany.jsx` and `MenuBar.jsx`.
-- [ ] T017 [P] Run `pytest flask_backend/tests/` and confirm the new T008 test passes and the existing `test_scans_workflow.py` and `test_full_workflow_defaults.py` still pass (the `assign_events` signature change is additive).
-- [ ] T018 Validate the feature against `specs/004-reviewer-assignment/quickstart.md`: single-reviewer path, two-reviewer path, error cases (no selection, not admin, server error, empty queue, no reviewers), and site filter + pagination.
+- [X] T016 [P] Run `npm run lint` in `frontend/` and resolve any issues introduced in `EventAssignMany.jsx` and `MenuBar.jsx`.
+- [X] T017 [P] Run `pytest flask_backend/tests/` and confirm the new T008 test passes and the existing `test_scans_workflow.py` and `test_full_workflow_defaults.py` still pass (the `assign_events` signature change is additive).
+- [X] T018 Validate the feature against `specs/004-reviewer-assignment/quickstart.md`: single-reviewer path, two-reviewer path, error cases (no selection, not admin, server error, empty queue, no reviewers), and site filter + pagination.
 
 ---
 
