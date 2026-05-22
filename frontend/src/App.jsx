@@ -66,6 +66,9 @@ function App() {
     sending: true,
     reviewer_count: 2,
   })
+  // Study type from GET /api/config — drives the banner's study title.
+  // Empty until the config resolves; the banner shows no title until then.
+  const [studyType, setStudyType] = useState('')
   const apiUrl = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || '')
 
   useEffect(() => {
@@ -90,6 +93,8 @@ function App() {
           const json = await res.json()
           const wf = json && json.data && json.data.workflow
           if (wf) setWorkflow(wf)
+          const st = json && json.data && json.data.study_type
+          if (st) setStudyType(st)
         }
       } catch {
         // Keep the conservative full-workflow default on any failure.
@@ -104,7 +109,7 @@ function App() {
 
   return (
     <Router>
-      <BaseLayout auth={auth}>
+      <BaseLayout auth={auth} study_type={studyType}>
         <Routes>
           {/* Public routes */}
           <Route path="/" element={<Home auth={auth} />} />
