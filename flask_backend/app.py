@@ -1306,22 +1306,94 @@ def events_upload_raw(event_id: int):
 @requires_auth
 @requires_roles('admin')
 def events_assign_many():
+    """Assign a reviewer to a batch of events.
+
+    First-reviewer assignment advances each event to the shared `assigned`
+    state. A two-reviewer deployment supplies an optional `reviewer2_id`
+    alongside `slot: "first"` so both reviewers are assigned in one atomic
+    transaction (research Decision 4) — the To-Be-Assigned queue is gated on
+    `assign_date IS NULL`, so a per-slot call would drop the event before the
+    second reviewer could be assigned. Slot count is driven by the resolved
+    `reviewer_count` control, never by a study name (FR-008).
+    ---
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - event_ids
+            - reviewer_id
+            - slot
+          properties:
+            event_ids:
+              type: array
+              items:
+                type: integer
+              description: Non-empty list of event ids to assign
+            reviewer_id:
+              type: integer
+              description: The reviewer for `slot` (the first reviewer in Form B)
+            slot:
+              type: string
+              enum: [first, second, third]
+              description: Which reviewer slot to fill
+            reviewer2_id:
+              type: integer
+              description: >
+                Optional second reviewer. Valid only with `slot: "first"` in
+                a two-reviewer deployment; assigns both reviewers atomically.
+                Must differ from `reviewer_id`.
+    responses:
+      200:
+        description: Events assigned
+        schema:
+          type: object
+          properties:
+            data:
+              type: object
+              properties:
+                updated:
+                  type: integer
+      400:
+        description: Invalid assignment request
+      401:
+        description: Not authenticated
+      403:
+        description: Caller is not an administrator
+    """
     data = request.get_json() or {}
     event_ids = data.get('event_ids') or []
     reviewer_id = data.get('reviewer_id')
     slot = (data.get('slot') or '').strip()
+    reviewer2_id = data.get('reviewer2_id')
     if not isinstance(event_ids, list) or not reviewer_id or not slot:
         return jsonify({'error': 'event_ids, reviewer_id, and slot are required'}), 400
+    cfg = get_workflow_config()
     # In a single-reviewer configuration there is no second or third reviewer,
     # so those assignment slots are unavailable (FR-013).
-    if get_workflow_config().reviewer_count == 1 and slot in ('second', 'third'):
+    if cfg.reviewer_count == 1 and slot in ('second', 'third'):
         return jsonify({
             'error': 'Second- and third-reviewer assignment is unavailable when reviewer count is 1'
         }), 400
+    # Optional second reviewer — the atomic two-reviewer path (FR-010, FR-011).
+    if reviewer2_id is not None:
+        if cfg.reviewer_count == 1:
+            return jsonify({
+                'error': 'A second reviewer cannot be assigned when reviewer count is 1'
+            }), 400
+        if slot != 'first':
+            return jsonify({'error': 'reviewer2_id is only valid with the first slot'}), 400
+        if int(reviewer2_id) == int(reviewer_id):
+            return jsonify({'error': 'The first and second reviewer must be different people'}), 400
     auth_user = getattr(g, 'auth_user', None) or {}
     assigner_id = auth_user.get('id') or 0
     try:
-        result = table_service.assign_events(event_ids, int(reviewer_id), slot, int(assigner_id))
+        result = table_service.assign_events(
+            event_ids, int(reviewer_id), slot, int(assigner_id),
+            reviewer2_id=int(reviewer2_id) if reviewer2_id is not None else None,
+        )
         return jsonify({'data': result})
     except table_service.ValidationError as ve:
         return jsonify({'error': str(ve)}), 400

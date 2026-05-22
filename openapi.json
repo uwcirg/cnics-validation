@@ -107,7 +107,58 @@ paths:
   /api/events/bulk: {}
   /api/events/{int:event_id}/upload_scrubbed: {}
   /api/events/{int:event_id}/upload_raw: {}
-  /api/events/assign_many: {}
+  /api/events/assign_many:
+    post:
+      parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+          - event_ids
+          - reviewer_id
+          - slot
+          properties:
+            event_ids:
+              type: array
+              items:
+                type: integer
+              description: Non-empty list of event ids to assign
+            reviewer_id:
+              type: integer
+              description: The reviewer for `slot` (the first reviewer in Form B)
+            slot:
+              type: string
+              enum:
+              - first
+              - second
+              - third
+              description: Which reviewer slot to fill
+            reviewer2_id:
+              type: integer
+              description: 'Optional second reviewer. Valid only with `slot: "first"`
+                in a two-reviewer deployment; assigns both reviewers atomically. Must
+                differ from `reviewer_id`.
+
+                '
+      responses:
+        '200':
+          description: Events assigned
+          schema:
+            type: object
+            properties:
+              data:
+                type: object
+                properties:
+                  updated:
+                    type: integer
+        '400':
+          description: Invalid assignment request
+        '401':
+          description: Not authenticated
+        '403':
+          description: Caller is not an administrator
   /api/events/send_many: {}
   /api/events/{int:event_id}/review:
     post:
