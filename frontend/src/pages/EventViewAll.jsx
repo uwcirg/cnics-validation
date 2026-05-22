@@ -141,8 +141,20 @@ function TableSection({ title, endpoint, columns, renderActions, augmentRows, me
   )
 }
 
-function EventViewAll() {
+function EventViewAll({ workflow }) {
   const [statusSummary, setStatusSummary] = useState(null)
+
+  // Section visibility is derived from the resolved workflow configuration,
+  // passed down from App.jsx (which fetches GET /api/config). The `!== false`
+  // form keeps a section visible when its control is missing, unresolved, or
+  // malformed — the conservative full-workflow default (FR-010).
+  const wf = workflow || {}
+  const showScrubbing = wf.scrubbing !== false
+  const showScreening = wf.screening !== false
+  const showSending = wf.sending !== false
+  // Both third-reviewer sections belong to the multi-reviewer escalation path;
+  // they are hidden only when the deployment is explicitly single-reviewer.
+  const showThirdReviewer = Number(wf.reviewer_count) !== 1
 
   useEffect(() => {
     fetch(`${API_BASE}/api/events/status_summary`, { credentials: 'include' })
@@ -246,7 +258,8 @@ function EventViewAll() {
           <button onClick={(e) => { e.stopPropagation(); window.location.href = `/events/edit?event_id=${row['ID']}` }}>edit</button>
         )}
       />
-      {/* To Be Scrubbed */}
+      {/* To Be Scrubbed — gated on the scrubbing control (FR-002) */}
+      {showScrubbing && (
       <TableSection
         title="To Be Scrubbed"
         endpoint="/api/events/by_status/uploaded"
@@ -277,7 +290,9 @@ function EventViewAll() {
           </>
         )}
       />
-      {/* To Be Screened */}
+      )}
+      {/* To Be Screened — gated on the screening control (FR-003) */}
+      {showScreening && (
       <TableSection
         title="To Be Screened"
         endpoint="/api/events/by_status/scrubbed"
@@ -311,6 +326,7 @@ function EventViewAll() {
           </>
         )}
       />
+      )}
       {/* To Be Assigned = awaiting reviewer assignment. Backend by_status is
           flag-aware (T010): with scrubbing/screening bypassed it surfaces
           'uploaded' events here. The action goes to the normal reviewer
@@ -328,7 +344,8 @@ function EventViewAll() {
           </>
         )}
       />
-      {/* To Be Sent = awaiting send -> status 'assigned' */}
+      {/* To Be Sent — gated on the sending control (FR-004) */}
+      {showSending && (
       <TableSection
         title="To Be Sent"
         endpoint="/api/events/by_status/assigned"
@@ -341,6 +358,9 @@ function EventViewAll() {
           </>
         )}
       />
+      )}
+      {/* Third-reviewer sections — multi-reviewer escalation only (FR-005) */}
+      {showThirdReviewer && (
       <TableSection
         title="Third Review Needed"
         endpoint="/api/events/by_status/third_review_needed"
@@ -348,6 +368,8 @@ function EventViewAll() {
           <button onClick={(e) => { e.stopPropagation(); window.location.href = `/events/edit?event_id=${row['ID']}` }}>edit</button>
         )}
       />
+      )}
+      {showThirdReviewer && (
       <TableSection
         title="Third Reviewer Assigned"
         endpoint="/api/events/by_status/third_review_assigned"
@@ -355,6 +377,7 @@ function EventViewAll() {
           <button onClick={(e) => { e.stopPropagation(); window.location.href = `/events/edit?event_id=${row['ID']}` }}>edit</button>
         )}
       />
+      )}
       <TableSection
         title="All Done"
         endpoint="/api/events/by_status/done"
