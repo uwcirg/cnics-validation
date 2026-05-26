@@ -11,6 +11,7 @@ Auto-generated from all feature plans. Last updated: 2026-05-22
 - MariaDB 10.11, shared schema (`init/`). **No schema change in this feature.** (004-reviewer-assignment)
 - JavaScript / JSX, React 19 + react-router-dom 6, Vite 7 (build/dev); no new dependency (005-banner-restyle)
 - N/A — no persisted data; the study type comes from runtime config (005-banner-restyle)
+- N/A — no persisted data; section visibility is derived from runtime workflow config (006-study-aware-event-actions)
 
 - N/A — no code in a programming language is being + N/A. The repository's runtime stack (Flask + (001-mark-fhir-unused)
 
@@ -31,9 +32,9 @@ tests/
 N/A — no code in a programming language is being: Follow standard conventions
 
 ## Recent Changes
+- 006-study-aware-event-actions: Added JavaScript / JSX, React 19 + react-router-dom 6, Vite 7 (build/dev); no new dependency
 - 005-banner-restyle: Added JavaScript / JSX, React 19 + react-router-dom 6, Vite 7 (build/dev); no new dependency
 - 004-reviewer-assignment: Added Python 3.11 (Flask backend); JavaScript / JSX, React 19 (frontend) + Flask, SQLAlchemy (backend); React 19, react-router-dom 6, Vite (frontend)
-- 003-scans-study: Added Python 3.11 (Flask backend); JavaScript / JSX, React 19 (frontend) + Flask, SQLAlchemy, mysql-connector-python; React 19, react-router-dom 6, Vite
 
 
 <!-- MANUAL ADDITIONS START -->

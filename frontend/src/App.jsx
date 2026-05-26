@@ -316,7 +316,7 @@ function App() {
           } />
           <Route path="/events/viewAll" element={
             <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
-              <EventViewAll />
+              <EventViewAll workflow={workflow} />
             </ProtectedRoute>
           } />
           <Route path="/vte/viewAll" element={
