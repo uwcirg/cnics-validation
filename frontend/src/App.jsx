@@ -74,6 +74,10 @@ function App() {
   // string (e.g. "DEXA Scans Validation") shown verbatim in the banner and
   // used to build the browser tab title. Empty when not configured.
   const [studyTitle, setStudyTitle] = useState('')
+  // Whether GET /api/config has resolved. The home page gates its study-aware
+  // review boxes on this so it never paints fallback content before the real
+  // study type is known (spec 007, FR-010 — no content flash).
+  const [configResolved, setConfigResolved] = useState(false)
   const apiUrl = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || '')
 
   useEffect(() => {
@@ -105,6 +109,11 @@ function App() {
         }
       } catch {
         // Keep the conservative full-workflow default on any failure.
+      } finally {
+        // Mark config resolved regardless of outcome so the home page can
+        // render its review boxes (falling back to mci content if the fetch
+        // failed) rather than hiding them forever (FR-010, FR-008).
+        if (!cancelled) setConfigResolved(true)
       }
     }
     fetchMe()
@@ -126,7 +135,7 @@ function App() {
       <BaseLayout auth={auth} study_title={bannerTitle}>
         <Routes>
           {/* Public routes */}
-          <Route path="/" element={<Home auth={auth} />} />
+          <Route path="/" element={<Home auth={auth} studyType={studyType} configResolved={configResolved} />} />
           <Route path="/vte" element={<VTEHome auth={auth} />} />
           <Route path="/events" element={<EventIndex />} />
           <Route path="/users/logout" element={<UserLogout />} />
