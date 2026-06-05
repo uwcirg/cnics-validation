@@ -17,6 +17,7 @@ flask_backend/__pycache__/
 flask_backend/tests/__pycache__/
 .env.swp
 downloads/
+uploads/
 
 # Claude Code — personal settings and any agent credentials
 .claude/settings.local.json

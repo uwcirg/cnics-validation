@@ -77,7 +77,10 @@ services:
       - internal
     volumes:
       - ${FILES_DIR:-./app/webroot/files}:/files:ro
-      - cnics-downloads:/opt/backend/uploads
+      # Uploaded event packets. Bind-mounted to a known host path so the
+      # sysadmin team can back it up with existing host tooling. See
+      # default.env for UPLOAD_HOST_DIR guidance.
+      - ${UPLOAD_HOST_DIR:-./uploads}:/opt/backend/uploads
 
   web:
     build:
@@ -96,7 +99,6 @@ services:
 volumes:
   logs-data:
   mariadb-data:
-  cnics-downloads:
 
 networks:
   internal:
