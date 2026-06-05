@@ -158,9 +158,6 @@ function Home({ auth, studyType, configResolved = true }) {
 
   return (
     <div className="home-container">
-      <h1>CNICS Validation</h1>
-      <p>Welcome to the CNICS Validation application.</p>
-
       {/* Four main sections */}
       {auth && auth.admin && (
         <section>
