@@ -64,6 +64,7 @@ class WorkflowConfig:
     """The resolved, immutable workflow configuration for this deployment."""
 
     study_type: str
+    study_title: str
     scrubbing: bool
     screening: bool
     sending: bool
@@ -73,6 +74,18 @@ class WorkflowConfig:
 def get_study_type() -> str:
     """Return the current study type from the environment (default ``mci``)."""
     return os.getenv("STUDY_TYPE", "mci")
+
+
+def get_study_title() -> str:
+    """Return the deployment's banner study-title override (default empty).
+
+    ``STUDY_TITLE`` is a free-form display string (e.g. "DEXA Scans
+    Validation") shown verbatim in the banner and used to build the browser
+    tab title ("CNICS " + this value). When unset/blank the frontend falls
+    back to a title derived from ``STUDY_TYPE``. It is purely cosmetic, so —
+    unlike the workflow controls — any value is accepted and never validated.
+    """
+    return os.getenv("STUDY_TITLE", "").strip()
 
 
 def _profile_for(study_type: str) -> dict:
@@ -138,6 +151,7 @@ def get_workflow_config() -> WorkflowConfig:
     profile = _profile_for(study_type)
     return WorkflowConfig(
         study_type=study_type,
+        study_title=get_study_title(),
         scrubbing=_resolve_bool("ENABLE_SCRUBBING", profile["scrubbing"]),
         screening=_resolve_bool("ENABLE_SCREENING", profile["screening"]),
         sending=_resolve_bool("ENABLE_SENDING", profile["sending"]),

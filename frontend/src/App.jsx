@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Route, BrowserRouter as Router, Routes } from 'react-router-dom'
 import BaseLayout from './components/BaseLayout'
+import { documentTitle, resolveStudyTitle } from './components/studyTitle'
 import ProtectedRoute from './components/ProtectedRoute'
 import Admin from './pages/Admin'
 import CriteriaAdd from './pages/CriteriaAdd'
@@ -66,9 +67,13 @@ function App() {
     sending: true,
     reviewer_count: 2,
   })
-  // Study type from GET /api/config — drives the banner's study title.
-  // Empty until the config resolves; the banner shows no title until then.
+  // Study type from GET /api/config — the fallback source for the banner's
+  // study title. Empty until the config resolves.
   const [studyType, setStudyType] = useState('')
+  // Optional STUDY_TITLE override from GET /api/config — a free-form display
+  // string (e.g. "DEXA Scans Validation") shown verbatim in the banner and
+  // used to build the browser tab title. Empty when not configured.
+  const [studyTitle, setStudyTitle] = useState('')
   const apiUrl = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || '')
 
   useEffect(() => {
@@ -95,6 +100,8 @@ function App() {
           if (wf) setWorkflow(wf)
           const st = json && json.data && json.data.study_type
           if (st) setStudyType(st)
+          const stt = json && json.data && json.data.study_title
+          if (stt) setStudyTitle(stt)
         }
       } catch {
         // Keep the conservative full-workflow default on any failure.
@@ -107,9 +114,16 @@ function App() {
     }
   }, [apiUrl])
 
+  // The resolved banner study title — a STUDY_TITLE override, else derived
+  // from the study type. Drives both the banner and the browser tab title.
+  const bannerTitle = resolveStudyTitle(studyTitle, studyType)
+  useEffect(() => {
+    document.title = documentTitle(bannerTitle)
+  }, [bannerTitle])
+
   return (
     <Router>
-      <BaseLayout auth={auth} study_type={studyType}>
+      <BaseLayout auth={auth} study_title={bannerTitle}>
         <Routes>
           {/* Public routes */}
           <Route path="/" element={<Home auth={auth} />} />
