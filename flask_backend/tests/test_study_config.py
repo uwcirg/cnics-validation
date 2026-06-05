@@ -12,6 +12,7 @@ from flask_backend.study_config import get_workflow_config, WorkflowConfigError
 
 _CONTROL_VARS = (
     "STUDY_TYPE",
+    "STUDY_TITLE",
     "ENABLE_SCRUBBING",
     "ENABLE_SCREENING",
     "ENABLE_SENDING",
@@ -23,6 +24,21 @@ def _clear_controls(monkeypatch):
     """Remove every workflow-control variable so resolution starts clean."""
     for var in _CONTROL_VARS:
         monkeypatch.delenv(var, raising=False)
+
+
+def test_study_title_defaults_to_empty(monkeypatch):
+    """With STUDY_TITLE unset, the resolved title override is an empty string."""
+    _clear_controls(monkeypatch)
+
+    assert get_workflow_config().study_title == ""
+
+
+def test_study_title_override_is_trimmed(monkeypatch):
+    """A configured STUDY_TITLE is resolved verbatim, with surrounding whitespace trimmed."""
+    _clear_controls(monkeypatch)
+    monkeypatch.setenv("STUDY_TITLE", "  DEXA Scans Validation  ")
+
+    assert get_workflow_config().study_title == "DEXA Scans Validation"
 
 
 def test_scans_profile_resolves_to_full_bypass(monkeypatch):

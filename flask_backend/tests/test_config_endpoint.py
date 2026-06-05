@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 _CONTROL_VARS = (
     "STUDY_TYPE",
+    "STUDY_TITLE",
     "ENABLE_SCRUBBING",
     "ENABLE_SCREENING",
     "ENABLE_SENDING",
@@ -86,19 +87,38 @@ def test_config_endpoint_returns_full_workflow_config(admin_client, monkeypatch)
 
 
 def test_config_endpoint_exposes_only_workflow_keys(admin_client, monkeypatch):
-    """The payload exposes only the study type and the four controls — no secrets."""
+    """The payload exposes only the study type/title and the four controls — no secrets."""
     _clear_controls(monkeypatch)
 
     res = admin_client.get("/api/config")
 
     data = res.get_json()["data"]
-    assert set(data.keys()) == {"study_type", "workflow"}
+    assert set(data.keys()) == {"study_type", "study_title", "workflow"}
     assert set(data["workflow"].keys()) == {
         "scrubbing",
         "screening",
         "sending",
         "reviewer_count",
     }
+
+
+def test_config_endpoint_omitted_study_title_is_blank(admin_client, monkeypatch):
+    """With no STUDY_TITLE configured, the override is served as an empty string."""
+    _clear_controls(monkeypatch)
+
+    res = admin_client.get("/api/config")
+
+    assert res.get_json()["data"]["study_title"] == ""
+
+
+def test_config_endpoint_serves_study_title_override(admin_client, monkeypatch):
+    """A configured STUDY_TITLE is served verbatim (trimmed)."""
+    _clear_controls(monkeypatch)
+    monkeypatch.setenv("STUDY_TITLE", "  DEXA Scans Validation  ")
+
+    res = admin_client.get("/api/config")
+
+    assert res.get_json()["data"]["study_title"] == "DEXA Scans Validation"
 
 
 def test_config_endpoint_requires_authentication():

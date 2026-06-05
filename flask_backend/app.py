@@ -660,9 +660,10 @@ def auth_me():
 def get_config():
     """Return the resolved workflow configuration for this deployment.
 
-    Exposes only the four non-sensitive workflow-stage controls and the
-    study type — no secrets — so the frontend can hide bypassed-stage UI
-    by flag rather than by a hard-coded study-name check (FR-021).
+    Exposes only the four non-sensitive workflow-stage controls, the study
+    type, and the cosmetic banner study-title override — no secrets — so the
+    frontend can hide bypassed-stage UI by flag rather than by a hard-coded
+    study-name check (FR-021), and brand the banner and tab title by config.
     ---
     responses:
       200:
@@ -674,6 +675,8 @@ def get_config():
               type: object
               properties:
                 study_type:
+                  type: string
+                study_title:
                   type: string
                 workflow:
                   type: object
@@ -690,6 +693,7 @@ def get_config():
     cfg = get_workflow_config()
     return jsonify({'data': {
         'study_type': cfg.study_type,
+        'study_title': cfg.study_title,
         'workflow': {
             'scrubbing': cfg.scrubbing,
             'screening': cfg.screening,

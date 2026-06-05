@@ -65,6 +65,8 @@ services:
       # listed here to reach the container. An unset control passes through as
       # an empty string, which study_config treats as "use the profile default".
       STUDY_TYPE: ${STUDY_TYPE:-mci}
+      # Optional cosmetic banner/tab title override (see default.env).
+      STUDY_TITLE: ${STUDY_TITLE:-}
       ENABLE_SCRUBBING: ${ENABLE_SCRUBBING:-}
       ENABLE_SCREENING: ${ENABLE_SCREENING:-}
       ENABLE_SENDING: ${ENABLE_SENDING:-}

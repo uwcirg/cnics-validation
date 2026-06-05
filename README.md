@@ -51,6 +51,10 @@ are built or started. The template defines the following variables:
 - `STUDY_TYPE` – selects the clinical validation study this deployment serves
   (`mci`, `vte`, `cva`, `hf`, `afib`, `scans`); defaults to `mci`. The chosen
   study supplies the default profile for the four workflow-stage controls below.
+- `STUDY_TITLE` – optional free-form display string shown verbatim in the
+  banner and used for the browser tab title (`CNICS ` + this value, e.g.
+  `CNICS DEXA Scans Validation`). When unset, the banner/tab title is derived
+  from `STUDY_TYPE` (e.g. `Scans Project`, `MCI Project`). Purely cosmetic.
 - `ENABLE_SCRUBBING` – whether uploaded packets pass through the `scrubbed`
   stage (`true`/`false`/`1`/`0`/`yes`/`no`). Defaults to `true`.
 - `ENABLE_SCREENING` – whether events pass through the `screened` stage

@@ -83,6 +83,8 @@ paths:
                 properties:
                   study_type:
                     type: string
+                  study_title:
+                    type: string
                   workflow:
                     type: object
                     properties:

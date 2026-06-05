@@ -1,18 +1,18 @@
 import { Link } from 'react-router-dom'
 import './BaseLayout.css'
 import MenuBar from './MenuBar'
-import { formatStudyTitle } from './studyTitle'
 
 function Toasts() {
   return <div id="toast-root" style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 1000 }} />
 }
 
-function BaseLayout({ children, auth, study_type }) {
+function BaseLayout({ children, auth, study_title }) {
   const { admin = false, uploader = false, reviewer = false, third_reviewer = false, username } = auth || {}
-  // Banner study title, derived from the deployment's study type. Null until
-  // GET /api/config resolves (or for an empty/missing study type) — the banner
-  // then shows the logo alone rather than a broken "undefined Project".
-  const studyTitle = formatStudyTitle(study_type)
+  // Resolved banner study title, supplied by App (a STUDY_TITLE override, or a
+  // title derived from the study type). Null until GET /api/config resolves
+  // (or when no title applies) — the banner then shows the logo alone rather
+  // than a broken "undefined Project".
+  const studyTitle = study_title
   return (
     <div className="layout">
       <header className="site-banner">
