@@ -71,18 +71,18 @@ are built or started. The template defines the following variables:
 - `FILES_DIR` – directory containing instruction files served by the backend.
 - `DOWNLOADS_DIR` – writable directory where the backend saves generated/downloadable artifacts
   (e.g., uploaded scrubbed ZIPs). Defaults to a subdirectory under `FILES_DIR` if not set.
-- `CNICS_DATA_SOCKET_DIR` / `CNICS_DATA_DB_NAME` / `_TABLE` / `_USER` /
-  `_PASSWORD` – connection parameters for the upstream `cnics_data.Patient`
-  table. The mariadb container's init step builds a FEDERATED proxy table
-  for it, and the `patients_view` view UNIONs that proxy with the
-  locally-owned `uw_patients2` table. Because the cnics_data server listens
-  only on the VM host's loopback interface, the proxy reaches it over the
-  host's MariaDB/MySQL Unix socket: `CNICS_DATA_SOCKET_DIR` is the host
-  directory containing that socket (`mysqld.sock`), bind-mounted into the
-  mariadb container. The bridge user only needs `SELECT` on
-  `cnics_data.Patient` — keep it read-only. Leaving `CNICS_DATA_DB_USER`
-  empty disables the bridge; `patients_view` is then defined over
-  `uw_patients2` only (single-instance / dev fallback).
+- `CNICS_DATA_BRIDGE_MODE` / `CNICS_DATA_SOCKET_DIR` / `CNICS_DATA_DB_HOST` /
+  `_DB_PORT` / `CNICS_DATA_DB_NAME` / `_TABLE` / `_USER` / `_PASSWORD` –
+  connection parameters for the upstream `cnics_data.Patient` table. The
+  mariadb container's init step builds a FEDERATED proxy of it, and
+  `patients_view` UNIONs that proxy with the locally-owned `uw_patients2`
+  table. `CNICS_DATA_BRIDGE_MODE` selects `socket` (cnics_data on the same VM,
+  reached over a bind-mounted Unix socket — dev) or `tcp` (cnics_data on a
+  separate VM, reached over an SSH tunnel — prod). The bridge user only needs
+  `SELECT` on `cnics_data.Patient` — keep it read-only; leaving
+  `CNICS_DATA_DB_USER` empty disables the bridge entirely. See
+  [docs/cnics_data-bridge.md](docs/cnics_data-bridge.md) for the full setup,
+  prerequisites, and troubleshooting for both modes.
 
 Frontend client variables (those with the `VITE_` prefix, including
 `VITE_API_URL`) are loaded from `frontend/default.env`, not the root

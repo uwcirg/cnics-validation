@@ -5,14 +5,17 @@ set -euo pipefail
 # over (a) the locally-owned `uw_patients2` table and (b) a FEDERATED
 # proxy of the upstream `cnics_data.Patient` table.
 #
-# The cnics_data server listens only on the VM host's loopback
-# interface, which a bridged container cannot reach over TCP. So the
-# FEDERATED proxy reaches it over the host's MariaDB/MySQL Unix socket:
-# docker-compose.yaml bind-mounts the host socket directory
-# (CNICS_DATA_SOCKET_DIR) into this container at /run/cnics_data_host,
-# and the proxy table is pointed at it via a CREATE SERVER definition
-# carrying a SOCKET option. The FederatedX engine plugin is loaded from
-# mariadb/conf.d/custom.cnf at server start.
+# The FEDERATED proxy reaches cnics_data one of two ways, selected by
+# CNICS_DATA_BRIDGE_MODE (see default.env):
+#   socket — cnics_data on the SAME VM, reached over the host's MariaDB
+#            Unix socket, bind-mounted into this container at
+#            /run/cnics_data_host (CNICS_DATA_SOCKET_DIR). CREATE SERVER
+#            carries a SOCKET option. This is the dev server's topology.
+#   tcp    — cnics_data on a SEPARATE VM, reached over TCP at an SSH-tunnel
+#            endpoint on this VM (CNICS_DATA_DB_HOST:CNICS_DATA_DB_PORT).
+#            CREATE SERVER carries HOST/PORT options. This is prod's topology.
+# The FederatedX engine plugin is loaded from mariadb/conf.d/custom.cnf at
+# server start (required for both modes).
 #
 # Env vars consumed:
 #   MYSQL_DATABASE         — schema to write to (set by mariadb entrypoint).
@@ -61,26 +64,46 @@ fi
 CNICS_DATA_DB_NAME="${CNICS_DATA_DB_NAME:-cnics_data}"
 CNICS_DATA_DB_TABLE="${CNICS_DATA_DB_TABLE:-Patient}"
 : "${CNICS_DATA_DB_PASSWORD:?CNICS_DATA_DB_PASSWORD must be set when CNICS_DATA_DB_USER is set}"
+CNICS_DATA_BRIDGE_MODE="${CNICS_DATA_BRIDGE_MODE:-socket}"
 
-if [[ ! -S "$CNICS_DATA_SOCKET" ]]; then
-  echo "[06-create-patients-view] ERROR: $CNICS_DATA_SOCKET is not a socket." >&2
-  echo "  Check the CNICS_DATA_SOCKET_DIR bind-mount in docker-compose.yaml" >&2
-  echo "  and that the cnics_data server is running on the VM host." >&2
-  exit 1
-fi
+# Build the transport-specific OPTIONS for the CREATE SERVER below. Both
+# modes reach the same upstream cnics_data.Patient and differ only in how
+# the FEDERATED proxy connects. FederatedX over TCP (tcp mode) is robust;
+# the SOCKET option (socket mode) is honored on MariaDB 10.11 — if a future
+# version stops honoring it, the CREATE TABLE below fails with ER 1434.
+case "$CNICS_DATA_BRIDGE_MODE" in
+  socket)
+    if [[ ! -S "$CNICS_DATA_SOCKET" ]]; then
+      echo "[06-create-patients-view] ERROR: $CNICS_DATA_SOCKET is not a socket." >&2
+      echo "  Mode is 'socket'. Check the CNICS_DATA_SOCKET_DIR bind-mount in" >&2
+      echo "  docker-compose.yaml and that cnics_data is running on this VM host." >&2
+      echo "  (If cnics_data is on a SEPARATE VM, set CNICS_DATA_BRIDGE_MODE=tcp.)" >&2
+      exit 1
+    fi
+    SERVER_TRANSPORT_OPTS="SOCKET '${CNICS_DATA_SOCKET}',"
+    echo "[06-create-patients-view] bridge mode: socket (${CNICS_DATA_SOCKET})"
+    ;;
+  tcp)
+    : "${CNICS_DATA_DB_HOST:?CNICS_DATA_DB_HOST must be set when CNICS_DATA_BRIDGE_MODE=tcp}"
+    CNICS_DATA_DB_PORT="${CNICS_DATA_DB_PORT:-3306}"
+    SERVER_TRANSPORT_OPTS="HOST '${CNICS_DATA_DB_HOST}', PORT ${CNICS_DATA_DB_PORT},"
+    echo "[06-create-patients-view] bridge mode: tcp (${CNICS_DATA_DB_HOST}:${CNICS_DATA_DB_PORT})"
+    ;;
+  *)
+    echo "[06-create-patients-view] ERROR: invalid CNICS_DATA_BRIDGE_MODE='${CNICS_DATA_BRIDGE_MODE}' (want 'socket' or 'tcp')." >&2
+    exit 1
+    ;;
+esac
 
 # Point the FEDERATED proxy at cnics_data via a CREATE SERVER definition
-# carrying a SOCKET option. If the FederatedX engine honors the SOCKET
-# option, the CREATE TABLE below succeeds (it validates by connecting to
-# the foreign table). If it ignores SOCKET and falls back to a TCP
-# localhost attempt, CREATE TABLE fails with ER 1434 — that failure is
-# the signal that this approach is unsupported on this MariaDB version.
+# carrying the transport OPTIONS built above. CREATE TABLE validates by
+# connecting to the foreign table, so a bad endpoint/credential fails here.
 run_sql <<SQL
 DROP SERVER IF EXISTS cnics_data_srv;
 CREATE SERVER cnics_data_srv
   FOREIGN DATA WRAPPER mysql
   OPTIONS (
-    SOCKET   '${CNICS_DATA_SOCKET}',
+    ${SERVER_TRANSPORT_OPTS}
     USER     '${CNICS_DATA_DB_USER}',
     PASSWORD '${CNICS_DATA_DB_PASSWORD}',
     DATABASE '${CNICS_DATA_DB_NAME}'
