@@ -26,20 +26,6 @@ function Admin() {
           </ul>
         </div>
       </section>
-
-      <section>
-        <h3>Users</h3>
-        <div>
-          <ul>
-            <li>
-              <Link to="/users/add">Add a user</Link>
-            </li>
-            <li>
-              <Link to="/users/viewAll">Edit/Delete users</Link>
-            </li>
-          </ul>
-        </div>
-      </section>
     </div>
   )
 }

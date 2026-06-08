@@ -178,15 +178,6 @@ function Home({ auth, studyType, configResolved = true }) {
                 <a href={`${API_BASE}/api/events/export?format=csv`}>Export all events as CSV</a>
               </li>
             </ul>
-            <h4>Users</h4>
-            <ul>
-              <li>
-                <Link to="/users/add">Add a user</Link>
-              </li>
-              <li>
-                <Link to="/users/viewAll">Edit/Delete users</Link>
-              </li>
-            </ul>
           </div>
         </section>
       )}
