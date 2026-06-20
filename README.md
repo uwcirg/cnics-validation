@@ -222,44 +222,9 @@ The first script will show that the child object's `.event` is synchronized in-m
 
 The backend uses two configurable directories for file operations:
 
-- `FILES_DIR`: read-only documents served to the frontend (e.g., instructions under `/files/<name>`).
-- `DOWNLOADS_DIR`: writable area for generated or uploaded artifacts (e.g., scrubbed ZIP files) served by `/api/events/download/<id>`.
+- `FILES_DIR` → mounted read-only at `/files` in the backend; serves instruction/reference documents to the frontend under `/files/<name>`.
+- `UPLOAD_DIR` → mounted read-write at `/opt/backend/uploads` in the backend; holds uploaded event packets and generated artifacts (e.g., scrubbed ZIPs) served by `/api/events/download/<id>`. `DOWNLOADS_DIR` is accepted as a back-compat alias; if neither is set the backend falls back to `FILES_DIR/downloads`.
 
-You can configure these via environment variables. If `DOWNLOADS_DIR` is not set, it falls back to `FILES_DIR/downloads`.
+Both directories are bind-mounted from host paths so they survive container rebuilds and are visible to host-level backup tooling. The host paths are controlled by `FILES_DIR` and `UPLOAD_HOST_DIR` in `.env` (see `default.env` for documented defaults); the in-container paths are fixed by `docker-compose.yaml` and should not need to change.
 
-For containerized deployments, choose one of the following:
-
-1) Bind-mount (convenient for development, visible on the host):
-
-```yaml
-services:
-  backend:
-    environment:
-      FILES_DIR: /files
-      DOWNLOADS_DIR: /downloads
-    volumes:
-      - ./app/webroot/files:/files:ro   # read-only docs
-      - ./downloads:/downloads          # writable artifacts
-```
-
-2) Named Docker volumes (isolated, easier lifecycle via `docker volume ls`):
-
-```yaml
-services:
-  backend:
-    environment:
-      FILES_DIR: /files
-      DOWNLOADS_DIR: /downloads
-    volumes:
-      - cnics-files:/files:ro
-      - cnics-downloads:/downloads
-
-volumes:
-  cnics-files:
-  cnics-downloads:
-```
-
-Notes:
-- If files do not need to be accessed by external host processes (confirmed), named volumes are a good default for production.
-- Ensure sufficient disk space on the VM hosting Docker; containers do not need their own disk allocation.
-- Keep the upload/download locations configurable via env so staging/prod can use different mounts.
+For production deployments, point `UPLOAD_HOST_DIR` at an absolute path outside the repo (e.g. `/srv/cnics/uploads`) so uploaded packets are not entangled with deploy/clone operations and so backup tooling can target a stable location. Ensure the directory is writable by the UID the backend container runs as, and that the host VM has sufficient disk for the expected packet volume.
