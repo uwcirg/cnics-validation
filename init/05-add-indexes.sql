@@ -13,9 +13,9 @@ CREATE INDEX idx_events_reviewer1_review1 ON events (reviewer1_id, review1_date)
 CREATE INDEX idx_events_reviewer2_review2 ON events (reviewer2_id, review2_date);
 CREATE INDEX idx_events_reviewer3_review3 ON events (reviewer3_id, review3_date);
 
--- Patients filters
-CREATE INDEX idx_patients_site ON patients (site);
-CREATE INDEX idx_patients_site_patient_id ON patients (site_patient_id);
+-- Patients filters (on the locally-owned `uw_patients2` half of `patients_view`)
+CREATE INDEX idx_uw_patients2_site ON uw_patients2 (site);
+CREATE INDEX idx_uw_patients2_site_patient_id ON uw_patients2 (site_patient_id);
 
 -- Criteria lookup by event and name/value (for search EXISTS)
 CREATE INDEX idx_criterias_event ON criterias (event_id);

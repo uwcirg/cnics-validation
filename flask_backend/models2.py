@@ -154,15 +154,6 @@ class Users(Base):
     admin_flag: Mapped[int] = mapped_column(TINYINT(1), server_default=text('0'))
 
 
-class UwPatients(Base):
-    __tablename__ = 'uw_patients'
-
-    id: Mapped[int] = mapped_column(INTEGER(10), primary_key=True)
-    site_patient_id: Mapped[str] = mapped_column(String(64), server_default=text("''"))
-    site: Mapped[str] = mapped_column(String(20))
-    last_update: Mapped[datetime.datetime] = mapped_column(TIMESTAMP, server_default=text('current_timestamp() ON UPDATE current_timestamp()'))
-    create_date: Mapped[datetime.datetime] = mapped_column(DateTime, server_default=text("'0000-00-00 00:00:00'"))
-
 class UwPatients2(Base):
     __tablename__ = 'uw_patients2'
 
@@ -172,8 +163,14 @@ class UwPatients2(Base):
     last_update: Mapped[datetime.datetime] = mapped_column(TIMESTAMP, server_default=text("'0000-00-00 00:00:00'"))
     create_date: Mapped[datetime.datetime] = mapped_column(DateTime, server_default=text("'0000-00-00 00:00:00'"))
 
-class Patients(Base):
-    __tablename__ = 'patients'
+
+class PatientsView(Base):
+    # Read-only union view: uw_patients2 ∪ cnics_data.Patient (via the
+    # FEDERATED proxy `cnics_data_patient_remote`). Defined in
+    # init/06-create-patients-view.sh. The application never INSERTs,
+    # UPDATEs, or DELETEs against this — both halves of the union are
+    # treated as read-only.
+    __tablename__ = 'patients_view'
 
     id: Mapped[int] = mapped_column(INTEGER(10), primary_key=True)
     site_patient_id: Mapped[str] = mapped_column(String(64))
@@ -181,37 +178,10 @@ class Patients(Base):
     last_update: Mapped[datetime.datetime] = mapped_column(TIMESTAMP, server_default=text("'0000-00-00 00:00:00'"))
     create_date: Mapped[datetime.datetime] = mapped_column(DateTime, server_default=text("'0000-00-00 00:00:00'"))
 
-#The Patients class is defined in flask_backend/models.py as a straightforward SQLAlchemy model representing the patients table.
-#Each instance corresponds to one patient record. The fields map directly to columns in the database:
-
-    # This model simply declares columns for:
-
-    # id: integer primary key
-    # site_patient_id: the site‑specific identifier for the patient
-    # site: the site code
-    # last_update: timestamp of the last update
-    # create_date: datetime when the record was created
-
-    # Regarding its data source, the provided database dump cnics.sql shows that 
-    # the patients table is populated by copying records from the uw_patients2 table:
-
-    # -- Create table `patients` from `uw_patients2`
-    # DROP TABLE IF EXISTS `patients`;
-    # CREATE TABLE `patients` (
-    #   `id` int(10) unsigned NOT NULL,
-    #   `site_patient_id` varchar(64) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
-    #   `site` varchar(20) NOT NULL,
-    #   `last_update` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
-    #   `create_date` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
-    #   PRIMARY KEY (`id`)
-    # ) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
-    # INSERT INTO `patients` SELECT * FROM `uw_patients2` WHERE id <> 0;
 
 # --- Database session handling -------------------------------------------------
 _engine = None
 _SessionFactory = None
-_external_engine = None
-_ExternalSessionFactory = None
 
 
 def get_engine():
@@ -233,25 +203,5 @@ def get_session() -> Session:
     if _SessionFactory is None:
         _SessionFactory = sessionmaker(bind=get_engine())
     return _SessionFactory()
-
-# recommended to use a separate function for external database connections
-
-def get_external_engine():
-    """Create and return an engine for the external database."""
-    global _external_engine
-    if _external_engine is None:
-        url = os.getenv("EXTERNAL_DB_URL")
-        if not url:
-            raise RuntimeError("EXTERNAL_DB_URL is not configured")
-        _external_engine = create_engine(url, pool_pre_ping=True)
-    return _external_engine
-
-
-def get_external_session() -> Session:
-    """Return a new SQLAlchemy session for the external database."""
-    global _ExternalSessionFactory
-    if _ExternalSessionFactory is None:
-        _ExternalSessionFactory = sessionmaker(bind=get_external_engine())
-    return _ExternalSessionFactory()
 
 

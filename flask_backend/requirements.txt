@@ -3,6 +3,8 @@ flask-cors
 flask-sqlalchemy
 python-dotenv
 mysql-connector-python
+# Retained for a later release; Keycloak is NOT part of first-release
+# auth — see flask_backend/README.md and .specify/memory/constitution.md
 python-keycloak
 python-docx
 reportlab

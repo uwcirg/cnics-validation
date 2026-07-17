@@ -11,7 +11,14 @@ function MenuBar({ admin, uploader, reviewer, third_reviewer }) {
       {admin && (
         <Link to={isVtePage ? "/vte/admin" : "/admin"}>Admin Tools</Link>
       )}
-      
+
+      {/* Assign Charts - reviewer-assignment page, only for admin users (FR-003).
+          Always the shared, config-driven page; the /vte/* fork is stale tech
+          debt and is not linked here (plan.md; Constitution Principle IV). */}
+      {admin && (
+        <Link to="/events/assignMany">Assign Charts</Link>
+      )}
+
       {/* Upload New Packets - for uploaders and admins */}
       {(uploader || admin) && (
         <Link to={isVtePage ? "/vte/upload" : "/events/upload"}>Upload New Packets</Link>

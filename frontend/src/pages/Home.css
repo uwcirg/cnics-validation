@@ -58,12 +58,3 @@
   justify-content: center;
   margin-bottom: 1em;
 }
-
-/* Top-right CNICS logo on homepage */
-.cnics-logo {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  height: 36px;
-  width: auto;
-}

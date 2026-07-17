@@ -7,18 +7,38 @@ services:
       MYSQL_DATABASE: ${DB_NAME}
       MYSQL_USER: ${DB_USER}
       MYSQL_PASSWORD: ${DB_PASSWORD}
+      # Consumed by init/06-create-patients-view.sh to build the FEDERATED
+      # bridge to the upstream cnics_data.Patient table. CNICS_DATA_BRIDGE_MODE
+      # selects socket (co-located — dev) vs tcp (separate VM via SSH tunnel
+      # — prod). See default.env for the var meanings and the read-only
+      # requirement on the bridge user.
+      CNICS_DATA_BRIDGE_MODE: ${CNICS_DATA_BRIDGE_MODE:-socket}
+      CNICS_DATA_DB_NAME: ${CNICS_DATA_DB_NAME}
+      CNICS_DATA_DB_TABLE: ${CNICS_DATA_DB_TABLE}
+      CNICS_DATA_DB_USER: ${CNICS_DATA_DB_USER}
+      CNICS_DATA_DB_PASSWORD: ${CNICS_DATA_DB_PASSWORD}
+      # tcp mode only (ignored when CNICS_DATA_BRIDGE_MODE=socket):
+      CNICS_DATA_DB_HOST: ${CNICS_DATA_DB_HOST:-}
+      CNICS_DATA_DB_PORT: ${CNICS_DATA_DB_PORT:-}
     volumes:
       - mariadb-data:/var/lib/mysql
       - logs-data:/var/log/mysql
       - ./mariadb/conf.d:/etc/mysql/conf.d:ro
       - ./init:/docker-entrypoint-initdb.d
+      # socket bridge mode only: cnics_data on this same VM host is reached
+      # over its Unix socket. Bind-mount the host socket directory in; init/06
+      # reads /run/cnics_data_host/mysqld.sock. (A directory mount — not a file
+      # mount — so it survives the host server recreating its socket.) Harmless
+      # in tcp mode: init/06 never reads it, and on a separate-VM host the
+      # source dir is simply empty.
+      - ${CNICS_DATA_SOCKET_DIR:-/var/run/mysqld}:/run/cnics_data_host
     networks:
       - internal
 
   backend:
     build: ./flask_backend
     environment:
-      ALLOW_DEV_HEADER: "1"
+      ALLOW_DEV_HEADER: "${ALLOW_DEV_HEADER:-0}"
       DB_HOST: mariadb
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
@@ -44,10 +64,23 @@ services:
       LOG_FORMAT: ${LOG_FORMAT:-JSON}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       APP_NAME: ${APP_NAME:-cnics-validation-backend}
+      # Study workflow configuration, resolved by flask_backend/study_config.py.
+      # STUDY_TYPE selects the study's default control profile; each control
+      # below overrides that profile when set. Compose reads these from .env
+      # for ${...} substitution but does NOT auto-inject them — they must be
+      # listed here to reach the container. An unset control passes through as
+      # an empty string, which study_config treats as "use the profile default".
+      STUDY_TYPE: ${STUDY_TYPE:-mci}
+      # Optional cosmetic banner/tab title override (see default.env).
+      STUDY_TITLE: ${STUDY_TITLE:-}
+      ENABLE_SCRUBBING: ${ENABLE_SCRUBBING:-}
+      ENABLE_SCREENING: ${ENABLE_SCREENING:-}
+      ENABLE_SENDING: ${ENABLE_SENDING:-}
+      REVIEWER_COUNT: ${REVIEWER_COUNT:-}
     depends_on:
       - mariadb
     ports:
-      - "3001:3000"
+      - "127.0.0.1:${BACKEND_EXTERNAL_PORT:-3001}:3000"
     networks:
       - internal
     volumes:
@@ -75,3 +108,14 @@ volumes:
 
 networks:
   internal:
+    # Pin the subnet/gateway so the host has a STABLE address to bind the
+    # cnics_data SSH tunnel to in tcp bridge mode (this gateway is
+    # CNICS_DATA_DB_HOST in default.env). The gateway is reachable from
+    # containers on this network but not from the VM's external interfaces,
+    # so the tunnelled port isn't exposed off-host. Harmless in socket mode.
+    # If 172.31.222.0/24 collides with an existing network, change both here
+    # and CNICS_DATA_DB_HOST together.
+    ipam:
+      config:
+        - subnet: 172.31.222.0/24
+          gateway: 172.31.222.1

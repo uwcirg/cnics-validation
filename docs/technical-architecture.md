@@ -4,10 +4,6 @@
 
 ```mermaid
 graph TB
-    subgraph "Load Balancer Layer"
-        LB[Traefik Load Balancer]
-    end
-    
     subgraph "Application Layer"
         subgraph "MCI Instance"
             MCI_FE[MCI Frontend Container]
@@ -36,14 +32,10 @@ graph TB
     end
     
     subgraph "External Systems"
-        FHIR[FHIR Server]
+        FHIR[FHIR Server<br/>reserved — not currently used]
         EMAIL[SMTP Server]
         CNICS[CNICS Data Warehouse]
     end
-    
-    LB --> MCI_FE
-    LB --> VTE_FE
-    LB --> CVA_FE
     
     MCI_FE --> MCI_BE
     VTE_FE --> VTE_BE
@@ -65,10 +57,6 @@ graph TB
     VTE_BE --> LOGS
     CVA_BE --> LOGS
     
-    MCI_BE --> FHIR
-    VTE_BE --> FHIR
-    CVA_BE --> FHIR
-    
     MCI_BE --> EMAIL
     VTE_BE --> EMAIL
     CVA_BE --> EMAIL
@@ -77,6 +65,22 @@ graph TB
     VTE_DB --> CNICS
     CVA_DB --> CNICS
 ```
+
+> **Note on the FHIR Server node:** The FHIR node above is retained as a
+> reserved placeholder only. It is **not currently used** — retained for
+> backward compatibility; no runtime component reads this value, and no
+> study backend currently calls a FHIR server. The node is intentionally
+> drawn without edges to make that visually obvious. Any future FHIR
+> integration will be tracked as its own feature with its own spec.
+>
+> **Note on the LDAP Authentication node:** `LDAP Authentication` above
+> denotes HTTP Basic Auth at the Apache edge with `AuthBasicProvider
+> ldap` (per repository-root [`.htaccess`](../.htaccess)) — not a
+> direct LDAP bind from any study backend. After a successful bind,
+> Apache forwards the authenticated identity to each study backend as
+> the `X-Remote-User` header. Keycloak is **deferred — not part of
+> first release**; see `.specify/memory/constitution.md` (Security &
+> Data Governance → Authentication) for the decision record.
 
 ## 2. Study Configuration Loading
 
@@ -201,6 +205,18 @@ graph TB
     CVA_AUTH --> CVA_ISO
     HF_AUTH --> HF_ISO
 ```
+
+> **Note on the Authentication Layer:** For the first release,
+> `LDAP Server → Apache/LDAP Integration` in the diagram above is
+> `AuthType basic` + `AuthBasicProvider ldap` + `require ldap-group`
+> configured in the repository-root [`.htaccess`](../.htaccess). After
+> a successful basic-auth bind, Apache forwards the authenticated
+> identity to the Flask backend as the `X-Remote-User` header, and
+> `Role-Based Access Control` downstream is enforced in the backend
+> via `@requires_auth` / `@requires_roles` decorators. Keycloak is
+> **deferred — not part of first release**; see
+> `.specify/memory/constitution.md` (Security & Data Governance →
+> Authentication) for the decision record.
 
 ## 5. Deployment Pipeline
 
