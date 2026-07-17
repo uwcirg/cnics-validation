@@ -938,7 +938,7 @@ def events_export():
         writer = csv.writer(output)
         # Headings (reduced example; expand as needed)
         headings = [
-            'MI', 'Patient ID', 'Patient Site', 'Site Patient ID', 'Event Date', 'Status', 'Creator',
+            'Event ID', 'Patient ID', 'Patient Site', 'Site Patient ID', 'Event Date', 'Status', 'Creator',
             'Criteria: MI Dx', 'Criteria: CKMB_Q', 'Criteria: CKMB_M', 'Criteria: CKMB', 'Criteria: Troponin', 'Criteria: Other',
             'Add Date', 'Uploader', 'Upload Date', 'Marker (no packet)', 'No Packet Reason', 'Two Attempts?',
             'Prior Event Date', 'Prior Event Onsite?', 'Other Cause', 'Mark No Packet Date', 'Scrubber', 'Scrub Date',
@@ -964,7 +964,7 @@ def events_export():
         writer.writerow(headings)
         for r in rows:
             writer.writerow([
-                (r['id'] + 1000) if r.get('id') is not None else '',
+                r['id'] if r.get('id') is not None else '',
                 r.get('patient_id',''),
                 r.get('site',''),
                 r.get('site_patient_id',''),
