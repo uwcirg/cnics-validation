@@ -1,5 +1,31 @@
 # CNICS Validation Repository Multi-Study Setup Guide
 
+> **Current implementation status (2026-05-08)**
+>
+> - **Only MCI is implemented.** Worked examples for VTE, CVA, Heart
+>   Failure, and AFIB describe how those studies *would* be wired up
+>   when each is brought online; their per-study schema files, models,
+>   and frontend component directories are scaffolding-only or absent.
+>   See `### 2. Study-Specific Components` below for the per-layer
+>   reachability/wiring gaps.
+> - **One `.env`, one `docker-compose.yaml`** (Constitution Principle
+>   IV, v1.2.0). To target a specific study, edit the `.env` in your
+>   deployment directory: set `STUDY_TYPE`, study identity, and any
+>   feature flags. Side-by-side deployments on the same host are
+>   differentiated via `COMPOSE_PROJECT_NAME`, not filename suffixes.
+>   Per-study overlay files (`.env.<study>`, `docker-compose.<study>.yaml`)
+>   and `--env-file` / `-f` flag combinations that select among them
+>   are not a permitted pattern.
+> - **Non-edge services bind to `127.0.0.1`** (Constitution Security &
+>   Data Governance → Network exposure boundaries, v1.3.0). Both `web`
+>   and `backend` are bound to the loopback interface in
+>   `docker-compose.yaml`; external traffic must traverse the Apache
+>   `.htaccess` edge that performs basic+ldap auth and forwards
+>   `X-Remote-User`.
+>
+> See `.specify/memory/constitution.md` for normative scope; this
+> guide is the operational *how*.
+
 ## Overview
 
 This repository is designed to support **multiple clinical validation studies** within the CNICS (Centers for AIDS Research Network of Integrated Clinical Systems) and NA-ACCORD frameworks. Currently configured for **Myocardial Infarction (MI) validation studies**, this guide explains how to deploy separate instances for other clinical studies while maintaining a single codebase.
@@ -12,9 +38,6 @@ This repository is designed to support **multiple clinical validation studies** 
 - **CVA (Cerebrovascular Events - Stroke)** - Includes questionnaires
 - **Heart Failure** - Currently in adjudication phase
 - **AFIB** - No immediate plans, but code exists
-
-### Novel Systems
-- **Malignancy** - Does not use CakePHP, separate architecture
 
 ### Deprecated/Inactive Studies
 - **CNICS COVID-19 Adjudication** - Never implemented
@@ -45,8 +68,11 @@ The existing studies (MI, VTE, CVA, Heart Failure, AFIB) are currently running o
 
 #### Data Migration
 - **Backwards Compatibility**: Existing tables must remain compatible or require migration scripts
-- **Patient Data**: All systems use views on `cnics_data.Patients` table
-- **Authentication**: Maintain existing Apache/LDAP authentication approach
+- **Patient Data**: All systems read patient identity via the `patients_view`
+  view, which UNIONs the locally-owned `uw_patients2` table with a FEDERATED
+  proxy of the upstream `cnics_data.Patient` table. Both halves are read-only
+  from the application; new patient records originate upstream.
+- **Authentication**: Maintain existing Apache-edge auth contract — HTTP Basic Auth with `AuthBasicProvider ldap` and a `require ldap-group` rule (see repository-root [`.htaccess`](../.htaccess)), with the authenticated identity forwarded to the Flask backend as the `X-Remote-User` header. Keycloak is deferred to a later release and is NOT supported for first-release deployments.
 - **Authorization**: Preserve simple role-based access (uploader_flag, admin_flag)
 
 #### Study-Specific Differences
@@ -58,7 +84,7 @@ The existing studies (MI, VTE, CVA, Heart Failure, AFIB) are currently running o
 
 #### Technical Migration
 - **Database**: Assume MariaDB compatibility
-- **Authentication**: Apache .htaccess & LDAP integration
+- **Authentication**: Apache edge auth via `.htaccess` using `AuthType basic` + `AuthBasicProvider ldap` (the repository-root [`.htaccess`](../.htaccess) is authoritative); Flask backend consumes `X-Remote-User` forwarded by Apache after a successful bind.
 - **File Handling**: Preserve existing file upload/download workflows
 - **API Compatibility**: Maintain existing API contracts where possible
 
@@ -69,7 +95,7 @@ The CNICS Validation system is built with:
 - **Backend**: Flask API with SQLAlchemy ORM
 - **Database**: MariaDB/MySQL with study-specific schemas
 - **Containerization**: Docker Compose for development and deployment
-- **Authentication**: Header-based authentication with role management
+- **Authentication**: Two-layer contract — Apache edge basic auth with `AuthBasicProvider ldap` (per `.htaccess`) forwards the authenticated identity to the Flask backend as `X-Remote-User`; role flags (`admin`, `uploader`, `reviewer`, `third_reviewer`) are enforced in the backend via decorators. See the root README's Authentication and Authorization section and `.specify/memory/constitution.md` (Security & Data Governance → Authentication) for the full decision record.
 
 ## Study-Specific Configuration Strategy
 
@@ -80,12 +106,12 @@ Each study deployment will use environment variables and configuration files to 
 #### Environment-Based Configuration
 ```bash
 # Study identification
-STUDY_TYPE=mci  # or 'stroke', 'cancer', 'diabetes', etc.
+STUDY_TYPE=mci  # or 'vte', 'cva', 'hf', 'afib'
 STUDY_NAME="Myocardial Infarction"
 STUDY_ABBREVIATION="MI"
 
 # Study-specific database schema
-DB_SCHEMA_VERSION=mci_v1  # or stroke_v1, etc.
+DB_SCHEMA_VERSION=mci_v1  # or vte_v1, etc.
 
 # Study-specific features
 ENABLE_PRE_SCRUB=false  # MCI doesn't use pre-scrub step
@@ -99,160 +125,307 @@ ENABLE_CARDIAC_INTERVENTIONS=true  # MCI-specific feature
 
 ### 2. Study-Specific Components
 
+The three sub-sections below describe the **actual current state** of
+per-study artifacts in the repo. As of the first release, only the
+default (MCI) layer is loaded by the running stack; the per-study
+files for VTE, CVA, HF, and AFIB exist as scaffolding in varying
+degrees of completeness but are not yet wired into the runtime.
+Bringing any of them online requires the runtime selection work
+flagged in the implementation-status banner at the top of this guide,
+plus removing the per-file "commented out until needed" gates noted
+below.
+
 #### Database Schemas (`init/` directory)
 ```
 init/
-├── 01-create-db.sql          # Shared
-├── 02-schema-mci.sql         # MI-specific schema
-├── 02-schema-stroke.sql      # Stroke-specific schema
-├── 02-schema-cancer.sql      # Cancer-specific schema
-└── 03-data-mci.sql          # MI-specific seed data
+├── 01-create-db.sql               # Shared: creates the database.
+├── 02-schema.sql                  # Default schema (MCI). The only
+│                                  #   schema actually applied today.
+├── 02-schema-<study>.sql          # Scaffolding for vte, cva, hf, afib.
+│                                  #   Each is entirely wrapped in a
+│                                  #   /* ... */ block comment, so it
+│                                  #   is inert when MariaDB processes
+│                                  #   it at first start.
+├── 03-data.sql                    # Seed data.
+├── 05-add-indexes.sql             # Index creation.
+└── 06-create-patients-view.sh     # Creates the FEDERATED proxy for
+                                   #   cnics_data.Patient and the
+                                   #   patients_view UNION view.
 ```
 
-#### Backend Models (`flask_backend/models/`)
+> **Wiring gap.** MariaDB processes everything in
+> `/docker-entrypoint-initdb.d/` (which `init/` is bind-mounted to)
+> at first start. The per-study files are inert today only because
+> they're wrapped in SQL block comments. Bringing per-study schemas
+> online requires (a) uncommenting the relevant file *and* (b)
+> ensuring only the right `02-schema-<STUDY_TYPE>.sql` runs — e.g.,
+> an entrypoint that picks the right file at startup. Uncommenting
+> all of them would collide on the `reviews` table definition.
+
+#### Backend Models
+
+Current layout in the repo:
+
 ```
-flask_backend/models/
-├── base.py                   # Shared base models
-├── mci.py                    # MI-specific models
-├── stroke.py                 # Stroke-specific models
-└── cancer.py                 # Cancer-specific models
+flask_backend/
+├── models.py                      # Active: contains the MCI models
+│                                  #   loaded by the running stack
+│                                  #   (~15 KB, single file).
+├── models2.py                     # Alternative SQLAlchemy variant
+│                                  #   (back_populates removed). Not
+│                                  #   currently imported — see the
+│                                  #   README "Alternative SQLAlchemy
+│                                  #   models" section.
+└── models/
+    └── studies/                   # Per-study scaffolding files
+                                   #   (afib.py, cva.py, hf.py,
+                                   #   vte.py). Each file's class
+                                   #   definitions are wrapped in a
+                                   #   triple-quoted string, so the
+                                   #   file would import as a no-op
+                                   #   even if it were reachable.
 ```
 
-#### Frontend Components (`frontend/src/studies/`)
+> **Reachability gap.** `flask_backend/models/studies/*.py` files
+> exist on disk but are **not currently importable** as Python
+> modules. The file `flask_backend/models.py` is found before the
+> directory `flask_backend/models/` during import resolution, so
+> `from flask_backend.models.studies import vte` raises
+> `ModuleNotFoundError: 'flask_backend.models' is not a package`.
+> Bringing per-study models online (Step 3 of the deployment
+> walkthrough) therefore requires:
+>
+> 1. Consolidating `models.py` into the `models/` package — e.g.,
+>    move its contents into `models/__init__.py` (or split into
+>    `models/base.py`, `models/mci.py`, etc.) and delete the
+>    standalone `models.py`. Constitution Principle IV item 3
+>    prescribes the package layout (`flask_backend/models/<study>.py`).
+> 2. Removing the triple-quoted-string gates inside each per-study
+>    file so the class definitions actually execute.
+
+#### Frontend Components
+
+Current layout under `frontend/src/`:
+
 ```
-frontend/src/studies/
-├── mci/
-│   ├── EventReview.jsx       # MI-specific review form
-│   ├── Home.jsx              # MI-specific home page
-│   └── instructions/         # MI-specific documentation
-├── stroke/
-│   ├── EventReview.jsx       # Stroke-specific review form
-│   └── Home.jsx              # Stroke-specific home page
-└── shared/                   # Shared components
+frontend/src/
+├── components/                    # Study-agnostic shared components.
+├── pages/                         # Currently holds the MCI flow.
+│                                  #   No `studies/mci/` subdirectory
+│                                  #   exists; MCI is the default.
+└── studies/
+    ├── cva/                       # CVA scaffolding (1 file:
+    │                              #   EventReview.jsx, wrapped in a
+    │                              #   /* ... */ gate).
+    └── vte/                       # VTE scaffolding (~24 files
+                                   #   including Admin.jsx,
+                                   #   EventReview.jsx, Home.jsx,
+                                   #   plus many other routes —
+                                   #   these are real React
+                                   #   components, not commented-out
+                                   #   shells).
 ```
+
+> **Routing gap.** Nothing under `frontend/src/` outside of
+> `studies/` imports from `studies/`. The study-specific components
+> are not loaded by the frontend router. Bringing them online
+> requires extending the router to dispatch on a study selector
+> (e.g., a `VITE_STUDY_TYPE` env var, mirroring the backend's
+> `STUDY_TYPE`) before mounting the per-study component tree. Note
+> the asymmetry: the VTE tree is real, executable code awaiting a
+> caller, while the CVA tree is a commented-out shell.
 
 ### 3. Deployment Configuration
 
-#### Docker Compose Overrides
-Each study gets its own docker-compose override:
+Each study deployment is a single directory containing:
 
-```yaml
-# docker-compose.mci.yaml
-version: '3.8'
-services:
-  backend:
-    environment:
-      - STUDY_TYPE=mci
-      - DB_SCHEMA_VERSION=mci_v1
-    volumes:
-      - ./init/02-schema-mci.sql:/docker-entrypoint-initdb.d/02-schema.sql
-      - ./studies/mci/instructions:/app/webroot/files
+- A copy of the repository (`git clone` or worktree).
+- A single `.env` file at the repo root, copied from `default.env`
+  and edited for the target study.
+- The unmodified canonical `docker-compose.yaml` (no per-study
+  overlays — Constitution Principle IV, v1.2.0).
 
-  frontend:
-    environment:
-      - VITE_STUDY_TYPE=mci
-      - VITE_STUDY_NAME=Myocardial Infarction
-```
+**To target a study**, edit `.env` to set:
 
-#### Study-Specific Environment Files
-```bash
-# .env.mci
-STUDY_TYPE=mci
-STUDY_NAME="Myocardial Infarction"
-DB_NAME=cnics_mci_validation
-FRONTEND_ORIGIN=https://mci-validation.cirg.uw.edu
-EMAIL_SUBJECT_PREFIX=CNICS / MI Validation
+- `STUDY_TYPE` — the study selector (e.g., `mci`, `vte`, `cva`,
+  `hf`, `afib`); see Supported Studies above for the canonical list.
+- `STUDY_NAME` and `STUDY_ABBREVIATION` — display strings used in
+  emails, page titles, and logs.
+- Per-study feature flags — see "Study-Specific Deployment Examples"
+  below for which flags each study expects.
+- Deployment-specific values — `DB_*`, `FRONTEND_ORIGIN`,
+  `SERVER_NAME`, SMTP/email config — chosen by the operator for
+  the target host.
 
-# .env.stroke  
-STUDY_TYPE=stroke
-STUDY_NAME="Stroke Validation"
-DB_NAME=cnics_stroke_validation
-FRONTEND_ORIGIN=https://stroke-validation.cirg.uw.edu
-EMAIL_SUBJECT_PREFIX=CNICS / Stroke Validation
-```
+**To run multiple deployments side-by-side on one host**, give each
+deployment a distinct `COMPOSE_PROJECT_NAME` in its `.env`. That value
+namespaces the deployment's containers, network, and named volumes
+so two studies on the same VM don't collide. Distinct host port
+bindings (`EXTERNAL_PORT`, etc.) are also required when ports
+overlap.
 
 ## Step-by-Step Multi-Study Deployment Process
 
+The walkthrough below uses **VTE** as the worked example for adding a
+new study to the codebase. The process touches two distinct layers:
+study scaffolding (Steps 1–5, modifying shared code or adding
+study-specific files in the repo) and the per-host deployment
+(Steps 6–7, using `.env` to target a specific study and host).
+
+> **Implementation note.** Steps 2–5 describe per-study artifacts
+> (schema files, models, components, assets) and the runtime
+> selection logic that loads them based on `STUDY_TYPE`. As of the
+> first release these are **scaffolding-only or absent** for any
+> study other than MCI — the banner at the top of this guide
+> explains the gap. Treat Steps 2–5 as documentation of what *would*
+> be required to bring a new study online, not as already-functional
+> recipes.
+
 ### Step 1: Study Configuration Setup
-1. **Create** study-specific environment file: `cp default.env .env.stroke`
-2. **Configure** study parameters in the environment file:
+
+1. **Copy** the canonical env template into the deployment
+   directory's `.env`:
    ```bash
-   STUDY_TYPE=stroke
-   STUDY_NAME="Stroke Validation"
-   DB_NAME=cnics_stroke_validation
-   FRONTEND_ORIGIN=https://stroke-validation.cirg.uw.edu
+   cp default.env .env
    ```
-3. **Create** study-specific docker-compose override: `docker-compose.stroke.yaml`
+2. **Edit** `.env` to set the study-targeting variables:
+   ```bash
+   STUDY_TYPE=vte
+   STUDY_NAME="VTE Validation"
+   STUDY_ABBREVIATION="VTE"
+   ENABLE_PRE_SCRUB=true
+   ENABLE_PRESCRUB_REJECTION=true
+   ```
+   (See "Study-Specific Deployment Examples" below for the full set
+   of overrides each study expects.)
+3. **Set deployment-specific values** in the same `.env` —
+   `COMPOSE_PROJECT_NAME` (required if running side-by-side with
+   another deployment on this host), `DB_*`, `FRONTEND_ORIGIN`,
+   `SERVER_NAME`, SMTP/email config.
 
 ### Step 2: Database Schema Creation
-1. **Create** study-specific schema file: `cp init/02-schema.sql init/02-schema-stroke.sql`
-2. **Modify** the schema for your study's requirements:
+
+1. **Create** the study-specific schema file:
+   ```bash
+   cp init/02-schema.sql init/02-schema-vte.sql
+   ```
+2. **Modify** the schema for the study's requirements:
    ```sql
-   -- Example for stroke study:
-   `outcome` enum('Definite','Probable','Possible','No')
-   `stroke_type` enum('Ischemic','Hemorrhagic','TIA','Other')
-   `nihss_score` int(3)
+   -- Example for VTE study:
+   `outcome` enum('Definite','Probable','No')
+   `vte_type` enum('DVT','PE','Both','Other')
+   `dvt_location` enum('Proximal','Distal','Upper','Other')
+   `pe_severity` enum('Massive','Submassive','Low_risk')
    `imaging_evidence` tinyint(1)
    ```
-3. **Update** docker-compose override to use the correct schema file
+3. **Wire schema selection into runtime** — since per-study compose
+   overlays are not permitted (Constitution Principle IV), the
+   running container must pick the correct `02-schema-<study>.sql`
+   based on `STUDY_TYPE` at startup (e.g., an entrypoint that copies
+   the right file into the MariaDB init directory before mariadb
+   starts). *Currently scaffolding-only.*
 
 ### Step 3: Backend Model Configuration
-1. **Create** study-specific model file: `flask_backend/models/stroke.py`
+
+1. **Create** the study-specific model file:
+   `flask_backend/models/studies/vte.py`
 2. **Implement** study-specific models extending base classes:
    ```python
    from .base import BaseReview, BaseEventDerivedData
-   
-   class StrokeReview(BaseReview):
-       stroke_type = Column(Enum('Ischemic','Hemorrhagic','TIA','Other'))
-       nihss_score = Column(Integer)
+
+   class VTEReview(BaseReview):
+       vte_type = Column(Enum('DVT','PE','Both','Other'))
+       imaging_evidence = Column(Boolean)
    ```
-3. **Update** model factory to load correct models based on `STUDY_TYPE`
+3. **Update the model factory** (currently
+   `flask_backend/study_config.py` — scaffolding-only, not imported
+   by any runtime code) to load the correct module based on
+   `STUDY_TYPE`.
 
 ### Step 4: Frontend Component Configuration
-1. **Create** study-specific component directory: `frontend/src/studies/stroke/`
+
+1. **Create** the study-specific component directory:
+   `frontend/src/studies/vte/`
 2. **Copy** and customize study-specific components:
-   - `EventReview.jsx` - Study-specific review form
-   - `Home.jsx` - Study-specific home page and instructions
-3. **Update** component routing to load study-specific components
+   - `EventReview.jsx` — study-specific review form
+   - `Home.jsx` — study-specific home page and instructions
+3. **Update** component routing to load the correct study's
+   components based on the study selector. *Selection mechanism
+   not yet implemented.*
 
 ### Step 5: Study-Specific Assets
-1. **Create** study-specific instruction files: `studies/stroke/instructions/`
+
+1. **Create** the study-specific instruction directory:
+   `studies/vte/instructions/`
 2. **Add** study-specific documentation:
    - Review packet assembly instructions
    - Reviewer guidelines
    - Study-specific forms and templates
-3. **Update** docker-compose to mount study-specific files
+3. **Wire asset selection into runtime** — like the schema in
+   Step 2, the running container must pick the correct per-study
+   assets based on `STUDY_TYPE`. Compose-time bind-mount selection
+   is not permitted. *Currently scaffolding-only.*
 
 ### Step 6: Deployment Configuration
-1. **Configure** domain and SSL certificates for the new study
-2. **Set up** separate database instance
-3. **Configure** authentication and user management
-4. **Set up** monitoring and logging for the new deployment
+
+1. **Choose** the deployment domain and configure SSL certificates.
+2. **Provision** the database (the bundled MariaDB container will
+   create the schema named in `DB_NAME` on first start; for an
+   external DB, point `DB_HOST` at it).
+3. **Configure** authentication: confirm the host's Apache/`.htaccess`
+   forwards `X-Remote-User` from a successful basic+ldap bind (see
+   `.specify/memory/constitution.md` Security & Data Governance →
+   Authentication).
+4. **Set distinct `COMPOSE_PROJECT_NAME` and host ports** if this
+   deployment will run on a host that already runs another
+   deployment of this stack.
 
 ### Step 7: Testing and Validation
-1. **Deploy** the study-specific instance:
+
+1. **Deploy** the study instance from the deployment directory:
    ```bash
-   docker-compose -f docker-compose.yaml -f docker-compose.stroke.yaml --env-file .env.stroke up
+   docker compose up -d
    ```
-2. **Test** study-specific functionality
-3. **Validate** data isolation between studies
-4. **Test** user roles and permissions
-5. **Verify** study-specific documentation and instructions
+2. **Test** study-specific functionality (review form fields,
+   feature-flag-gated behavior such as VTE's prescrub step, etc.).
+3. **Validate** data isolation against any other deployments on
+   the same host (separate DB, separate domain, distinct
+   `COMPOSE_PROJECT_NAME`).
+4. **Test** user roles and permissions.
+5. **Verify** study-specific documentation, assets, and
+   instructional files appear correctly.
 
 ## Study-Specific Deployment Examples
 
-### Example 1: VTE (Venothromboembolic) Study Deployment
+Each block below shows only the variables that are **intrinsic to the
+study** — the study selector, study identity, and per-study feature
+flags. The rest of the env file (DB credentials, domain, SMTP, email
+prefix, logging, file paths, etc.) is deployment-specific and lives in
+the canonical template (`default.env`). To deploy a given study, copy
+`default.env` to `.env`, edit the deployment-specific values for your
+host, and add the study-specific overrides shown here.
 
-#### Environment Configuration (`.env.vte`)
+### Example: MCI (Myocardial Infarction) Study Deployment
+
+This is the only study supported by the first release.
+
+#### Environment Configuration
+```bash
+STUDY_TYPE=mci
+STUDY_NAME="Myocardial Infarction"
+STUDY_ABBREVIATION="MI"
+ENABLE_CARDIAC_INTERVENTIONS=true
+```
+
+### Example: VTE (Venothromboembolic) Study Deployment
+
+#### Environment Configuration
 ```bash
 STUDY_TYPE=vte
 STUDY_NAME="VTE Validation"
 STUDY_ABBREVIATION="VTE"
-DB_NAME=cnics_vte_validation
-FRONTEND_ORIGIN=https://vte-validation.cirg.uw.edu
-EMAIL_SUBJECT_PREFIX=CNICS / VTE Validation
-ENABLE_PRE_SCRUB=true  # VTE has prescrub step
-ENABLE_PRESCRUB_REJECTION=true  # VTE has PSREJECTED state
+ENABLE_PRE_SCRUB=true            # VTE has prescrub step
+ENABLE_PRESCRUB_REJECTION=true   # VTE has PSREJECTED state
 ```
 
 #### Database Schema (`init/02-schema-vte.sql`)
@@ -276,17 +449,14 @@ CREATE TABLE `reviews` (
 ALTER TABLE `events` MODIFY `status` enum('created','uploaded','prescrubbed','prescrub_rejected','scrubbed','screened','assigned','sent','reviewer1_done','reviewer2_done','third_review_needed','third_review_assigned','done','rejected','no_packet_available') NOT NULL DEFAULT 'created';
 ```
 
-### Example 2: CVA (Cerebrovascular Events - Stroke) Study Deployment
+### Example: CVA (Cerebrovascular Events - Stroke) Study Deployment
 
-#### Environment Configuration (`.env.cva`)
+#### Environment Configuration
 ```bash
 STUDY_TYPE=cva
 STUDY_NAME="CVA Validation"
 STUDY_ABBREVIATION="CVA"
-DB_NAME=cnics_cva_validation
-FRONTEND_ORIGIN=https://cva-validation.cirg.uw.edu
-EMAIL_SUBJECT_PREFIX=CNICS / CVA Validation
-ENABLE_QUESTIONNAIRES=true  # CVA has questionnaire functionality
+ENABLE_QUESTIONNAIRES=true       # CVA has questionnaire functionality
 ENABLE_SURVEY_MODULE=true
 ```
 
@@ -318,16 +488,13 @@ CREATE TABLE `questionnaires` (
 );
 ```
 
-### Example 3: Heart Failure Study Deployment
+### Example: Heart Failure Study Deployment
 
-#### Environment Configuration (`.env.hf`)
+#### Environment Configuration
 ```bash
 STUDY_TYPE=hf
 STUDY_NAME="Heart Failure Validation"
 STUDY_ABBREVIATION="HF"
-DB_NAME=cnics_hf_validation
-FRONTEND_ORIGIN=https://hf-validation.cirg.uw.edu
-EMAIL_SUBJECT_PREFIX=CNICS / Heart Failure Validation
 ENABLE_PRE_SCRUB=false
 ENABLE_EF_MEASUREMENT=true
 ```
@@ -350,18 +517,15 @@ CREATE TABLE `reviews` (
 );
 ```
 
-### Example 4: AFIB Study Deployment
+### Example: AFIB Study Deployment
 
-#### Environment Configuration (`.env.afib`)
+#### Environment Configuration
 ```bash
 STUDY_TYPE=afib
 STUDY_NAME="AFIB Validation"
 STUDY_ABBREVIATION="AFIB"
-DB_NAME=cnics_afib_validation
-FRONTEND_ORIGIN=https://afib-validation.cirg.uw.edu
-EMAIL_SUBJECT_PREFIX=CNICS / AFIB Validation
 ENABLE_PRE_SCRUB=false
-STATUS=inactive  # No immediate plans per Heidi
+STATUS=inactive                  # No immediate plans per Heidi
 ```
 
 #### Database Schema (`init/02-schema-afib.sql`)
@@ -382,37 +546,42 @@ CREATE TABLE `reviews` (
 );
 ```
 
-### Example 5: Malignancy Study Deployment
+### Example: scans (Scan Validation) Study Deployment
 
-#### Environment Configuration (`.env.malignancy`)
+`scans` is the canonical *selective-bypass* study (Constitution v1.4.0,
+Principle V): it runs the lifecycle `created → uploaded → assigned →
+reviewer1_done → done`, skipping scrubbing, screening, sending, and
+second-/third-reviewer adjudication. It contrasts with the VTE example
+above: VTE *extends* the workflow (and therefore carries a per-study
+schema file and component directory), whereas `scans` only *removes*
+stages and so adds no per-study artifacts at all — it reuses the shared
+schema and the shared interface with bypassed-stage elements hidden.
+
+Selecting `STUDY_TYPE=scans` supplies the bypass profile as the default;
+the four workflow-stage controls are shown explicitly below for clarity.
+An operator may still override any individual control.
+
+#### Environment Configuration
 ```bash
-STUDY_TYPE=malignancy
-STUDY_NAME="Malignancy Validation"
-STUDY_ABBREVIATION="MALIGNANCY"
-DB_NAME=cnics_malignancy_validation
-FRONTEND_ORIGIN=https://malignancy-validation.cirg.uw.edu
-EMAIL_SUBJECT_PREFIX=CNICS / Malignancy Validation
-ENABLE_PRE_SCRUB=false
-ARCHITECTURE=novel  # Does not use CakePHP
+STUDY_TYPE=scans
+STUDY_NAME="Scan Validation"
+STUDY_ABBREVIATION="SCANS"
+ENABLE_SCRUBBING=false    # scans has nothing to scrub
+ENABLE_SCREENING=false    # scans has nothing to screen
+ENABLE_SENDING=false      # no separate dispatch step
+REVIEWER_COUNT=1          # single-reviewer adjudication
 ```
 
-#### Database Schema (`init/02-schema-malignancy.sql`)
-```sql
--- Malignancy-specific review criteria
-CREATE TABLE `reviews` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `event_id` int(11) NOT NULL,
-  `reviewer_id` int(11) NOT NULL,
-  `outcome` enum('Confirmed','Suspected','No','Indeterminate') NOT NULL,
-  `cancer_type` enum('Breast','Lung','Colorectal','Prostate','Lymphoma','Other') DEFAULT NULL,
-  `stage` enum('I','II','III','IV','Unknown') DEFAULT NULL,
-  `biopsy_confirmed` tinyint(1) DEFAULT NULL,
-  `tumor_size` decimal(5,2) DEFAULT NULL,
-  `metastasis` tinyint(1) DEFAULT NULL,
-  `treatment_type` enum('Surgery','Chemotherapy','Radiation','Immunotherapy','Other') DEFAULT NULL,
-  PRIMARY KEY (`id`)
-);
-```
+#### Study-Specific Artifacts
+
+None. Because `scans` is pure selective bypass, Steps 2–5 of the
+deployment walkthrough do not apply: there is no
+`init/02-schema-scans.sql`, no `flask_backend/models/studies/scans.py`,
+and no `frontend/src/studies/scans/` directory. The bypassed states
+(`scrubbed`, `screened`, `sent`, `reviewer2_done`, and the third-review
+states) remain defined in the shared schema and state machine — a
+`scans` deployment simply never enters them ("bypass means *not entered*
+for this deployment, not *deleted from the system*").
 
 ## Best Practices for Multi-Study Deployments
 
@@ -430,8 +599,10 @@ CREATE TABLE `reviews` (
 
 ### 3. Configuration Management
 - Use environment variables for all study-specific settings
-- Maintain separate environment files for each study
-- Use docker-compose overrides for study-specific configurations
+- Each deployment uses a single `.env` (no per-study overlay files)
+  and a single canonical `docker-compose.yaml` (no overrides) — see
+  Constitution Principle IV
+- Differentiate side-by-side deployments via `COMPOSE_PROJECT_NAME`
 - Document all configuration options and their purposes
 
 ### 4. Code Organization
@@ -455,44 +626,54 @@ CREATE TABLE `reviews` (
 
 ## Deployment Commands
 
-### Starting a Study Deployment
+A deployment's commands are study-agnostic: every deployment uses the
+same canonical `docker-compose.yaml` and reads its single `.env` file
+from the deployment directory. The study being deployed is determined
+by what `STUDY_TYPE` (and related variables) are set to in `.env`.
+
+### Starting, Stopping, and Restarting
+
+Run from the deployment directory (with `.env` configured for the
+target study and host):
+
 ```bash
-# For MCI study (currently implemented)
-docker-compose -f docker-compose.yaml -f docker-compose.mci.yaml --env-file .env.mci up -d
-
-# For VTE study (migration from CakePHP)
-docker-compose -f docker-compose.yaml -f docker-compose.vte.yaml --env-file .env.vte up -d
-
-# For CVA study (migration from CakePHP, includes questionnaires)
-docker-compose -f docker-compose.yaml -f docker-compose.cva.yaml --env-file .env.cva up -d
-
-# For Heart Failure study (migration from CakePHP)
-docker-compose -f docker-compose.yaml -f docker-compose.hf.yaml --env-file .env.hf up -d
-
-# For AFIB study (migration from CakePHP, currently inactive)
-docker-compose -f docker-compose.yaml -f docker-compose.afib.yaml --env-file .env.afib up -d
-
-# For Malignancy study (novel system, separate architecture)
-docker-compose -f docker-compose.yaml -f docker-compose.malignancy.yaml --env-file .env.malignancy up -d
+docker compose up -d
+docker compose down
+docker compose restart
 ```
 
-### Managing Multiple Studies
+### Viewing Logs
+
 ```bash
-# List running containers for all studies
-docker ps --filter "name=cnics"
-
-# View logs for specific study
-docker-compose -f docker-compose.yaml -f docker-compose.vte.yaml logs -f
-
-# Stop specific study deployment
-docker-compose -f docker-compose.yaml -f docker-compose.vte.yaml down
-
-# Restart all studies
-docker-compose -f docker-compose.yaml -f docker-compose.mci.yaml --env-file .env.mci restart
-docker-compose -f docker-compose.yaml -f docker-compose.vte.yaml --env-file .env.vte restart
-docker-compose -f docker-compose.yaml -f docker-compose.cva.yaml --env-file .env.cva restart
-docker-compose -f docker-compose.yaml -f docker-compose.hf.yaml --env-file .env.hf restart
+docker compose logs -f
+docker compose logs -f backend       # specific service
 ```
+
+### Listing Running Containers
+
+```bash
+docker compose ps                    # only this deployment
+docker ps --filter "name=cnics-"     # any deployment whose
+                                     # COMPOSE_PROJECT_NAME starts
+                                     # with "cnics-"
+```
+
+### Side-by-Side Multiple Deployments
+
+Two deployments of this stack on the same host MUST live in distinct
+directories, each with its own `.env`. Differentiate them by:
+
+1. **`COMPOSE_PROJECT_NAME`** — set distinct values in each `.env`
+   (e.g., `cnics-mci`, `cnics-vte`). This namespaces each
+   deployment's containers, network, and named volumes so the two
+   stacks don't collide.
+2. **Host ports** — set distinct `EXTERNAL_PORT` (web/frontend
+   service) and `BACKEND_EXTERNAL_PORT` (Flask API service) in
+   each `.env`. Two containers cannot bind the same host port.
+
+Then run `docker compose up -d` from each deployment directory
+independently. The two stacks are fully isolated; commands run from
+deployment A's directory operate only on deployment A's containers.
 
 ## Monitoring and Maintenance
 

@@ -229,26 +229,14 @@ CREATE TABLE `users` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Table structure for table `uw_patients`
---
-
-DROP TABLE IF EXISTS `uw_patients`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `uw_patients` (
-  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `site_patient_id` varchar(64) NOT NULL DEFAULT '',
-  `site` varchar(20) NOT NULL,
-  `last_update` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  `create_date` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `Patient_idx` (`site_patient_id`,`site`),
-  KEY `site` (`site`)
-) ENGINE=InnoDB AUTO_INCREMENT=2949 DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci `PAGE_COMPRESSED`='ON';
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
 -- Table structure for table `uw_patients2`
+--
+-- This is the only patient-storage table owned by this database. The
+-- read surface for patient lookups is the `patients_view` view, which
+-- UNIONs `uw_patients2` with `cnics_data.Patient` (reached via a
+-- FEDERATED proxy table). Both `uw_patients2` and `cnics_data.Patient`
+-- are read-only from this application; new patient records are not
+-- created by the validation app.
 --
 
 DROP TABLE IF EXISTS `uw_patients2`;
@@ -260,24 +248,5 @@ CREATE TABLE `uw_patients2` (
   `site` varchar(20) NOT NULL,
   `last_update` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
   `create_date` datetime NOT NULL DEFAULT '0000-00-00 00:00:00'
-) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
-
---
--- Table structure for table `patients`
---
-
-DROP TABLE IF EXISTS `patients`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `patients` (
-  `id` int(10) unsigned NOT NULL,
-  `site_patient_id` varchar(64) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
-  `site` varchar(20) NOT NULL,
-  `last_update` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
-  `create_date` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
-  PRIMARY KEY (`id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;

@@ -7,9 +7,8 @@ app/config/database.php
 app/tmp/*
 # app/tmp/logs
 *.log
-frontend/node_modules/*
+node_modules/
 frontend/dist
-backend/node_modules/*
 .env
 docker-compose.yaml
 app/webroot/files/*.pdf
@@ -18,3 +17,7 @@ flask_backend/__pycache__/
 flask_backend/tests/__pycache__/
 .env.swp
 downloads/
+
+# Claude Code — personal settings and any agent credentials
+.claude/settings.local.json
+.claude/.credentials.json
