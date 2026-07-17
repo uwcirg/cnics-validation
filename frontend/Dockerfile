@@ -1,9 +1,8 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
-RUN npm install --production=false \
-    && chmod +x node_modules/.bin/vite
+COPY package.json package-lock.json ./
+RUN npm ci --include=dev
 
 COPY . .
 

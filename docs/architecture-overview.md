@@ -18,14 +18,12 @@ graph TB
             G[CVA Models & UI]
             H[Heart Failure Models & UI]
             I[AFIB Models & UI]
-            J[Malignancy Models & UI]
-            K[MCI Models & UI]
+            J[MCI Models & UI]
         end
         
         subgraph "Configuration Layer"
             L[Study Config Factory]
             M[Environment Variables]
-            N[Docker Compose Overrides]
         end
     end
     
@@ -51,7 +49,6 @@ graph TB
         subgraph "Other Studies"
             X[HF Containers]
             Y[AFIB Containers]
-            Z[Malignancy Containers]
         end
     end
     
@@ -60,15 +57,10 @@ graph TB
     L --> H
     L --> I
     L --> J
-    L --> K
     
     M --> O
     M --> R
     M --> U
-    
-    N --> O
-    N --> R
-    N --> U
 ```
 
 ## 2. Study Configuration Flow
@@ -82,21 +74,18 @@ flowchart TD
     B -->|cva| E[Load CVA Configuration]
     B -->|hf| F[Load Heart Failure Configuration]
     B -->|afib| G[Load AFIB Configuration]
-    B -->|malignancy| H[Load Malignancy Configuration]
     
     C --> I[Use Current Models]
     D --> J[Load VTE Models]
     E --> K[Load CVA Models]
     F --> L[Load HF Models]
     G --> M[Load AFIB Models]
-    H --> N[Load Malignancy Models]
     
     I --> O[Deploy MCI Instance]
     J --> P[Deploy VTE Instance]
     K --> Q[Deploy CVA Instance]
     L --> R[Deploy HF Instance]
     M --> S[Deploy AFIB Instance]
-    N --> T[Deploy Malignancy Instance]
 ```
 
 ## 3. Database Schema Strategy
@@ -107,7 +96,7 @@ graph TB
         EVENTS["Events Table"]
         USERS["Users Table"]
         LOGS["Logs Table"]
-        PATIENTS["Patients Table"]
+        PATIENTS["patients_view<br/>(uw_patients2 ∪ cnics_data.Patient)"]
         CRITERIAS["Criterias Table"]
     end
     
@@ -146,7 +135,7 @@ graph TB
 - **Events Table**: id (PK), patient_id (FK), creator_id (FK), status, created_date
 - **Users Table**: id (PK), login, name, admin_flag, uploader_flag, reviewer_flag
 - **Logs Table**: id (PK), user_id (FK), action, timestamp
-- **Patients Table**: id (PK), site_patient_id, site
+- **patients_view** (read-only): id (PK), site_patient_id, site, last_update, create_date. UNIONs the locally-owned `uw_patients2` table with a FEDERATED proxy of the upstream `cnics_data.Patient` table (created by `init/06-create-patients-view.sh`). The application never writes to either half.
 - **Criterias Table**: id (PK), event_id (FK), criteria_text
 - **MCI Reviews**: id (PK), event_id (FK), reviewer_id (FK), outcome, chest_pain_flag, ecg_changes_flag, ecg_type
 - **VTE Reviews**: id (PK), event_id (FK), reviewer_id (FK), outcome, pe_flag, dvt_flag, vte_type, anticoagulation, risk_factors
@@ -187,7 +176,6 @@ graph TB
         subgraph "Other Studies"
             M[HF Production]
             N[AFIB Production]
-            O[Malignancy Production]
         end
     end
     
@@ -204,7 +192,6 @@ graph TB
     A --> J
     A --> M
     A --> N
-    A --> O
     
     P -.->|Migrate| D
     Q -.->|Migrate| G
@@ -269,7 +256,6 @@ gantt
     
     section Phase 3: Future Studies
     AFIB Migration       :afib, 2025-01-01, 2025-03-31
-    Malignancy Integration :malignancy, 2025-02-01, 2025-04-30
     
     section Legacy Maintenance
     CakePHP Support      :legacy, 2024-01-01, 2025-06-30
@@ -291,14 +277,13 @@ graph TB
         F[Flask Backend]
         G[MariaDB]
         H[Docker Containers]
-        I[Traefik Load Balancer]
-        J[Automated Deployment]
+        I[Automated Deployment]
     end
     
     A -.->|Migrate| E
     B -.->|Migrate| G
     C -.->|Migrate| H
-    D -.->|Migrate| J
+    D -.->|Migrate| I
 ```
 
 ## 8. Benefits of Single Repository Approach

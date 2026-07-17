@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import DataTable from '../components/DataTable'
+import { resolveReviewGuidance } from '../components/reviewGuidance'
 import './Home.css'
 
 // Base URL for the backend API. When running under Docker Compose the
@@ -88,10 +89,38 @@ function TableWrapper({ endpoint, columns, renderActions, pageSize = PAGE_SIZE }
   )
 }
 
-function Home({ auth }) {
+// Render one guidance box's optional file links. Returns null when the box
+// defines no links, so no orphaned "Full instructions:" / "View as:" label is
+// shown (spec 007, FR-004). A `.doc`-style link downloads; a `.pdf`-style link
+// opens in a new tab — matching the original MI behavior.
+function GuidanceLinks({ box }) {
+  if (!box.links || box.links.length === 0) return null
+  return (
+    <div>
+      {box.linkLabel ? `${box.linkLabel} ` : ''}
+      {box.links.map((link, i) => (
+        <span key={link.href}>
+          {i > 0 ? ' | ' : ''}
+          {link.download ? (
+            <a href={`${API_BASE}${link.href}`} download>{link.label}</a>
+          ) : (
+            <a href={`${API_BASE}${link.href}`} target="_blank">{link.label}</a>
+          )}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function Home({ auth, studyType, configResolved = true }) {
   const [rows, setRows] = useState([])
   const [statusSummary, setStatusSummary] = useState(null)
   const [search, setSearch] = useState('')
+
+  // Body content for the two bottom guidance boxes, chosen by the deployment's
+  // study type (the headers stay constant — FR-001). Resolved here so the JSX
+  // below stays a thin renderer over the per-study data (FR-002).
+  const guidance = resolveReviewGuidance(studyType)
 
   useEffect(() => {
     fetch(`${API_BASE}/api/mci/tables/events`, { credentials: 'include' })
@@ -129,11 +158,6 @@ function Home({ auth }) {
 
   return (
     <div className="home-container">
-      {/* Top-right CNICS logo */}
-      <img className="cnics-logo" src="/cnics_logo.png" alt="CNICS" />
-      <h1>CNICS Validation</h1>
-      <p>Welcome to the CNICS Validation application.</p>
-
       {/* Four main sections */}
       {auth && auth.admin && (
         <section>
@@ -152,15 +176,6 @@ function Home({ auth }) {
               </li>
               <li>
                 <a href={`${API_BASE}/api/events/export?format=csv`}>Export all events as CSV</a>
-              </li>
-            </ul>
-            <h4>Users</h4>
-            <ul>
-              <li>
-                <Link to="/users/add">Add a user</Link>
-              </li>
-              <li>
-                <Link to="/users/viewAll">Edit/Delete users</Link>
               </li>
             </ul>
           </div>
@@ -224,44 +239,35 @@ function Home({ auth }) {
 
 
 
-      <div className="infobox">
-        <h3>Review packets should contain:</h3>
-        <ol>
-          <li>Physician's notes closest to potential Event date</li>
-          <li>Outpatient cardiology consultations</li>
-          <li>In-patient cardiology notes or consults</li>
-          <li>Baseline ECG</li>
-          <li>First 2 ECGs after admission or in-hospital event</li>
-          <li>Related procedure and diagnostic test results</li>
-          <li>Related laboratory evidence</li>
-          <li>
-            Please redact the personal identifiers including name, birthday, and
-            hospital number
-          </li>
-        </ol>
-        <div>
-          Full instructions:{' '}
-          <a href={`${API_BASE}/files/CNICS MI Review packet assembly instructions.doc`} download>.doc</a>{' '}
-          |{' '}
-          <a
-            href={`${API_BASE}/files/CNICS MI Review packet assembly instructions.pdf`}
-            target="_blank"
-          >
-            .pdf
-          </a>
-        </div>
-      </div>
+      {/* Study-aware guidance boxes. Headers are constant across studies
+          (FR-001); body items and links come from the per-study content
+          (FR-002). Gated on configResolved so a non-mci deployment never
+          flashes mci content before its own resolves (FR-010). */}
+      {configResolved && (
+        <>
+          <div className="infobox">
+            <h3>Review packets should contain:</h3>
+            {guidance.packets.items.length > 0 && (
+              <ol>
+                {guidance.packets.items.map((item, i) => (
+                  <li key={i}>{item}</li>
+                ))}
+              </ol>
+            )}
+            <GuidanceLinks box={guidance.packets} />
+          </div>
 
-      <div className="infobox">
-        <h3>Review Instructions:</h3>
-        <div>
-          View as:{' '}
-          <a href={`${API_BASE}/files/CNICS MI reviewer instructions.doc`} download>.doc</a> |{' '}
-          <a href={`${API_BASE}/files/CNICS MI reviewer instructions.pdf`} target="_blank">
-            .pdf
-          </a>
-        </div>
-      </div>
+          <div className="infobox">
+            <h3>Review Instructions:</h3>
+            {/* The instructions box is prose, not a checklist — render each
+                item as its own line rather than a numbered list. */}
+            {guidance.instructions.items.map((item, i) => (
+              <div key={i}>{item}</div>
+            ))}
+            <GuidanceLinks box={guidance.instructions} />
+          </div>
+        </>
+      )}
 
     </div>
   )

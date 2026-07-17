@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Route, BrowserRouter as Router, Routes } from 'react-router-dom'
 import BaseLayout from './components/BaseLayout'
+import { documentTitle, resolveStudyTitle } from './components/studyTitle'
 import ProtectedRoute from './components/ProtectedRoute'
 import Admin from './pages/Admin'
 import CriteriaAdd from './pages/CriteriaAdd'
@@ -55,6 +56,28 @@ import VTEUsersViewAll from './studies/vte/UsersViewAll'
 
 function App() {
   const [auth, setAuth] = useState({})
+  // Conservative full-workflow default (FR-004): used until GET /api/config
+  // resolves and as the fallback if it cannot be fetched. The bypassed-stage
+  // routes below are dropped only once the resolved config reports a stage
+  // off, so hide/show decisions are driven by the controls, not a study
+  // name (FR-021).
+  const [workflow, setWorkflow] = useState({
+    scrubbing: true,
+    screening: true,
+    sending: true,
+    reviewer_count: 2,
+  })
+  // Study type from GET /api/config — the fallback source for the banner's
+  // study title. Empty until the config resolves.
+  const [studyType, setStudyType] = useState('')
+  // Optional STUDY_TITLE override from GET /api/config — a free-form display
+  // string (e.g. "DEXA Scans Validation") shown verbatim in the banner and
+  // used to build the browser tab title. Empty when not configured.
+  const [studyTitle, setStudyTitle] = useState('')
+  // Whether GET /api/config has resolved. The home page gates its study-aware
+  // review boxes on this so it never paints fallback content before the real
+  // study type is known (spec 007, FR-010 — no content flash).
+  const [configResolved, setConfigResolved] = useState(false)
   const apiUrl = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || '')
 
   useEffect(() => {
@@ -72,18 +95,47 @@ function App() {
         if (!cancelled) setAuth({})
       }
     }
+    async function fetchConfig() {
+      try {
+        const res = await fetch(`${apiUrl}/api/config`, { credentials: 'include' })
+        if (!cancelled && res.ok) {
+          const json = await res.json()
+          const wf = json && json.data && json.data.workflow
+          if (wf) setWorkflow(wf)
+          const st = json && json.data && json.data.study_type
+          if (st) setStudyType(st)
+          const stt = json && json.data && json.data.study_title
+          if (stt) setStudyTitle(stt)
+        }
+      } catch {
+        // Keep the conservative full-workflow default on any failure.
+      } finally {
+        // Mark config resolved regardless of outcome so the home page can
+        // render its review boxes (falling back to mci content if the fetch
+        // failed) rather than hiding them forever (FR-010, FR-008).
+        if (!cancelled) setConfigResolved(true)
+      }
+    }
     fetchMe()
+    fetchConfig()
     return () => {
       cancelled = true
     }
   }, [apiUrl])
 
+  // The resolved banner study title — a STUDY_TITLE override, else derived
+  // from the study type. Drives both the banner and the browser tab title.
+  const bannerTitle = resolveStudyTitle(studyTitle, studyType)
+  useEffect(() => {
+    document.title = documentTitle(bannerTitle)
+  }, [bannerTitle])
+
   return (
     <Router>
-      <BaseLayout auth={auth}>
+      <BaseLayout auth={auth} study_title={bannerTitle}>
         <Routes>
           {/* Public routes */}
-          <Route path="/" element={<Home auth={auth} />} />
+          <Route path="/" element={<Home auth={auth} studyType={studyType} configResolved={configResolved} />} />
           <Route path="/vte" element={<VTEHome auth={auth} />} />
           <Route path="/events" element={<EventIndex />} />
           <Route path="/users/logout" element={<UserLogout />} />
@@ -137,14 +189,18 @@ function App() {
           } />
           <Route path="/events/assignMany" element={
             <ProtectedRoute requiredRoles={['admin']} auth={auth}>
-              <EventAssignMany />
+              <EventAssignMany workflow={workflow} />
             </ProtectedRoute>
           } />
-          <Route path="/events/sendMany" element={
-            <ProtectedRoute requiredRoles={['admin']} auth={auth}>
-              <EventSendMany />
-            </ProtectedRoute>
-          } />
+          {/* Sending is a bypassable stage — the send route is registered
+              only when the sending control is enabled (FR-018, FR-021). */}
+          {workflow.sending && (
+            <Route path="/events/sendMany" element={
+              <ProtectedRoute requiredRoles={['admin']} auth={auth}>
+                <EventSendMany />
+              </ProtectedRoute>
+            } />
+          )}
           <Route path="/events/export" element={
             <ProtectedRoute requiredRoles={['admin']} auth={auth}>
               <EventExport />
@@ -234,28 +290,38 @@ function App() {
               <VTEEventReview />
             </ProtectedRoute>
           } />
-          <Route path="/events/screen" element={
-            <ProtectedRoute requiredRoles={['reviewer', 'admin']} auth={auth}>
-              <EventScreen />
-            </ProtectedRoute>
-          } />
+          {/* Screening is a bypassable stage (FR-018, FR-021). */}
+          {workflow.screening && (
+            <Route path="/events/screen" element={
+              <ProtectedRoute requiredRoles={['reviewer', 'admin']} auth={auth}>
+                <EventScreen />
+              </ProtectedRoute>
+            } />
+          )}
           <Route path="/vte/screen" element={
             <ProtectedRoute requiredRoles={['reviewer', 'admin']} auth={auth}>
               <VTEEventScreen />
             </ProtectedRoute>
           } />
-          <Route path="/events/assignThird" element={
-            <ProtectedRoute requiredRoles={['reviewer', 'admin']} auth={auth}>
-              <EventAssignThird />
-            </ProtectedRoute>
-          } />
-          
+          {/* Third-reviewer assignment exists only in a multi-reviewer
+              configuration (FR-019, FR-021). */}
+          {workflow.reviewer_count > 1 && (
+            <Route path="/events/assignThird" element={
+              <ProtectedRoute requiredRoles={['reviewer', 'admin']} auth={auth}>
+                <EventAssignThird />
+              </ProtectedRoute>
+            } />
+          )}
+
           {/* Multi-role routes (reviewer, uploader, or admin) */}
-          <Route path="/events/scrub" element={
-            <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
-              <EventScrub />
-            </ProtectedRoute>
-          } />
+          {/* Scrubbing is a bypassable stage (FR-018, FR-021). */}
+          {workflow.scrubbing && (
+            <Route path="/events/scrub" element={
+              <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
+                <EventScrub />
+              </ProtectedRoute>
+            } />
+          )}
           <Route path="/vte/scrub" element={
             <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
               <VTEEventScrub />
@@ -273,7 +339,7 @@ function App() {
           } />
           <Route path="/events/viewAll" element={
             <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
-              <EventViewAll />
+              <EventViewAll workflow={workflow} />
             </ProtectedRoute>
           } />
           <Route path="/vte/viewAll" element={

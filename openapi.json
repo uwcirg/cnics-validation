@@ -70,6 +70,32 @@ paths:
   /api/events/{int:event_id}: {}
   /api/users: {}
   /api/auth/me: {}
+  /api/config:
+    get:
+      responses:
+        '200':
+          description: Resolved workflow configuration
+          schema:
+            type: object
+            properties:
+              data:
+                type: object
+                properties:
+                  study_type:
+                    type: string
+                  study_title:
+                    type: string
+                  workflow:
+                    type: object
+                    properties:
+                      scrubbing:
+                        type: boolean
+                      screening:
+                        type: boolean
+                      sending:
+                        type: boolean
+                      reviewer_count:
+                        type: integer
   /api/auth/dev_login: {}
   /api/auth/dev_logout: {}
   /api/auth/dev_set_roles: {}
@@ -83,10 +109,89 @@ paths:
   /api/events/bulk: {}
   /api/events/{int:event_id}/upload_scrubbed: {}
   /api/events/{int:event_id}/upload_raw: {}
-  /api/events/assign_many: {}
+  /api/events/assign_many:
+    post:
+      parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+          - event_ids
+          - reviewer_id
+          - slot
+          properties:
+            event_ids:
+              type: array
+              items:
+                type: integer
+              description: Non-empty list of event ids to assign
+            reviewer_id:
+              type: integer
+              description: The reviewer for `slot` (the first reviewer in Form B)
+            slot:
+              type: string
+              enum:
+              - first
+              - second
+              - third
+              description: Which reviewer slot to fill
+            reviewer2_id:
+              type: integer
+              description: 'Optional second reviewer. Valid only with `slot: "first"`
+                in a two-reviewer deployment; assigns both reviewers atomically. Must
+                differ from `reviewer_id`.
+
+                '
+      responses:
+        '200':
+          description: Events assigned
+          schema:
+            type: object
+            properties:
+              data:
+                type: object
+                properties:
+                  updated:
+                    type: integer
+        '400':
+          description: Invalid assignment request
+        '401':
+          description: Not authenticated
+        '403':
+          description: Caller is not an administrator
   /api/events/send_many: {}
+  /api/events/{int:event_id}/review:
+    post:
+      parameters:
+      - name: event_id
+        in: path
+        type: integer
+        required: true
+        description: ID of the event being reviewed
+      responses:
+        '200':
+          description: Review recorded; event lifecycle advanced
+          schema:
+            type: object
+            properties:
+              data:
+                type: object
+                properties:
+                  event_id:
+                    type: integer
+                  status:
+                    type: string
+        '400':
+          description: Invalid review body
+        '403':
+          description: Submitter is not an assigned reviewer for this event
+        '404':
+          description: Event not found
+  /files/{path:filename}: {}
+  /: {}
 info:
   title: CNICS Validation API
   version: 1.0.0
 openapi: 3.0.3
-

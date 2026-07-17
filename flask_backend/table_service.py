@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 from typing import Optional
-from sqlalchemy import text, bindparam
+from sqlalchemy import text
 import logging
 import datetime
 import re
@@ -10,28 +10,13 @@ logger = logging.getLogger(__name__)
 try:
     from . import models  # type: ignore
 except Exception:  # pragma: no cover - models may not be importable during tests
-    models = SimpleNamespace(get_session=lambda: None, get_external_session=lambda: None)
+    models = SimpleNamespace(get_session=lambda: None)
+
+from . import study_config
 
 
 class ValidationError(Exception):
     """Raised when inputs are invalid or required resources are unavailable."""
-
-
-def _get_external_session_or_none():
-    """Return an external DB session if configured, else None.
-
-    This allows the service layer to gracefully fall back to the primary
-    database for patient lookups/creation when the external DB URL is not
-    configured or the external DB is unavailable.
-    """
-    try:
-        return models.get_external_session()
-    except Exception as exc:  # pragma: no cover - depends on env config
-        logger.warning(
-            "External DB not available; falling back to primary DB for patients: %s",
-            exc,
-        )
-        return None
 
 
 def get_session():
@@ -169,7 +154,7 @@ def get_events_by_status_with_total(
         "GROUP_CONCAT(c.name ORDER BY c.name SEPARATOR ', ') AS `Criteria`, "
         "p.site AS `Site` "
         "FROM events e "
-        "LEFT JOIN patients p ON e.patient_id = p.id "
+        "LEFT JOIN patients_view p ON e.patient_id = p.id "
         "LEFT JOIN criterias c ON e.id = c.event_id "
         f"WHERE {where_sql} "
         "GROUP BY e.id, e.event_date, e.add_date, e.upload_date, e.scrub_date, p.site "
@@ -198,7 +183,7 @@ def get_events_by_status_with_total(
     rows = session.execute(text(query), params).mappings().all()
 
     count_q = text(
-        "SELECT COUNT(DISTINCT e.id) FROM events e LEFT JOIN patients p ON e.patient_id = p.id "
+        "SELECT COUNT(DISTINCT e.id) FROM events e LEFT JOIN patients_view p ON e.patient_id = p.id "
         f"WHERE {where_sql}"
     )
     total = session.execute(count_q, params).scalar() or 0
@@ -213,10 +198,14 @@ def get_events_by_status(status: str, limit: Optional[int] = None, offset: int =
 
 
 def get_events_need_packets(limit: Optional[int] = None, offset: int = 0, site: Optional[str] = None):
-    """Return events that still require packet uploads for the uploader's site.
+    """Return events that still require packet uploads.
 
-    Legacy behavior: events joined to patients where patients.site = <uploader site>
-    and events.status = 'created', ordered by events.id ASC.
+    Events joined to patients_view with events.status = 'created', ordered by
+    events.id ASC. When ``site`` is given, results are restricted to that
+    patient site (p.site = <site>); when it is None, all sites are returned.
+    The caller (events_need_packets in app.py) passes the requesting user's
+    site for non-admins and None for admins, so admins see every site --
+    matching the admin bypass in upload_raw.
     """
     # Reuse the more general helper but enforce site filter and ordering by ID ASC
     rows, _total = get_events_by_status_with_total(
@@ -234,17 +223,25 @@ def get_events_need_packets(limit: Optional[int] = None, offset: int = 0, site: 
 def get_events_for_review(limit: Optional[int] = None, offset: int = 0):
     """Return events with packets ready for reviewer action.
 
-    Align with main branch behavior: events are considered ready for review
-    when they have been sent to reviewers. This corresponds to status 'sent'.
+    The gating status is flag-aware (FR-009, FR-011): when sending is enabled
+    an event is ready for review once it has been sent (`status = 'sent'`);
+    when sending is disabled (e.g. a `scans` deployment) there is no send
+    step, so an `assigned` event is directly review-eligible.
     """
-    return get_events_by_status("sent", limit, offset)
+    cfg = study_config.get_workflow_config()
+    status = "sent" if cfg.sending else "assigned"
+    return get_events_by_status(status, limit, offset)
 
 
 def get_events_for_reupload(limit: Optional[int] = None, offset: int = 0, site: Optional[str] = None):
-    """Return events eligible for re-upload by the uploader's site.
+    """Return events eligible for re-upload.
 
-    Align with main branch: rows are events at the uploader's site with
-    status 'uploaded', ordered by ID ascending.
+    Rows are events with status 'uploaded', ordered by ID ascending. When
+    ``site`` is given, results are restricted to that patient site
+    (p.site = <site>); when it is None, all sites are returned. The caller
+    (events_need_reupload in app.py) passes the requesting user's site for
+    non-admins and None for admins, so admins see every site -- matching the
+    admin bypass in upload_raw.
     """
     rows, _total = get_events_by_status_with_total(
         status="uploaded",
@@ -270,7 +267,7 @@ def get_event_status_summary():
 
 
 def get_events_with_patient_site(limit: Optional[int] = None, offset: int = 0):
-    """Return events with site info from the external database."""
+    """Return events with site info from `patients_view`."""
     logger.debug(
         "Fetching %sevents with patient site information starting at %d",
         f"up to {limit} " if limit is not None else "all ",
@@ -278,7 +275,10 @@ def get_events_with_patient_site(limit: Optional[int] = None, offset: int = 0):
     )
     session = get_session()
     try:
-        stmt = "SELECT id, patient_id FROM events"
+        stmt = (
+            "SELECT e.id, e.patient_id, p.site "
+            "FROM events e LEFT JOIN patients_view p ON p.id = e.patient_id"
+        )
         params = {}
         if limit is not None:
             stmt += " LIMIT :limit OFFSET :offset"
@@ -287,30 +287,7 @@ def get_events_with_patient_site(limit: Optional[int] = None, offset: int = 0):
             stmt += " LIMIT 18446744073709551615 OFFSET :offset"
             params["offset"] = offset
         rows = session.execute(text(stmt), params).mappings().all()
-        rows = [dict(r) for r in rows]
-
-        patient_ids = [row["patient_id"] for row in rows]
-        ext_session = _get_external_session_or_none()
-        if patient_ids:
-            stmt = text("SELECT id, site FROM patients WHERE id IN :ids").bindparams(
-                bindparam("ids", expanding=True)
-            )
-            if ext_session is not None:
-                ext_rows = ext_session.execute(stmt, {"ids": patient_ids}).mappings().all()
-                ext_rows = [dict(r) for r in ext_rows]
-            else:
-                ext_rows = session.execute(stmt, {"ids": patient_ids}).mappings().all()
-                ext_rows = [dict(r) for r in ext_rows]
-            logger.debug("Fetched site info for %d patients", len(ext_rows))
-        else:
-            ext_rows = []
-        if ext_session is not None:
-            ext_session.close()
-
-        lookup = {r["id"]: r["site"] for r in ext_rows}
-        for r in rows:
-            r["site"] = lookup.get(r["patient_id"]) 
-        return rows
+        return [dict(r) for r in rows]
     finally:
         session.close()
 
@@ -344,7 +321,7 @@ def get_events_with_patient_site_with_total(
         where_sql = " AND ".join(where)
 
         stmt = (
-            "SELECT e.id, e.patient_id, p.site FROM events e LEFT JOIN patients p ON e.patient_id = p.id "
+            "SELECT e.id, e.patient_id, p.site FROM events e LEFT JOIN patients_view p ON e.patient_id = p.id "
             f"WHERE {where_sql} "
         )
         # Optional ORDER BY
@@ -371,7 +348,7 @@ def get_events_with_patient_site_with_total(
         rows = [dict(r) for r in rows]
 
         count_q = text(
-            "SELECT COUNT(*) FROM events e LEFT JOIN patients p ON e.patient_id = p.id "
+            "SELECT COUNT(*) FROM events e LEFT JOIN patients_view p ON e.patient_id = p.id "
             f"WHERE {where_sql}"
         )
         total = session.execute(count_q, params).scalar() or 0
@@ -425,7 +402,7 @@ def _phase_rows_with_total(
             "SELECT e.id AS `ID`, e.event_date AS `Date`, e.add_date AS `Created`, "
             "e.upload_date AS `Uploaded`, e.scrub_date AS `Scrubbed`, "
             "GROUP_CONCAT(c.name ORDER BY c.name SEPARATOR ', ') AS `Criteria`, p.site AS `Site` "
-            "FROM events e LEFT JOIN patients p ON e.patient_id = p.id "
+            "FROM events e LEFT JOIN patients_view p ON e.patient_id = p.id "
             "LEFT JOIN criterias c ON e.id = c.event_id "
             f"WHERE {where_sql} "
             "GROUP BY e.id, e.event_date, e.add_date, e.upload_date, e.scrub_date, p.site "
@@ -456,7 +433,7 @@ def _phase_rows_with_total(
         rows = session.execute(text(query), params).mappings().all()
 
         count_q = text(
-            "SELECT COUNT(DISTINCT e.id) FROM events e LEFT JOIN patients p ON e.patient_id = p.id "
+            "SELECT COUNT(DISTINCT e.id) FROM events e LEFT JOIN patients_view p ON e.patient_id = p.id "
             f"WHERE {where_sql}"
         )
         total = session.execute(count_q, params).scalar() or 0
@@ -465,8 +442,40 @@ def _phase_rows_with_total(
         session.close()
 
 
+def _empty_phase() -> tuple[list[dict], int]:
+    """Return the empty (rows, total) result for a bypassed phase.
+
+    A phase whose workflow-stage control is disabled surfaces no queue
+    (FR-007, FR-008, FR-009) — there is nothing for that stage to do.
+    """
+    return [], 0
+
+
+def _ready_to_assign_predicate() -> str:
+    """Return the flag-aware "ready to assign" SQL predicate.
+
+    An event is ready for assignment once every *enabled* pre-assignment
+    stage is complete and it has not yet been assigned. Scrubbing and
+    screening contribute a `*_date IS NOT NULL` term only when their
+    control is enabled, so a `scans` deployment (both disabled) reduces
+    this to `upload_date IS NOT NULL AND assign_date IS NULL` (FR-007,
+    FR-008; research Decision 6). The terms read column names only — no
+    user input — so this string is safe to interpolate.
+    """
+    cfg = study_config.get_workflow_config()
+    parts = ["e.upload_date IS NOT NULL"]
+    if cfg.scrubbing:
+        parts.append("e.scrub_date IS NOT NULL")
+    if cfg.screening:
+        parts.append("e.screen_date IS NOT NULL")
+    parts.append("e.assign_date IS NULL")
+    return " AND ".join(parts)
+
+
 def get_to_be_scrubbed_with_total(limit: Optional[int], offset: int, q: Optional[str], site: Optional[str], sort_by: Optional[str] = None, sort_dir: Optional[str] = None):
-    # Uploaded but not scrubbed
+    # Uploaded but not scrubbed. Bypassed (no queue) when scrubbing is off.
+    if not study_config.get_workflow_config().scrubbing:
+        return _empty_phase()
     return _phase_rows_with_total(
         "e.upload_date IS NOT NULL AND e.scrub_date IS NULL",
         {},
@@ -481,7 +490,9 @@ def get_to_be_scrubbed_with_total(limit: Optional[int], offset: int, q: Optional
 
 
 def get_to_be_screened_with_total(limit: Optional[int], offset: int, q: Optional[str], site: Optional[str], sort_by: Optional[str] = None, sort_dir: Optional[str] = None):
-    # Scrubbed but not screened
+    # Scrubbed but not screened. Bypassed (no queue) when screening is off.
+    if not study_config.get_workflow_config().screening:
+        return _empty_phase()
     return _phase_rows_with_total(
         "e.scrub_date IS NOT NULL AND e.screen_date IS NULL",
         {},
@@ -496,9 +507,9 @@ def get_to_be_screened_with_total(limit: Optional[int], offset: int, q: Optional
 
 
 def get_to_be_assigned_with_total(limit: Optional[int], offset: int, q: Optional[str], site: Optional[str], sort_by: Optional[str] = None, sort_dir: Optional[str] = None):
-    # Screened but not assigned
+    # Ready for assignment: all enabled pre-assignment stages complete.
     return _phase_rows_with_total(
-        "e.screen_date IS NOT NULL AND e.assign_date IS NULL",
+        _ready_to_assign_predicate(),
         {},
         limit,
         offset,
@@ -511,7 +522,9 @@ def get_to_be_assigned_with_total(limit: Optional[int], offset: int, q: Optional
 
 
 def get_to_be_sent_with_total(limit: Optional[int], offset: int, q: Optional[str], site: Optional[str], sort_by: Optional[str] = None, sort_dir: Optional[str] = None):
-    # Assigned but not sent
+    # Assigned but not sent. Bypassed (no queue) when sending is off.
+    if not study_config.get_workflow_config().sending:
+        return _empty_phase()
     return _phase_rows_with_total(
         "e.assign_date IS NOT NULL AND e.send_date IS NULL",
         {},
@@ -526,9 +539,18 @@ def get_to_be_sent_with_total(limit: Optional[int], offset: int, q: Optional[str
 
 
 def get_to_be_reviewed_with_total(limit: Optional[int], offset: int, q: Optional[str], site: Optional[str], sort_by: Optional[str] = None, sort_dir: Optional[str] = None):
-    # Sent but not yet fully reviewed (at least one reviewer pending)
+    # Ready for review but not yet fully reviewed. The gate column is
+    # flag-aware: `send_date` when sending is enabled, otherwise `assign_date`
+    # (FR-009, FR-011). The "fully reviewed" bar depends on reviewer count —
+    # a single-reviewer study is complete once review 1 lands (FR-010).
+    cfg = study_config.get_workflow_config()
+    gate = "e.send_date IS NOT NULL" if cfg.sending else "e.assign_date IS NOT NULL"
+    if cfg.reviewer_count == 2:
+        pending = "(e.review1_date IS NULL OR e.review2_date IS NULL)"
+    else:
+        pending = "e.review1_date IS NULL"
     return _phase_rows_with_total(
-        "e.send_date IS NOT NULL AND (e.review1_date IS NULL OR e.review2_date IS NULL)",
+        f"{gate} AND {pending}",
         {},
         limit,
         offset,
@@ -661,7 +683,7 @@ def get_events_export_rows() -> list[dict]:
               edd.false_positive_reason AS overall_false_positive_reason,
               edd.ci AS overall_ci
             FROM events e
-            LEFT JOIN patients p ON p.id = e.patient_id
+            LEFT JOIN patients_view p ON p.id = e.patient_id
             LEFT JOIN crit ON crit.event_id = e.id
             LEFT JOIN users cu ON cu.id = e.creator_id
             LEFT JOIN users uu ON uu.id = e.uploader_id
@@ -697,16 +719,23 @@ def get_events_awaiting_review(user_id: int, q: Optional[str] = None, site: Opti
     try:
         like = f"%{q}%" if q else None
         like_date = _derive_date_like(q)
-        # Enforce stricter criteria to align with main branch expectations:
-        # - Slots 1 & 2 require status 'sent' (in addition to send_date)
-        # - Optional site filter via patients.site
-        # Match main behavior:
-        # - reviewer1: status in ('sent','reviewer2_done') and review1_date is null
-        # - reviewer2: status in ('sent','reviewer1_done') and review2_date is null
-        # - reviewer3: status 'third_review_assigned' and review3_date is null
+        # Reviewer-queue membership is flag-aware (FR-009, FR-011):
+        # - reviewer1: review pending and the event has reached a
+        #   review-eligible status. When sending is enabled that is
+        #   'sent'; when sending is disabled (e.g. `scans`) there is no
+        #   send step, so an 'assigned' event is directly pickable.
+        # - reviewer2: likewise, for the second slot.
+        # - reviewer3: status 'third_review_assigned' and review3 pending.
+        # The status lists below hold SQL literals only (no user input).
+        cfg = study_config.get_workflow_config()
+        slot1_statuses = "'sent','reviewer2_done'"
+        slot2_statuses = "'sent','reviewer1_done'"
+        if not cfg.sending:
+            slot1_statuses = "'assigned','sent','reviewer2_done'"
+            slot2_statuses = "'assigned','sent','reviewer1_done'"
         where_parts = [
-            "(e.reviewer1_id = :uid AND e.status IN ('sent','reviewer2_done') AND e.review1_date IS NULL)",
-            "(e.reviewer2_id = :uid AND e.status IN ('sent','reviewer1_done') AND e.review2_date IS NULL)",
+            f"(e.reviewer1_id = :uid AND e.status IN ({slot1_statuses}) AND e.review1_date IS NULL)",
+            f"(e.reviewer2_id = :uid AND e.status IN ({slot2_statuses}) AND e.review2_date IS NULL)",
             "(e.reviewer3_id = :uid AND e.status = 'third_review_assigned' AND e.review3_date IS NULL)",
         ]
         params = {"uid": int(user_id)}
@@ -726,11 +755,11 @@ def get_events_awaiting_review(user_id: int, q: Optional[str] = None, site: Opti
         stmt = text(
             "SELECT e.id AS id, e.event_date AS event_date, "
             "CASE "
-            " WHEN (e.reviewer1_id = :uid AND e.status IN ('sent','reviewer2_done') AND e.review1_date IS NULL) THEN 1 "
-            " WHEN (e.reviewer2_id = :uid AND e.status IN ('sent','reviewer1_done') AND e.review2_date IS NULL) THEN 2 "
+            f" WHEN (e.reviewer1_id = :uid AND e.status IN ({slot1_statuses}) AND e.review1_date IS NULL) THEN 1 "
+            f" WHEN (e.reviewer2_id = :uid AND e.status IN ({slot2_statuses}) AND e.review2_date IS NULL) THEN 2 "
             " WHEN (e.reviewer3_id = :uid AND e.status = 'third_review_assigned' AND e.review3_date IS NULL) THEN 3 "
             " ELSE NULL END AS slot "
-            "FROM events e LEFT JOIN patients p ON p.id = e.patient_id "
+            "FROM events e LEFT JOIN patients_view p ON p.id = e.patient_id "
             f"WHERE ({where_sql}){site_filter}{q_filter} "
             "ORDER BY e.id ASC"
         )
@@ -740,11 +769,18 @@ def get_events_awaiting_review(user_id: int, q: Optional[str] = None, site: Opti
         session.close()
 
 
-def assign_events(event_ids: list[int], reviewer_id: int, slot: str, assigner_id: int) -> dict:
+def assign_events(event_ids: list[int], reviewer_id: int, slot: str, assigner_id: int, reviewer2_id: Optional[int] = None) -> dict:
     """Assign a reviewer to many events for the given slot (first|second|third).
 
     Updates reviewerN_id and corresponding assign date/assigner fields where applicable.
     Returns { updated: N }.
+
+    When ``slot == "first"`` and ``reviewer2_id`` is supplied, the second
+    reviewer is assigned together with the first in the same transaction
+    (research Decision 4) — the queue predicate is ``assign_date IS NULL``,
+    so a per-slot call would drop the event from the queue before the second
+    reviewer could be assigned. ``reviewer2_id`` is ignored for the
+    ``second``/``third`` slots; existing positional callers are unaffected.
     """
     if slot not in {"first", "second", "third"}:
         raise ValidationError("slot must be one of: first, second, third")
@@ -762,9 +798,16 @@ def assign_events(event_ids: list[int], reviewer_id: int, slot: str, assigner_id
         for e in events:
             if slot == "first":
                 e.reviewer1_id = reviewer_id
+                # Two-reviewer deployments assign both reviewers atomically:
+                # set the second reviewer in the same loop / same commit.
+                if reviewer2_id is not None:
+                    e.reviewer2_id = reviewer2_id
                 # keep an audit of who assigned
                 e.assigner_id = assigner_id
                 e.assign_date = now
+                # Advance the lifecycle: first-reviewer assignment moves the
+                # event into the shared `assigned` state (research Decision 4).
+                e.status = "assigned"
             elif slot == "second":
                 e.reviewer2_id = reviewer_id
                 e.assigner_id = assigner_id
@@ -804,9 +847,16 @@ def send_events(event_ids: list[int], sender_id: int) -> dict:
             .filter(models.Events.id.in_(event_ids))
             .all()
         )
+        # Advancing `status` to 'sent' is gated on the sending control: a
+        # deployment with sending disabled has no send step in its lifecycle
+        # (research Decision 4), so the status is not advanced even if this
+        # helper is reached. With sending enabled it is the new transition.
+        sending_enabled = study_config.get_workflow_config().sending
         for e in events:
             e.sender_id = sender_id
             e.send_date = now
+            if sending_enabled:
+                e.status = "sent"
             updated += 1
         session.commit()
 
@@ -861,7 +911,7 @@ def get_event_details(event_id: int) -> dict:
               r2.username AS reviewer2_username,
               r3.username AS reviewer3_username
             FROM events e
-            LEFT JOIN patients p ON p.id = e.patient_id
+            LEFT JOIN patients_view p ON p.id = e.patient_id
             LEFT JOIN users cu ON cu.id = e.creator_id
             LEFT JOIN users uu ON uu.id = e.uploader_id
             LEFT JOIN users su ON su.id = e.scrubber_id
@@ -880,10 +930,14 @@ def get_event_details(event_id: int) -> dict:
         session.close()
 
 def create_event(data: dict) -> dict:
-    """Create a new event and associated criteria."""
+    """Create a new event and associated criteria.
+
+    The patient identified by (site_patient_id, site) must already exist
+    in `patients_view`. This application does not create patient records;
+    both halves of the view (uw_patients2 and cnics_data.Patient) are
+    treated as read-only.
+    """
     session = get_session()
-    ext_session = _get_external_session_or_none()
-    patients_session = ext_session or session
     try:
         site_patient_id = (data.get("site_patient_id") or "").strip()
         site = (data.get("site") or "").strip()
@@ -892,20 +946,15 @@ def create_event(data: dict) -> dict:
         if not site:
             raise ValidationError("site is required")
         patient = (
-            patients_session.query(models.Patients)
+            session.query(models.PatientsView)
             .filter_by(site_patient_id=site_patient_id, site=site)
             .first()
         )
         if not patient:
-            if ext_session is None:
-                # Primary DB's patients table is not designed for writes; without
-                # the external DB, we cannot create a new patient safely.
-                raise ValidationError(
-                    "Patient not found and external patient DB is unavailable"
-                )
-            patient = models.Patients(site_patient_id=site_patient_id, site=site)
-            patients_session.add(patient)
-            patients_session.commit()
+            raise ValidationError(
+                f"Patient not found in patients_view for site={site!r}, "
+                f"site_patient_id={site_patient_id!r}"
+            )
         patient_id = patient.id
 
         event_date_str = (data.get("event_date") or "").strip()
@@ -942,8 +991,6 @@ def create_event(data: dict) -> dict:
         return result
     finally:
         session.close()
-        if ext_session is not None:
-            ext_session.close()
 
 
 def create_user(data: dict) -> dict:
