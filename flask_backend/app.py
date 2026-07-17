@@ -1175,11 +1175,115 @@ def events_screen(event_id: int):
 @requires_auth
 @requires_roles('admin')
 def events_bulk():
-    # Minimal placeholder: accept a CSV upload and return 201. Implement parsing later.
+    """Bulk-create events from an uploaded CSV.
+
+    Expects multipart/form-data with field name `events_csv`. Each non-empty
+    line has the form:
+
+        site_patient_id, site_name, event_date, [criterion_name, criterion_value]...
+
+    where `event_date` is YYYY-MM-DD and the trailing criteria are zero or more
+    name/value pairs. The referenced patient must already exist in
+    `patients_view`; rows that fail validation are skipped and reported in
+    `errors`, while valid rows are imported in a single transaction.
+    """
+    import csv
+    import io
+
     if 'events_csv' not in request.files:
         return jsonify({'error': 'events_csv file is required'}), 400
-    # In a future improvement, parse CSV and create events via table_service.create_event
-    return jsonify({'data': {'imported': 0}}), 201
+    file = request.files['events_csv']
+    if not file or not file.filename:
+        return jsonify({'error': 'events_csv file is required'}), 400
+
+    try:
+        # utf-8-sig strips a leading BOM if the file was saved from Excel.
+        text = file.read().decode('utf-8-sig')
+    except UnicodeDecodeError:
+        return jsonify({'error': 'events_csv must be UTF-8 encoded text'}), 400
+
+    auth_user = getattr(g, 'auth_user', None) or {}
+    creator_id = int(auth_user.get('id') or 0) or 1
+
+    imported = 0
+    errors = []
+    session = models.get_session()
+    try:
+        reader = csv.reader(io.StringIO(text))
+        for lineno, row in enumerate(reader, start=1):
+            # Skip blank lines and an optional header row.
+            if not row or all(not (c or '').strip() for c in row):
+                continue
+            if lineno == 1 and row[0].strip().lower() == 'site_patient_id':
+                continue
+            if len(row) < 3:
+                errors.append(f'Line {lineno}: expected at least site_patient_id, site_name, event_date')
+                continue
+
+            site_patient_id = row[0].strip()
+            site = row[1].strip()
+            event_date_str = row[2].strip()
+            # Trailing criteria fields; drop empty cells left by trailing commas.
+            criteria_fields = [(c or '').strip() for c in row[3:]]
+            while criteria_fields and criteria_fields[-1] == '':
+                criteria_fields.pop()
+
+            if not site_patient_id or not site or not event_date_str:
+                errors.append(f'Line {lineno}: site_patient_id, site_name, and event_date are required')
+                continue
+            if len(criteria_fields) % 2 != 0:
+                errors.append(f'Line {lineno}: criteria must be comma-separated name,value pairs')
+                continue
+            try:
+                event_date = datetime.date.fromisoformat(event_date_str)
+            except ValueError:
+                errors.append(f'Line {lineno}: event_date must be in YYYY-MM-DD format')
+                continue
+
+            patient = (
+                session.query(models.PatientsView)
+                .filter_by(site_patient_id=site_patient_id, site=site)
+                .first()
+            )
+            if not patient:
+                errors.append(
+                    f'Line {lineno}: patient not found for site={site!r}, site_patient_id={site_patient_id!r}'
+                )
+                continue
+
+            event = models.Events(
+                patient_id=patient.id,
+                creator_id=creator_id,
+                event_date=event_date,
+                add_date=datetime.date.today(),
+            )
+            session.add(event)
+            session.flush()  # assign event.id for the criteria FK
+
+            for i in range(0, len(criteria_fields), 2):
+                name = criteria_fields[i]
+                value = criteria_fields[i + 1]
+                if not name:
+                    continue
+                session.add(models.Criterias(event_id=event.id, name=name[:50], value=value[:100]))
+
+            imported += 1
+
+        session.commit()
+    except Exception:
+        session.rollback()
+        app.logger.exception('Failed to bulk import events')
+        return jsonify({'error': 'Failed to import events'}), 500
+    finally:
+        session.close()
+
+    result = {'imported': imported}
+    if errors:
+        result['errors'] = errors
+    # Report an all-failure (nothing imported) as a client error so the UI can
+    # surface it instead of showing a false success.
+    status = 201 if imported else 400
+    return jsonify({'data': result}), status
 
 @app.route('/api/events/<int:event_id>/upload_scrubbed', methods=['POST'])
 @requires_auth

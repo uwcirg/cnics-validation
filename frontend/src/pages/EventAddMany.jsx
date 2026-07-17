@@ -17,14 +17,32 @@ function EventAddMany() {
         credentials: 'include',
         body: form,
       })
-      if (res.ok) {
+      let body = {}
+      try {
+        body = await res.json()
+      } catch {
+        body = {}
+      }
+      const imported = body?.data?.imported ?? 0
+      const rowErrors = body?.data?.errors || []
+      if (res.ok && imported > 0) {
         setStatus('saved')
         setFile(null)
         e.target.reset()
-        showToast('Events CSV uploaded successfully.', 'success')
+        const suffix = rowErrors.length
+          ? ` ${rowErrors.length} row(s) were skipped: ${rowErrors.join('; ')}`
+          : ''
+        showToast(
+          `Imported ${imported} event${imported === 1 ? '' : 's'}.${suffix}`,
+          rowErrors.length ? 'warning' : 'success',
+          rowErrors.length ? 10000 : 3000,
+        )
       } else {
         setStatus('error')
-        showToast('CSV upload failed. Please check the file and try again.', 'error')
+        const detail = rowErrors.length
+          ? rowErrors.join('; ')
+          : body?.error || 'Please check the file and try again.'
+        showToast(`CSV upload failed. ${detail}`, 'error', 10000)
       }
     } catch {
       setStatus('error')
