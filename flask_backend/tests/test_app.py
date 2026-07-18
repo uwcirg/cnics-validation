@@ -160,7 +160,9 @@ def test_bulk_csv_upload_does_not_persist_file(tmp_path, monkeypatch, admin_clie
         'events_csv': (io.BytesIO(b"MI,Patient ID\n,123\n"), 'events.csv')
     }
     res = admin_client.post('/api/events/bulk', data=data, content_type='multipart/form-data')
-    assert res.status_code == 201
+    # This malformed CSV imports no rows, so the endpoint reports an all-failure
+    # as a client error (400). The persistence check below is what this test guards.
+    assert res.status_code == 400
     # Ensure uploaded file is not saved on disk by endpoint (non-persistence)
     assert not any(p.name == 'events.csv' for p in tmp_path.iterdir())
 

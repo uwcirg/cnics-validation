@@ -68,6 +68,7 @@ paths:
                   type: integer
   /api/events/by_status/{status}: {}
   /api/events/{int:event_id}: {}
+  /api/sites: {}
   /api/users: {}
   /api/auth/me: {}
   /api/config:

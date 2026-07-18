@@ -33,14 +33,10 @@ function EventEdit() {
         })
       })
       .catch(() => setDetails(null))
-    // Load sites from patients_view (distinct)
-    fetch(`${apiUrl}/api/tables/patients_view?limit=2000`, { credentials: 'include' })
+    // Load the configured list of clinical sites for the Site picker.
+    fetch(`${apiUrl}/api/sites`, { credentials: 'include' })
       .then((res) => res.ok ? res.json() : Promise.reject(res))
-      .then((json) => {
-        const rows = json.data || []
-        const uniqueSites = Array.from(new Set(rows.map((r) => r.site).filter(Boolean))).sort()
-        setSites(uniqueSites)
-      })
+      .then((json) => setSites(json.data || []))
       .catch(() => setSites([]))
 
     // Load criteria for this event (client-side filter from table API)
@@ -145,9 +141,13 @@ function EventEdit() {
     }
   }
 
+  // Always include this event's current site in the picker, even if the
+  // configured list omits it, so the true site (e.g. 'UAB') stays selected.
+  const siteOptions = Array.from(new Set([form.site, ...sites].filter(Boolean)))
+
   return (
     <div>
-      <h2>Edit Event MI {eventId}</h2>
+      <h2>Edit Event {eventId}</h2>
 
       {details && (
         <p>
@@ -185,7 +185,7 @@ function EventEdit() {
                 <td>
                   <select name="site" value={form.site} onChange={handleChange}>
                     <option value="">Select site</option>
-                    {sites.map((s) => (
+                    {siteOptions.map((s) => (
                       <option key={s} value={s}>{s}</option>
                     ))}
                   </select>

@@ -88,6 +88,27 @@ def get_study_title() -> str:
     return os.getenv("STUDY_TITLE", "").strip()
 
 
+# Canonical CNICS clinical sites. The schema has no site table — `site` is a
+# free-text column on patient records — so the pick-list is configuration,
+# not data: a deployment sets CLINICAL_SITES to the exact site codes its
+# patient roster uses. The default is the set of site codes seen across CNICS
+# deployments; override per deployment as needed.
+_DEFAULT_CLINICAL_SITES = ("CWRU", "Fenway", "JH", "UAB", "UCSD", "UCSF", "UNC", "UW", "Vanderbilt")
+
+
+def get_clinical_sites() -> list:
+    """Return the configured clinical site codes for populating site pickers.
+
+    Read from ``CLINICAL_SITES`` as a comma-separated list (e.g.
+    ``"UAB,UCSD,UW"``); order is preserved and blank entries are dropped.
+    Falls back to a built-in default when unset or empty. Purely a display
+    pick-list, so — like the cosmetic title — any value is accepted.
+    """
+    raw = os.getenv("CLINICAL_SITES", "")
+    sites = [s.strip() for s in raw.split(",") if s.strip()]
+    return sites if sites else list(_DEFAULT_CLINICAL_SITES)
+
+
 def _profile_for(study_type: str) -> dict:
     """Return the default control profile for ``study_type``."""
     return _PROFILES.get((study_type or "").strip().lower(), _FULL_WORKFLOW_PROFILE)

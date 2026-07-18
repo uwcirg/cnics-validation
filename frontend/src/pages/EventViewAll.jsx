@@ -212,7 +212,7 @@ function EventViewAll({ workflow }) {
         columns={['Event Number', 'Event Date', 'Uploaded', 'Site']}
         augmentRows={(rows) => rows.map((r) => ({
           ...r,
-          'Event Number': (r['ID'] != null ? 1000 + Number(r['ID']) : ''),
+          'Event Number': (r['ID'] != null ? Number(r['ID']) : ''),
           'Event Date': r['Date'] || '',
         }))}
         renderActions={(row) => (
@@ -245,7 +245,7 @@ function EventViewAll({ workflow }) {
         columns={['Event Number', 'Event Date', 'Scrubbed', 'Site']}
         augmentRows={(rows) => rows.map((r) => ({
           ...r,
-          'Event Number': (r['ID'] != null ? 1000 + Number(r['ID']) : ''),
+          'Event Number': (r['ID'] != null ? Number(r['ID']) : ''),
           'Event Date': r['Date'] || '',
         }))}
         renderActions={(row) => (

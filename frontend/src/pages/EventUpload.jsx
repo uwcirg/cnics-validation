@@ -1,9 +1,33 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import DataTable from '../components/DataTable'
+import { resolveReviewGuidance } from '../components/reviewGuidance'
 import './EventUpload.css'
 
 const PAGE_SIZE = 20
+const API_BASE = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || '')
+
+// Render one guidance box's optional file links. Kept identical to Home's
+// GuidanceLinks so the "Review packets should contain" box renders the same in
+// both places. Returns null when the box defines no links.
+function GuidanceLinks({ box }) {
+  if (!box.links || box.links.length === 0) return null
+  return (
+    <div>
+      {box.linkLabel ? `${box.linkLabel} ` : ''}
+      {box.links.map((link, i) => (
+        <span key={link.href}>
+          {i > 0 ? ' | ' : ''}
+          {link.download ? (
+            <a href={`${API_BASE}${link.href}`} download>{link.label}</a>
+          ) : (
+            <a href={`${API_BASE}${link.href}`} target="_blank">{link.label}</a>
+          )}
+        </span>
+      ))}
+    </div>
+  )
+}
 
 // Shared table wrapper copied from Home to ensure identical behavior/columns
 function TableWrapper({ endpoint, columns, renderActions, pageSize = PAGE_SIZE }) {
@@ -12,8 +36,6 @@ function TableWrapper({ endpoint, columns, renderActions, pageSize = PAGE_SIZE }
   const [totalCount, setTotalCount] = useState(null)
   const [search, setSearch] = useState('')
   const [siteFilter, setSiteFilter] = useState('')
-
-  const API_BASE = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || '')
 
   const fetchPage = (p) => {
     const params = new URLSearchParams({
@@ -87,8 +109,13 @@ function TableWrapper({ endpoint, columns, renderActions, pageSize = PAGE_SIZE }
   )
 }
 
-function EventUpload() {
+function EventUpload({ studyType, configResolved = true }) {
   const [searchParams] = useSearchParams()
+
+  // Body content for the "Review packets should contain" box, chosen by the
+  // deployment's study type. Resolved the same way as Home so both pages show
+  // identical, study-aware guidance.
+  const guidance = resolveReviewGuidance(studyType)
   const navigate = useNavigate()
   const eventId = searchParams.get('event_id')
   const patientId = searchParams.get('patient_id')
@@ -100,8 +127,6 @@ function EventUpload() {
   const [packetFile, setPacketFile] = useState(null)
   const [uploadStatus, setUploadStatus] = useState('idle') // idle | uploading | success | error
   const [uploadError, setUploadError] = useState('')
-
-  const API_BASE = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || '')
 
   const noPacketReasons = [
     'Outside hospital',
@@ -192,35 +217,19 @@ function EventUpload() {
         </div>
       )}
 
-      <div className="infobox">
-        <h3>Review packets should contain:</h3>
-        <ol>
-          <li>Physician's notes closest to potential Event date</li>
-          <li>Outpatient cardiology consultations</li>
-          <li>In-patient cardiology notes or consults</li>
-          <li>Baseline ECG</li>
-          <li>First 2 ECGs after admission or in-hospital event</li>
-          <li>Related procedure and diagnostic test results</li>
-          <li>Related laboratory evidence</li>
-          <li>
-            Please redact the personal identifiers including name, birthday, and
-            hospital number
-          </li>
-        </ol>
-        <div>
-          Full instructions:{' '}
-          <a href="/files/CNICS MI Review packet assembly instructions.doc" download>
-            .doc
-          </a>{' '}
-          |{' '}
-          <a
-            href="/files/CNICS MI Review packet assembly instructions.pdf"
-            target="_blank"
-          >
-            .pdf
-          </a>
+      {configResolved && (
+        <div className="infobox">
+          <h3>Review packets should contain:</h3>
+          {guidance.packets.items.length > 0 && (
+            <ol>
+              {guidance.packets.items.map((item, i) => (
+                <li key={i}>{item}</li>
+              ))}
+            </ol>
+          )}
+          <GuidanceLinks box={guidance.packets} />
         </div>
-      </div>
+      )}
 
       {eventId && (
         <>

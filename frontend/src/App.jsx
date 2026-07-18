@@ -260,7 +260,7 @@ function App() {
           {/* Uploader routes (uploader or admin) */}
           <Route path="/events/upload" element={
             <ProtectedRoute requiredRoles={['uploader', 'admin']} auth={auth}>
-              <EventUpload />
+              <EventUpload studyType={studyType} configResolved={configResolved} />
             </ProtectedRoute>
           } />
           <Route path="/vte/upload" element={
@@ -270,7 +270,7 @@ function App() {
           } />
           <Route path="/events/reupload" element={
             <ProtectedRoute requiredRoles={['uploader', 'admin']} auth={auth}>
-              <EventReupload />
+              <EventReupload studyType={studyType} configResolved={configResolved} />
             </ProtectedRoute>
           } />
           <Route path="/vte/reupload" element={
