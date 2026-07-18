@@ -925,7 +925,16 @@ def get_event_details(event_id: int) -> dict:
             """
         )
         row = session.execute(query, {"event_id": event_id}).mappings().first()
-        return dict(row) if row else {}
+        if not row:
+            return {}
+        # Serialize date columns as ISO (YYYY-MM-DD). Flask's default JSON
+        # otherwise renders a Python date as an RFC-1123 string
+        # ("Fri, 21 Nov 2003 00:00:00 GMT"), which an <input type="date"> on
+        # the edit page cannot parse, leaving the Event date control blank.
+        return {
+            key: (value.isoformat() if isinstance(value, datetime.date) else value)
+            for key, value in row.items()
+        }
     finally:
         session.close()
 

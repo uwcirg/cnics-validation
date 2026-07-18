@@ -624,6 +624,19 @@ def get_event_details(event_id: int):
         return jsonify({'error': 'Failed to fetch event details'}), 500
 
 
+@app.route('/api/sites')
+@requires_auth
+def get_sites():
+    """Return the configured clinical site codes for populating site pickers.
+
+    The list is deployment configuration (``CLINICAL_SITES``), not data — the
+    schema has no site table; ``site`` is a free-text column on patient
+    records. Resolved through the shared config layer so no query against the
+    large read-only ``patients_view`` is needed.
+    """
+    return jsonify({'data': study_config.get_clinical_sites()})
+
+
 @app.route('/api/users', methods=['POST'])
 @requires_auth
 @requires_roles('admin')
@@ -1104,18 +1117,35 @@ def events_update(event_id: int):
     site_patient_id = data.get('site_patient_id')
     site = data.get('site')
     event_date = data.get('event_date')
-    # Patient identity fields are sourced from `patients_view`, which is a
-    # UNION over read-only sources (uw_patients2, cnics_data.Patient). Edits
-    # to those fields must happen upstream, not here.
-    if site_patient_id is not None or site is not None:
-        return jsonify({
-            'error': 'site_patient_id and site are read-only here; update them in the upstream patient roster'
-        }), 400
     session = models.get_session()
     try:
         e = session.query(models.Events).get(event_id)
         if e is None:
             return jsonify({'error': 'Event not found'}), 404
+        # An event's site is not stored on the event; it is derived from the
+        # patient the event points at (events.patient_id -> patients_view).
+        # `patients_view` is read-only (UNION over uw_patients2 and the
+        # FEDERATED cnics_data.Patient), so we never write to it — to change
+        # the site we re-point the event at the existing patient row matching
+        # (site_patient_id, site), the same lookup create_event uses.
+        if site_patient_id is not None or site is not None:
+            spid = (site_patient_id or '').strip()
+            site_name = (site or '').strip()
+            if not spid or not site_name:
+                return jsonify({
+                    'error': 'site_patient_id and site are both required to change the patient'
+                }), 400
+            patient = (
+                session.query(models.PatientsView)
+                .filter_by(site_patient_id=spid, site=site_name)
+                .first()
+            )
+            if patient is None:
+                return jsonify({
+                    'error': f'No patient found in the roster for site={site_name!r}, '
+                             f'site_patient_id={spid!r}'
+                }), 400
+            e.patient_id = patient.id
         if event_date:
             try:
                 y, m, d = [int(x) for x in str(event_date).split('-')]
