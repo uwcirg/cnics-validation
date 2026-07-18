@@ -1,8 +1,31 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { resolveReviewGuidance } from '../components/reviewGuidance'
 import './Home.css'
 
-const API_BASE = import.meta.env.VITE_API_URL || ''
+const API_BASE = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || '')
+
+// Render one guidance box's optional file links. Kept identical to Home's
+// GuidanceLinks so the guidance boxes render the same across pages. Returns
+// null when the box defines no links.
+function GuidanceLinks({ box }) {
+  if (!box.links || box.links.length === 0) return null
+  return (
+    <div>
+      {box.linkLabel ? `${box.linkLabel} ` : ''}
+      {box.links.map((link, i) => (
+        <span key={link.href}>
+          {i > 0 ? ' | ' : ''}
+          {link.download ? (
+            <a href={`${API_BASE}${link.href}`} download>{link.label}</a>
+          ) : (
+            <a href={`${API_BASE}${link.href}`} target="_blank">{link.label}</a>
+          )}
+        </span>
+      ))}
+    </div>
+  )
+}
 
 function Table({ rows }) {
   const navigate = useNavigate()
@@ -70,8 +93,13 @@ function Table({ rows }) {
   )
 }
 
-function EventReupload() {
+function EventReupload({ studyType, configResolved = true }) {
   const [rows, setRows] = useState([])
+
+  // Body content for the two bottom guidance boxes, chosen by the deployment's
+  // study type. Resolved the same way as Home so all pages show identical,
+  // study-aware guidance.
+  const guidance = resolveReviewGuidance(studyType)
 
   useEffect(() => {
     fetch(`${API_BASE}/api/events/need_reupload`)
@@ -93,45 +121,31 @@ function EventReupload() {
         <Table rows={rows} />
       </section>
 
-      <div className="infobox">
-        <h3>Review packets should contain:</h3>
-        <ol>
-          <li>Physician's notes closest to potential Event date</li>
-          <li>Outpatient cardiology consultations</li>
-          <li>In-patient cardiology notes or consults</li>
-          <li>Baseline ECG</li>
-          <li>First 2 ECGs after admission or in-hospital event</li>
-          <li>Related procedure and diagnostic test results</li>
-          <li>Related laboratory evidence</li>
-          <li>
-            Please redact the personal identifiers including name, birthday, and
-            hospital number
-          </li>
-        </ol>
-        <div>
-          Full instructions:{' '}
-          <a href={`${API_BASE}/files/CNICS MI Review packet assembly instructions.doc`} download>.doc</a>{' '}
-          |{' '}
-          <a
-            href={`${API_BASE}/files/CNICS MI Review packet assembly instructions.pdf`}
-            target="_blank"
-          >
-            .pdf
-          </a>
-        </div>
-      </div>
+      {configResolved && (
+        <>
+          <div className="infobox">
+            <h3>Review packets should contain:</h3>
+            {guidance.packets.items.length > 0 && (
+              <ol>
+                {guidance.packets.items.map((item, i) => (
+                  <li key={i}>{item}</li>
+                ))}
+              </ol>
+            )}
+            <GuidanceLinks box={guidance.packets} />
+          </div>
 
-      <div className="infobox">
-        <h3>Review Instructions:</h3>
-        <div>
-          View as:{' '}
-          <a href={`${API_BASE}/files/CNICS MI reviewer instructions.doc`} download>.doc</a>{' '}
-          |{' '}
-          <a href={`${API_BASE}/files/CNICS MI reviewer instructions.pdf`} target="_blank">
-            .pdf
-          </a>
-        </div>
-      </div>
+          <div className="infobox">
+            <h3>Review Instructions:</h3>
+            {/* The instructions box is prose, not a checklist — render each
+                item as its own line rather than a numbered list. */}
+            {guidance.instructions.items.map((item, i) => (
+              <div key={i}>{item}</div>
+            ))}
+            <GuidanceLinks box={guidance.instructions} />
+          </div>
+        </>
+      )}
     </div>
   )
 }
