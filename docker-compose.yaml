@@ -45,6 +45,12 @@ services:
       DB_NAME: ${DB_NAME}
       FILES_DIR: /files
       UPLOAD_DIR: /opt/backend/uploads
+      # Bulk-import CSV archive (see default.env). Both are optional and have
+      # working defaults; an unset value passes through as an empty string,
+      # which the backend treats as "use the default". Compose reads these
+      # from .env for ${...} substitution but does NOT auto-inject them.
+      IMPORT_ARCHIVE_DIR: ${IMPORT_ARCHIVE_DIR:-}
+      MAX_IMPORT_CSV_BYTES: ${MAX_IMPORT_CSV_BYTES:-}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN}
       # Outbound email configuration
       SMTP_HOST: ${SMTP_HOST}

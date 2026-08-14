@@ -149,22 +149,38 @@ def test_root_route():
     assert res.get_json() == {'status': 'ok'}
 
 
-def test_bulk_csv_upload_does_not_persist_file(tmp_path, monkeypatch, admin_client):
+def test_bulk_csv_upload_archives_rejected_file(tmp_path, monkeypatch, admin_client):
+    """A rejected submission is still archived.
+
+    This replaces `test_bulk_csv_upload_does_not_persist_file`, which asserted
+    the opposite: that the endpoint kept nothing on disk. That was a deliberate
+    choice at the time, and feature 009-save-import-csv deliberately reverses
+    it — an import whose rows were all skipped is exactly the one an
+    administrator later needs to inspect.
+
+    The old assertion looked for a file literally named `events.csv`, which the
+    archive's naming scheme never produces, so it would have kept passing while
+    asserting the reverse of shipped behavior. It is rewritten rather than
+    deleted so the reversal stays on the record.
+    """
     # Redirect FILES_DIR/DOWNLOADS_DIR away from real paths
     import importlib
     app_mod = importlib.import_module('flask_backend.app')
+    archive_dir = tmp_path / 'imports'
     monkeypatch.setattr(app_mod, 'FILES_DIR', str(tmp_path))
     monkeypatch.setattr(app_mod, 'DOWNLOADS_DIR', str(tmp_path))
+    monkeypatch.setattr(app_mod, 'IMPORT_ARCHIVE_DIR', str(archive_dir))
 
     data = {
         'events_csv': (io.BytesIO(b"MI,Patient ID\n,123\n"), 'events.csv')
     }
     res = admin_client.post('/api/events/bulk', data=data, content_type='multipart/form-data')
     # This malformed CSV imports no rows, so the endpoint reports an all-failure
-    # as a client error (400). The persistence check below is what this test guards.
+    # as a client error (400). The archiving check below is what this test guards.
     assert res.status_code == 400
-    # Ensure uploaded file is not saved on disk by endpoint (non-persistence)
-    assert not any(p.name == 'events.csv' for p in tmp_path.iterdir())
+    archived = list(archive_dir.glob('*.csv'))
+    assert len(archived) == 1
+    assert archived[0].read_bytes() == b"MI,Patient ID\n,123\n"
 
 
 @patch('flask_backend.table_service.create_event')

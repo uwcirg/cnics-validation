@@ -11,6 +11,7 @@ import random
 import time
 import uuid
 from .logging_config import configure_logging
+from . import import_archive
 from . import table_service
 from . import models
 from . import study_config
@@ -108,6 +109,34 @@ except OSError:
     # Directory may be on a read-only volume (e.g., /files mounted ro). We'll
     # still attempt to serve from existing paths without creating directories.
     pass
+
+# Archive of bulk-import CSV submissions, a subdirectory of the uploads
+# volume so its namespace can never overlap the event packets `events_download`
+# scans for. Unlike DOWNLOADS_DIR above, it is NOT pre-created here and an
+# OSError is NOT swallowed: creation is attempted per request so that a
+# storage fault fails the import closed rather than quietly skipping the
+# archive, which is the exact situation the archive exists to prevent.
+IMPORT_ARCHIVE_DIR = os.getenv("IMPORT_ARCHIVE_DIR") or os.path.join(DOWNLOADS_DIR, "imports")
+
+# Submissions larger than this are refused before their contents are stored,
+# keeping archive growth bounded. Deliberately checked per endpoint: Flask's
+# global MAX_CONTENT_LENGTH would also cap event-packet uploads, which are
+# legitimately large ZIPs.
+DEFAULT_MAX_IMPORT_CSV_BYTES = 10 * 1024 * 1024
+MAX_IMPORT_CSV_BYTES = DEFAULT_MAX_IMPORT_CSV_BYTES
+_max_import_csv_bytes_env = os.getenv("MAX_IMPORT_CSV_BYTES")
+if _max_import_csv_bytes_env:
+    try:
+        _parsed_max_import = int(_max_import_csv_bytes_env)
+    except ValueError:
+        _parsed_max_import = 0
+    if _parsed_max_import > 0:
+        MAX_IMPORT_CSV_BYTES = _parsed_max_import
+    else:
+        app.logger.warning(
+            "Ignoring invalid MAX_IMPORT_CSV_BYTES; using default of %d bytes",
+            DEFAULT_MAX_IMPORT_CSV_BYTES,
+        )
 
 
 # Allowed file extensions for uploaded/served event packets
@@ -1246,6 +1275,56 @@ def events_screen(event_id: int):
         session.close()
 
 
+def _write_import_record(import_id, auth_user, original_name, size_bytes, **outcome):
+    """Record the outcome of a bulk import beside its archived bytes.
+
+    Deliberately never fails the request. By the time this runs the
+    irreplaceable artifact — the submitted bytes — is already safe, and any
+    events have already been created: the shared tables are MyISAM, so the
+    handler's `session.rollback()` cannot actually undo them, and refusing the
+    request now would report a failure that did not happen (research D8). A
+    manifest that never arrives is rendered as an incomplete record instead.
+    """
+    try:
+        record = import_archive.build_record(
+            import_id,
+            submitted_by_id=auth_user.get('id'),
+            submitted_by=auth_user.get('username'),
+            original_name=original_name,
+            size_bytes=size_bytes,
+            **outcome,
+        )
+        import_archive.write_record(IMPORT_ARCHIVE_DIR, import_id, record)
+    except Exception as exc:
+        # Id and error class only — the file name and the skipped-row text
+        # are PHI-adjacent and never reach the log.
+        app.logger.warning(
+            'Failed to write import record %s: %s', import_id, exc.__class__.__name__
+        )
+
+
+def _refuse_oversize_import(import_id, auth_user, original_name, size_bytes):
+    """Turn away a bulk-import submission that exceeds MAX_IMPORT_CSV_BYTES.
+
+    The contents are not stored — that is the point of the cap — but the
+    attempt is not silent either: it gets an import record of its own, so a
+    mis-selected giant file is visible in the import history rather than
+    vanishing. See research D5.
+    """
+    message = (
+        f'events_csv is too large: {size_bytes} bytes exceeds the '
+        f'{MAX_IMPORT_CSV_BYTES}-byte limit for CSV imports'
+    )
+    # Size is not PHI; the file name and contents are, and are not logged.
+    app.logger.warning(
+        'Refused oversize bulk import %s (%d bytes)', import_id, size_bytes
+    )
+    _write_import_record(
+        import_id, auth_user, original_name, size_bytes, refused=True, errors=[message]
+    )
+    return jsonify({'error': message, 'data': {'imported': 0, 'import_id': import_id}}), 413
+
+
 @app.route('/api/events/bulk', methods=['POST'])
 @requires_auth
 @requires_roles('admin')
@@ -1261,6 +1340,99 @@ def events_bulk():
     name/value pairs. The referenced patient must already exist in
     `patients_view`; rows that fail validation are skipped and reported in
     `errors`, while valid rows are imported in a single transaction.
+
+    The submission is archived verbatim before it is parsed, so a file that
+    fails to decode or produces no events is retained too. Archiving is
+    fail-closed: if the bytes cannot be stored, no events are created.
+
+    ---
+    summary: Bulk-create events from an uploaded CSV, archiving the submission
+    description: >
+      Unchanged import behavior, with the submitted file archived before
+      parsing. Requires the `admin` role. The submission is archived whether
+      the import succeeds, partly succeeds, or is rejected; if it cannot be
+      archived, the request fails and no events are created.
+    consumes:
+    - multipart/form-data
+    parameters:
+    - name: events_csv
+      in: formData
+      type: file
+      required: true
+      description: >
+        CSV where each line is `site_patient_id, site_name, event_date,
+        [criterion_name, criterion_value]...`. Rejected above
+        MAX_IMPORT_CSV_BYTES (default 10 MB).
+    responses:
+      '201':
+        description: One or more events were created
+        schema:
+          type: object
+          properties:
+            data:
+              type: object
+              properties:
+                imported:
+                  type: integer
+                  description: Number of events created
+                errors:
+                  type: array
+                  items:
+                    type: string
+                  description: Skipped rows; omitted when every row imported
+                import_id:
+                  type: string
+                  description: >
+                    Id of the archived submission. Additive; existing clients
+                    that read only `imported` and `errors` are unaffected.
+      '400':
+        description: >
+          No file provided, not UTF-8 text, or no row could be imported. The
+          submission is archived even in this case.
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+            data:
+              type: object
+              properties:
+                imported:
+                  type: integer
+                errors:
+                  type: array
+                  items:
+                    type: string
+                import_id:
+                  type: string
+      '403':
+        description: Caller lacks the admin role
+      '413':
+        description: >
+          Submission exceeds MAX_IMPORT_CSV_BYTES. Contents are not archived
+          and no events are created, but the attempt is recorded as an import
+          record with outcome `refused`, so the refusal is visible in the
+          history.
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+            data:
+              type: object
+              properties:
+                import_id:
+                  type: string
+                  description: Id of the `refused` record written for this attempt
+      '500':
+        description: >
+          The submission could not be archived, or the import failed. When
+          archiving fails no events are created (fail-closed).
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
     """
     import csv
     import io
@@ -1271,14 +1443,43 @@ def events_bulk():
     if not file or not file.filename:
         return jsonify({'error': 'events_csv file is required'}), 400
 
-    try:
-        # utf-8-sig strips a leading BOM if the file was saved from Excel.
-        text = file.read().decode('utf-8-sig')
-    except UnicodeDecodeError:
-        return jsonify({'error': 'events_csv must be UTF-8 encoded text'}), 400
-
     auth_user = getattr(g, 'auth_user', None) or {}
     creator_id = int(auth_user.get('id') or 0) or 1
+    original_name = file.filename
+    import_id = import_archive.new_import_id()
+
+    # Refuse an oversize submission before its contents are stored, so the
+    # archive cannot be filled by a mis-selected file. Content-Length lets us
+    # refuse without reading the body at all; it is client-supplied and absent
+    # under chunked transfer, so the real length is re-checked after reading.
+    declared_length = request.content_length
+    if declared_length is not None and declared_length > MAX_IMPORT_CSV_BYTES:
+        return _refuse_oversize_import(import_id, auth_user, original_name, declared_length)
+
+    raw = file.read()
+    if len(raw) > MAX_IMPORT_CSV_BYTES:
+        return _refuse_oversize_import(import_id, auth_user, original_name, len(raw))
+
+    # Archive first, decode second. Ordering the write ahead of the decode is
+    # what retains submissions that are not valid UTF-8 (FR-001), and failing
+    # the request here rather than importing unarchived is the fail-closed
+    # behavior recorded in the spec's Assumptions.
+    try:
+        import_archive.write_submission(IMPORT_ARCHIVE_DIR, import_id, raw)
+    except OSError as exc:
+        # Id and error class only — never the file name or its contents.
+        app.logger.error(
+            'Failed to archive bulk import %s: %s', import_id, exc.__class__.__name__
+        )
+        return jsonify({'error': 'Import archive is not writable; no events were created'}), 500
+
+    try:
+        # utf-8-sig strips a leading BOM if the file was saved from Excel.
+        text = raw.decode('utf-8-sig')
+    except UnicodeDecodeError:
+        message = 'events_csv must be UTF-8 encoded text'
+        _write_import_record(import_id, auth_user, original_name, len(raw), errors=[message])
+        return jsonify({'error': message, 'data': {'imported': 0, 'import_id': import_id}}), 400
 
     imported = 0
     errors = []
@@ -1348,17 +1549,217 @@ def events_bulk():
     except Exception:
         session.rollback()
         app.logger.exception('Failed to bulk import events')
-        return jsonify({'error': 'Failed to import events'}), 500
+        # The rollback above cannot undo MyISAM inserts, so the record states
+        # the count reached rather than claiming nothing happened.
+        _write_import_record(
+            import_id,
+            auth_user,
+            original_name,
+            len(raw),
+            imported_count=imported,
+            errors=errors + ['The import failed part-way through and was not completed.'],
+        )
+        return jsonify({'error': 'Failed to import events', 'data': {'imported': imported, 'import_id': import_id}}), 500
     finally:
         session.close()
 
-    result = {'imported': imported}
+    _write_import_record(
+        import_id, auth_user, original_name, len(raw), imported_count=imported, errors=errors
+    )
+
+    result = {'imported': imported, 'import_id': import_id}
     if errors:
         result['errors'] = errors
     # Report an all-failure (nothing imported) as a client error so the UI can
     # surface it instead of showing a false success.
     status = 201 if imported else 400
     return jsonify({'data': result}), status
+
+@app.route('/api/events/imports')
+@requires_auth
+@requires_roles('admin')
+def events_imports_list():
+    """List archived bulk imports, newest first.
+
+    ---
+    summary: List archived bulk imports, newest first
+    description: Requires the `admin` role.
+    parameters:
+    - name: limit
+      in: query
+      type: integer
+      required: false
+      description: Maximum records to return. Defaults to 100, capped at 500.
+    - name: offset
+      in: query
+      type: integer
+      required: false
+      description: Records to skip, for paging. Defaults to 0.
+    responses:
+      '200':
+        description: Archived imports, newest first
+        schema:
+          type: object
+          properties:
+            data:
+              type: array
+              items:
+                type: object
+                properties:
+                  record_version:
+                    type: integer
+                    description: Schema version of this record; currently 1
+                  import_id:
+                    type: string
+                  submitted_at:
+                    type: string
+                    format: date-time
+                    description: ISO 8601 UTC, e.g. 2026-08-13T14:45:12Z
+                  submitted_by_id:
+                    type: integer
+                    description: users.id of the submitter; null if unresolved
+                  submitted_by:
+                    type: string
+                    description: User name of the submitter
+                  original_name:
+                    type: string
+                    description: File name as submitted. Treated as PHI; never logged.
+                  size_bytes:
+                    type: integer
+                  outcome:
+                    type: string
+                    enum:
+                    - imported
+                    - partial
+                    - rejected
+                    - refused
+                    - unknown
+                    description: >
+                      Derived from what happened. `refused` means the submission
+                      exceeded the size cap and its contents were not archived.
+                      `unknown` appears only on incomplete records, where the
+                      manifest is missing or unreadable.
+                  file_available:
+                    type: boolean
+                    description: >
+                      Whether the submission's contents were archived and can be
+                      downloaded. False only on `refused` records.
+                  imported_count:
+                    type: integer
+                    description: Events created; null on an incomplete record
+                  skipped_count:
+                    type: integer
+                    description: Rows skipped; null on an incomplete record
+                  errors:
+                    type: array
+                    items:
+                      type: string
+                    description: Skipped-row messages in file order, verbatim
+                  incomplete:
+                    type: boolean
+                    description: >
+                      Present and true only when the manifest is missing or
+                      unreadable and the record was reconstructed from the
+                      archived file alone.
+            total:
+              type: integer
+              description: Total archived imports, for paging
+      '403':
+        description: Caller lacks the admin role
+    """
+    limit = get_limit(100) or 100
+    limit = max(1, min(limit, 500))
+    records, total = import_archive.list_records(
+        IMPORT_ARCHIVE_DIR, limit=limit, offset=get_offset(0)
+    )
+    return jsonify({'data': records, 'total': total})
+
+
+@app.route('/api/events/imports/<import_id>')
+@requires_auth
+@requires_roles('admin')
+def events_import_detail(import_id: str):
+    """Fetch one archived import record.
+
+    ---
+    summary: Fetch one archived import record
+    description: Requires the `admin` role.
+    parameters:
+    - name: import_id
+      in: path
+      type: string
+      required: true
+      description: >
+        Must match `^\\d{8}T\\d{6}Z-[0-9a-f]{8}$`. A malformed id returns 404,
+        indistinguishable from a missing record.
+    responses:
+      '200':
+        description: The import record, including every skipped row
+        schema:
+          type: object
+          properties:
+            data:
+              type: object
+              description: >
+                An import record; see GET /api/events/imports for the shape.
+      '403':
+        description: Caller lacks the admin role
+      '404':
+        description: No such import, or the id is malformed
+    """
+    record = import_archive.read_record(IMPORT_ARCHIVE_DIR, import_id)
+    if record is None:
+        abort(404)
+    return jsonify({'data': record})
+
+
+@app.route('/api/events/imports/<import_id>/file')
+@requires_auth
+@requires_roles('admin')
+def events_import_file(import_id: str):
+    """Download an archived bulk-import submission verbatim.
+
+    ---
+    summary: Download the archived submission verbatim
+    description: >
+      Requires the `admin` role. Streams the stored bytes unmodified as
+      `text/csv`, attached as `<import_id>.csv`. The name as submitted is in
+      the import record, not the Content-Disposition header.
+    produces:
+    - text/csv
+    responses:
+      '200':
+        description: The submitted file, byte-for-byte
+        schema:
+          type: file
+      '403':
+        description: Caller lacks the admin role
+      '404':
+        description: >
+          No such import, the id is malformed, or the record exists but its
+          contents were never archived (`file_available: false`, i.e. a
+          `refused` submission).
+    """
+    try:
+        path = import_archive.submission_path(IMPORT_ARCHIVE_DIR, import_id)
+    except import_archive.InvalidImportId:
+        abort(404)
+    if not os.path.exists(path):
+        # Either no such import, or a refused one whose contents were never
+        # kept. Both are "nothing to download" from the caller's side.
+        abort(404)
+
+    from flask import send_file
+    # The download name is the generated id, never the name as submitted: that
+    # is untrusted input, and it may carry identifying text we will not put in
+    # a response header.
+    return send_file(
+        path,
+        as_attachment=True,
+        download_name=f'{import_id}.csv',
+        mimetype='text/csv',
+    )
+
 
 @app.route('/api/events/<int:event_id>/upload_scrubbed', methods=['POST'])
 @requires_auth

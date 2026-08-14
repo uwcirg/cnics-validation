@@ -80,6 +80,91 @@ Updated all download links to use proper download attributes:
 | `.doc` | `application/msword` | Microsoft Word 97-2003 |
 | `.docx` | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | Microsoft Word 2007+ |
 
+## 🗄️ Bulk-Import Archive
+
+Separate from event packets: every CSV submitted at `/events/addMany`
+(`POST /api/events/bulk`) is written to disk **before it is parsed**, together
+with a JSON manifest of what the import did. Administrators review the history
+at `/events/imports`.
+
+### Storage layout
+
+Archived submissions live in an `imports/` subdirectory of the uploads volume,
+deliberately **not** its root, so they can never be matched by the candidate
+scan in `events_download` — the two namespaces stay disjoint in both
+directions.
+
+```text
+/opt/backend/uploads/                    # DOWNLOADS_DIR
+├── 4711.zip                             # event packet
+└── imports/                             # mode 0750, created on demand
+    ├── 20260813T144512Z-7f3a1c2b.csv    # the submitted bytes, verbatim
+    └── 20260813T144512Z-7f3a1c2b.json   # the import record for it
+```
+
+The directory holds three shapes, all of which the read endpoints handle:
+
+| On disk | Meaning | Shown as |
+|---|---|---|
+| `.csv` + `.json` | Normal — a processed submission and its outcome | The record as written |
+| `.csv` only | The manifest write failed after the import | `outcome: unknown`, `incomplete: true` |
+| `.json` only | Refused over the size cap before its contents were kept | `outcome: refused`, no download |
+
+### Id grammar
+
+```text
+<YYYYMMDD>T<HHMMSS>Z-<8 hex>       regex: ^\d{8}T\d{6}Z-[0-9a-f]{8}$
+```
+
+The UTC timestamp prefix makes a lexical sort chronological, so "newest first"
+costs no manifest reads. The 8 hex digits of entropy keep two submissions in
+the same second from colliding, and writes use exclusive creation so a
+collision would fail loudly rather than overwrite. The name deliberately
+carries **no** original file name: administrators name files after sites and
+patients, and directory listings are not the place for that. The name as
+submitted is kept inside the manifest, which has the same access protection as
+the contents.
+
+Every client-supplied id is matched against that regex before it touches
+`os.path.join`, and the resolved path is asserted to sit inside the archive.
+Either failure is a 404 — an invalid id and a missing record look identical
+from outside.
+
+### Configuration
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `IMPORT_ARCHIVE_DIR` | `<UPLOAD_DIR>/imports` | Move the archive, e.g. onto a separately backed-up mount |
+| `MAX_IMPORT_CSV_BYTES` | `10485760` (10 MB) | Refuse larger submissions before their contents are stored |
+
+Both are optional, and both must be listed under the `backend` service in
+`docker-compose.yaml`: Compose reads `.env` for `${...}` substitution but does
+not auto-inject variables into containers.
+
+`MAX_IMPORT_CSV_BYTES` is checked inside the CSV endpoint on purpose. Flask's
+global `MAX_CONTENT_LENGTH` would also cap event-packet uploads, which are
+legitimately large ZIPs — a 10 MB global cap would break them.
+
+### Two behaviors worth knowing before you deploy
+
+- **Archiving is fail-closed.** The write happens before the parse, and if it
+  fails the request returns 500 and creates **no events**. A full or read-only
+  uploads volume therefore blocks bulk import; single-event creation at
+  `/events/add` still works. An unarchived import is invisible after the fact,
+  which is the exact problem the archive exists to prevent, so it refuses
+  loudly instead.
+- **A failed manifest write does not fail the request.** By then the bytes are
+  safe and the events exist — and the shared tables are MyISAM, so the
+  handler's `session.rollback()` cannot undo them. The reader renders the
+  submission as an incomplete record instead.
+
+Nothing in the application deletes, rotates, truncates, or overwrites an
+archived file. Purging, if it is ever needed, is an operator action on the
+volume. Archived CSVs contain site patient identifiers and event dates: treat
+them as PHI, exactly like event packets. No file name, file content, or
+skipped-row text is ever logged — failures log the import id and an error
+class only.
+
 ## 🧪 Testing Guide
 
 ### Test File Upload/Download
