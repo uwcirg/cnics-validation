@@ -872,10 +872,12 @@ def send_events(event_ids: list[int], sender_id: int) -> dict:
         session.close()
 
 def get_event_details(event_id: int) -> dict:
-    """Return a single event with related usernames and patient identifiers.
+    """Return a single event with related usernames, patient identifiers, and criteria.
 
     Includes core dates, status, creator/uploader/screener/assigner/sender usernames,
-    and patient `site_patient_id` and `site`.
+    patient `site_patient_id` and `site`, and the event's ascertainment `criteria`
+    as a list of ``{"name": ..., "value": ...}`` dicts (``[]`` when the event has
+    none).
     """
     session = get_session()
     try:
@@ -927,14 +929,36 @@ def get_event_details(event_id: int) -> dict:
         row = session.execute(query, {"event_id": event_id}).mappings().first()
         if not row:
             return {}
+        # Criteria are fetched separately rather than joined above. Joining
+        # `criterias` would multiply the single event row by the criteria count,
+        # and GROUP_CONCAT cannot carry structured pairs safely: `name` and
+        # `value` are free text, so any delimiter we picked could appear inside
+        # them. The table is indexed on event_id, so this is one indexed read.
+        criteria_rows = session.execute(
+            text(
+                """
+                SELECT c.name AS name, c.value AS value
+                FROM criterias c
+                WHERE c.event_id = :event_id
+                ORDER BY c.name, c.id
+                """
+            ),
+            {"event_id": event_id},
+        ).mappings().all()
         # Serialize date columns as ISO (YYYY-MM-DD). Flask's default JSON
         # otherwise renders a Python date as an RFC-1123 string
         # ("Fri, 21 Nov 2003 00:00:00 GMT"), which an <input type="date"> on
         # the edit page cannot parse, leaving the Event date control blank.
-        return {
+        details = {
             key: (value.isoformat() if isinstance(value, datetime.date) else value)
             for key, value in row.items()
         }
+        # Always a list, never None, so the upload page has one shape to render
+        # for "this event has no criteria" (which is a legitimate state).
+        details["criteria"] = [
+            {"name": c["name"], "value": c["value"]} for c in criteria_rows
+        ]
+        return details
     finally:
         session.close()
 

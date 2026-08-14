@@ -64,9 +64,9 @@ function Table({ rows }) {
               key={idx}
               className="clickable"
               onClick={() =>
-                navigate(
-                  `/events/upload?event_id=${row['ID']}&patient_id=${row['Patient ID']}&date=${row['Date']}&criteria=${encodeURIComponent(row['Criteria'])}`
-                )
+                // Event id only; the upload page loads the identifying values
+                // from the stored record.
+                navigate(`/events/upload?event_id=${row['ID']}`)
               }
             >
               {headers.map((h) => (

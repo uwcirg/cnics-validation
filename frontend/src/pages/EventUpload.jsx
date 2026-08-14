@@ -6,6 +6,9 @@ import './EventUpload.css'
 
 const PAGE_SIZE = 20
 const API_BASE = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || '')
+// Placeholder for a value the record legitimately does not carry. Matches the
+// convention already used on the scrub and screen pages.
+const EMPTY_VALUE = '—'
 
 // Render one guidance box's optional file links. Kept identical to Home's
 // GuidanceLinks so the "Review packets should contain" box renders the same in
@@ -74,9 +77,10 @@ function TableWrapper({ endpoint, columns, renderActions, pageSize = PAGE_SIZE }
   }, [search, siteFilter])
 
   const handleClick = (row) => {
-    navigate(
-      `/events/upload?event_id=${row['ID']}&patient_id=${row['Patient ID']}&date=${row['Date']}&criteria=${encodeURIComponent(row['Criteria'])}`
-    )
+    // Only the event id travels in the link. The upload page reads the
+    // identifying values from the stored record, so passing them here would be
+    // both redundant and a source of staleness.
+    navigate(`/events/upload?event_id=${row['ID']}`)
   }
   const sites = Array.from(
     new Set(rows.map((r) => r['Site'] || r['site']).filter(Boolean))
@@ -117,10 +121,12 @@ function EventUpload({ studyType, configResolved = true }) {
   // identical, study-aware guidance.
   const guidance = resolveReviewGuidance(studyType)
   const navigate = useNavigate()
+  // `event_id` is the only query parameter this page reads. The identifying
+  // values are fetched from the stored record below, so a link, a bookmark, and
+  // the row action button all render the same thing. Older links may still
+  // carry patient_id/date/criteria; those are ignored, not rejected.
   const eventId = searchParams.get('event_id')
-  const patientId = searchParams.get('patient_id')
-  const date = searchParams.get('date')
-  const criteria = searchParams.get('criteria')
+  const [details, setDetails] = useState(null)
   // State for the upload UI only (search/table browsing removed to match Home)
   const [noPacketReason, setNoPacketReason] = useState('')
   const [priorEventDateKnown, setPriorEventDateKnown] = useState('')
@@ -143,6 +149,22 @@ function EventUpload({ studyType, configResolved = true }) {
   // No homepage-style preloading or local search; use the shared TableWrapper instead
 
   // Removed client-side table browsing/filtering
+
+  // Load the event's identifying details so the uploader can cross-reference
+  // them against the packet in hand before attaching a file. Mirrors the fetch
+  // in EventScrub. No request is made when browsing the list (no event_id).
+  useEffect(() => {
+    if (!eventId) return
+    fetch(`${API_BASE}/api/events/${encodeURIComponent(eventId)}`, {
+      credentials: 'include',
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error('load')
+        return res.json()
+      })
+      .then((json) => setDetails(json.data || null))
+      .catch(() => setDetails(null))
+  }, [eventId])
 
   const handleUploadSubmit = async (e) => {
     e.preventDefault()
@@ -208,12 +230,24 @@ function EventUpload({ studyType, configResolved = true }) {
         </section>
       )}
 
-      {eventId && (
+      {eventId && details && (
         <div className="infobox">
           <div>Packet for MI {eventId}</div>
-          <div>Patient ID: {patientId}</div>
-          <div>Date: {date}</div>
-          <div>Criteria: {criteria}</div>
+          {/* Patient ID and Site Patient ID are labelled separately on purpose:
+              the uploader cross-references the site's own identifier against
+              the packet, so collapsing the two into one line would defeat the
+              check this box exists for. */}
+          <div>Patient ID: {details.patient_id}</div>
+          <div>Site Patient ID: {details.site_patient_id}</div>
+          <div>Date: {details.event_date}</div>
+          <div>
+            Criteria:{' '}
+            {details.criteria && details.criteria.length > 0
+              ? details.criteria
+                  .map((c) => `${c.name}: ${c.value || EMPTY_VALUE}`)
+                  .join(', ')
+              : EMPTY_VALUE}
+          </div>
         </div>
       )}
 
