@@ -614,6 +614,51 @@ def events_by_status(status: str):
 @app.route('/api/events/<int:event_id>')
 @requires_auth
 def get_event_details(event_id: int):
+    """Return one event with its patient identifiers and ascertainment criteria.
+
+    The packet-upload page cross-references these values against the packet in
+    hand before accepting a file, so `patient_id`, `site_patient_id`,
+    `event_date`, and `criteria` are all served from the stored record rather
+    than passed between pages in the query string.
+    ---
+    responses:
+      200:
+        description: Event details
+        schema:
+          type: object
+          properties:
+            data:
+              type: object
+              properties:
+                id:
+                  type: integer
+                patient_id:
+                  type: integer
+                site_patient_id:
+                  type: string
+                site:
+                  type: string
+                status:
+                  type: string
+                event_date:
+                  type: string
+                  description: ISO date (YYYY-MM-DD)
+                criteria:
+                  type: array
+                  description: >
+                    Ascertainment criteria for this event, ordered by name then
+                    id. Always present; an empty list when the event has none,
+                    which is a legitimate state since criteria are optional.
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      value:
+                        type: string
+      404:
+        description: No such event
+    """
     try:
         details = table_service.get_event_details(event_id)
         if not details:

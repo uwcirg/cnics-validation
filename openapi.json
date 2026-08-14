@@ -67,7 +67,46 @@ paths:
                 additionalProperties:
                   type: integer
   /api/events/by_status/{status}: {}
-  /api/events/{int:event_id}: {}
+  /api/events/{int:event_id}:
+    get:
+      responses:
+        '200':
+          description: Event details
+          schema:
+            type: object
+            properties:
+              data:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  patient_id:
+                    type: integer
+                  site_patient_id:
+                    type: string
+                  site:
+                    type: string
+                  status:
+                    type: string
+                  event_date:
+                    type: string
+                    description: ISO date (YYYY-MM-DD)
+                  criteria:
+                    type: array
+                    description: 'Ascertainment criteria for this event, ordered by
+                      name then id. Always present; an empty list when the event has
+                      none, which is a legitimate state since criteria are optional.
+
+                      '
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        value:
+                          type: string
+        '404':
+          description: No such event
   /api/sites: {}
   /api/users: {}
   /api/auth/me: {}
