@@ -1,0 +1,247 @@
+# Contract fragment: bulk-import archive
+#
+# Feature: 009-save-import-csv
+#
+# This is the authored source of truth for the docstring YAML blocks that
+# `python -m flask_backend.generate_openapi` splats into the repository's
+# `openapi.json`. Schemas are Swagger 2.0 style (schema directly under a
+# response code), matching the rest of that file — see the NOTE in
+# flask_backend/generate_openapi.py before "fixing" this to OpenAPI 3.0.
+#
+# Paths appear exactly as the generator emits them: Flask converter syntax
+# leaks into the path template (e.g. `{int:event_id}`), and `import_id` has
+# no converter so it emits bare.
+#
+# `/api/events/bulk` is currently an empty `{}` placeholder at openapi.json:149
+# because its docstring has no YAML block. This feature fills it in.
+
+paths:
+
+  /api/events/bulk:
+    post:
+      summary: Bulk-create events from an uploaded CSV, archiving the submission
+      description: >
+        Unchanged import behavior, with the submitted file archived before
+        parsing. Requires the `admin` role. The submission is archived whether
+        the import succeeds, partly succeeds, or is rejected; if it cannot be
+        archived, the request fails and no events are created.
+      consumes:
+      - multipart/form-data
+      parameters:
+      - name: events_csv
+        in: formData
+        type: file
+        required: true
+        description: >
+          CSV where each line is `site_patient_id, site_name, event_date,
+          [criterion_name, criterion_value]...`. Rejected above
+          MAX_IMPORT_CSV_BYTES (default 10 MB).
+      responses:
+        '201':
+          description: One or more events were created
+          schema:
+            type: object
+            properties:
+              data:
+                type: object
+                properties:
+                  imported:
+                    type: integer
+                    description: Number of events created
+                  errors:
+                    type: array
+                    items:
+                      type: string
+                    description: Skipped rows; omitted when every row imported
+                  import_id:
+                    type: string
+                    description: >
+                      Id of the archived submission. NEW — additive; existing
+                      clients that read only `imported` and `errors` are
+                      unaffected.
+        '400':
+          description: >
+            No file provided, not UTF-8 text, or no row could be imported. The
+            submission is archived even in this case.
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              data:
+                type: object
+                properties:
+                  imported:
+                    type: integer
+                  errors:
+                    type: array
+                    items:
+                      type: string
+                  import_id:
+                    type: string
+        '403':
+          description: Caller lacks the admin role
+        '413':
+          description: >
+            Submission exceeds MAX_IMPORT_CSV_BYTES. Contents are not archived
+            and no events are created, but the attempt is recorded as an import
+            record with outcome `refused`, so the refusal is visible in the
+            history.
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              data:
+                type: object
+                properties:
+                  import_id:
+                    type: string
+                    description: Id of the `refused` record written for this attempt
+        '500':
+          description: >
+            The submission could not be archived, or the import failed. When
+            archiving fails no events are created (fail-closed).
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+
+  /api/events/imports:
+    get:
+      summary: List archived bulk imports, newest first
+      description: Requires the `admin` role.
+      parameters:
+      - name: limit
+        in: query
+        type: integer
+        required: false
+        description: Maximum records to return. Defaults to 100, capped at 500.
+      - name: offset
+        in: query
+        type: integer
+        required: false
+        description: Records to skip, for paging. Defaults to 0.
+      responses:
+        '200':
+          description: Archived imports, newest first
+          schema:
+            type: object
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: '#/definitions/ImportRecord'
+              total:
+                type: integer
+                description: Total archived imports, for paging
+        '403':
+          description: Caller lacks the admin role
+
+  /api/events/imports/{import_id}:
+    get:
+      summary: Fetch one archived import record
+      description: Requires the `admin` role.
+      parameters:
+      - name: import_id
+        in: path
+        type: string
+        required: true
+        description: >
+          Must match `^\d{8}T\d{6}Z-[0-9a-f]{8}$`. A malformed id returns 404,
+          indistinguishable from a missing record.
+      responses:
+        '200':
+          description: The import record, including every skipped row
+          schema:
+            type: object
+            properties:
+              data:
+                $ref: '#/definitions/ImportRecord'
+        '403':
+          description: Caller lacks the admin role
+        '404':
+          description: No such import, or the id is malformed
+
+  /api/events/imports/{import_id}/file:
+    get:
+      summary: Download the archived submission verbatim
+      description: >
+        Requires the `admin` role. Streams the stored bytes unmodified as
+        `text/csv`, attached as `<import_id>.csv`. The name as submitted is in
+        the import record, not the Content-Disposition header.
+      produces:
+      - text/csv
+      responses:
+        '200':
+          description: The submitted file, byte-for-byte
+          schema:
+            type: file
+        '403':
+          description: Caller lacks the admin role
+        '404':
+          description: >
+            No such import, the id is malformed, or the record exists but its
+            contents were never archived (`file_available: false`, i.e. a
+            `refused` submission).
+
+definitions:
+
+  ImportRecord:
+    type: object
+    properties:
+      record_version:
+        type: integer
+        description: Schema version of this record; currently 1
+      import_id:
+        type: string
+      submitted_at:
+        type: string
+        format: date-time
+        description: ISO 8601 UTC, e.g. 2026-08-13T14:45:12Z
+      submitted_by_id:
+        type: integer
+        description: users.id of the submitter; null if unresolved
+      submitted_by:
+        type: string
+        description: Login name of the submitter
+      original_name:
+        type: string
+        description: File name as submitted. Treated as PHI; never logged.
+      size_bytes:
+        type: integer
+      outcome:
+        type: string
+        enum:
+        - imported
+        - partial
+        - rejected
+        - refused
+        - unknown
+        description: >
+          Derived from what happened. `refused` means the submission exceeded
+          the size cap and its contents were not archived. `unknown` appears
+          only on incomplete records, where the manifest is missing or
+          unreadable.
+      file_available:
+        type: boolean
+        description: >
+          Whether the submission's contents were archived and can be
+          downloaded. False only on `refused` records.
+      imported_count:
+        type: integer
+        description: Events created; null on an incomplete record
+      skipped_count:
+        type: integer
+        description: Rows skipped; null on an incomplete record
+      errors:
+        type: array
+        items:
+          type: string
+        description: Skipped-row messages in file order, verbatim
+      incomplete:
+        type: boolean
+        description: >
+          Present and true only when the manifest is missing or unreadable and
+          the record was reconstructed from the archived file alone.
