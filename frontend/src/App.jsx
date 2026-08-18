@@ -13,6 +13,7 @@ import EventAssignThird from './pages/EventAssignThird'
 import EventDownload from './pages/EventDownload'
 import EventEdit from './pages/EventEdit'
 import EventExport from './pages/EventExport'
+import EventImports from './pages/EventImports'
 import EventIndex from './pages/EventIndex'
 import EventReupload from './pages/EventReupload'
 import EventReview from './pages/EventReview'
@@ -165,6 +166,13 @@ function App() {
           <Route path="/events/addMany" element={
             <ProtectedRoute requiredRoles={['admin']} auth={auth}>
               <EventAddMany />
+            </ProtectedRoute>
+          } />
+          {/* Shared across studies: the VTE bulk-import page posts to the
+              same endpoint, so its submissions appear here too. */}
+          <Route path="/events/imports" element={
+            <ProtectedRoute requiredRoles={['admin']} auth={auth}>
+              <EventImports />
             </ProtectedRoute>
           } />
           <Route path="/vte/addMany" element={

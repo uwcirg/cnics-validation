@@ -21,6 +21,9 @@ function Admin() {
               <Link to="/events/addMany">Add multiple events from a CSV file</Link>
             </li>
             <li>
+              <Link to="/events/imports">View past CSV imports</Link>
+            </li>
+            <li>
               <Link to="/events/export">Export all events as CSV</Link>
             </li>
           </ul>

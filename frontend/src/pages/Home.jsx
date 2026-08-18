@@ -175,6 +175,9 @@ function Home({ auth, studyType, configResolved = true }) {
                 <Link to="/events/addMany">Add multiple events from a CSV file</Link>
               </li>
               <li>
+                <Link to="/events/imports">View past CSV imports</Link>
+              </li>
+              <li>
                 <a href={`${API_BASE}/api/events/export?format=csv`}>Export all events as CSV</a>
               </li>
             </ul>
