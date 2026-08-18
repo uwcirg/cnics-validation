@@ -159,11 +159,92 @@ legitimately large ZIPs — a 10 MB global cap would break them.
   submission as an incomplete record instead.
 
 Nothing in the application deletes, rotates, truncates, or overwrites an
-archived file. Purging, if it is ever needed, is an operator action on the
-volume. Archived CSVs contain site patient identifiers and event dates: treat
-them as PHI, exactly like event packets. No file name, file content, or
-skipped-row text is ever logged — failures log the import id and an error
-class only.
+archived file, and nothing in it ever will — see *Purging the archive* below
+for the only removal path. Archived CSVs contain site patient identifiers and
+event dates: treat them as PHI, exactly like event packets. No file name, file
+content, or skipped-row text is ever logged — failures log the import id and an
+error class only.
+
+### Purging the archive
+
+The application never removes an archived submission, on any schedule or
+trigger. Purging is a manual action on the uploads volume, and its audience is
+the **operator** — whoever has shell access to the deployment host and can run
+`docker compose`. That is not the same as the application's administrator role:
+signing in as an admin and reaching `/events/imports` confers no ability to
+delete anything, by design.
+
+Run every command below from the deployment directory. The archive lives on the
+`cnics-downloads` named volume, which is scoped to `COMPOSE_PROJECT_NAME`, so on
+a host running two studies side by side the wrong working directory purges the
+wrong study's archive.
+
+**1. Look before you delete.**
+
+```bash
+docker compose exec backend ls -la /opt/backend/uploads/imports
+```
+
+If `IMPORT_ARCHIVE_DIR` is set for this deployment, substitute that path here
+and in every command that follows.
+
+**2. Take a copy first — optional, and it is PHI.**
+
+A purge is irreversible: the archive is the only copy of what was submitted.
+
+```bash
+docker compose cp backend:/opt/backend/uploads/imports ./imports-backup-20260818
+```
+
+Skip this step when the intent is to destroy the data — the whole point of a
+purge is usually that these files should no longer exist. If you do take a
+copy, it carries site patient identifiers off the protected volume and onto
+whatever filesystem you are standing in: put it somewhere access-controlled,
+and delete it when you are done with it.
+
+**3a. Purge the whole archive.**
+
+```bash
+docker compose exec backend sh -c \
+  'rm -f /opt/backend/uploads/imports/*.csv /opt/backend/uploads/imports/*.json'
+```
+
+**3b. Or remove a single import**, by its id. The id is not a column in the
+history table — select the import at `/events/imports` and read it from the
+URL (`?import_id=20260813T144512Z-7f3a1c2b`), or match on submission time in
+the listing from step 1:
+
+```bash
+docker compose exec backend sh -c \
+  'rm -f /opt/backend/uploads/imports/20260813T144512Z-7f3a1c2b.*'
+```
+
+> **Delete the pair, never one half.** The `.*` glob above is deliberate. A
+> submission is a `.csv` and a `.json` with the same stem, and the read
+> endpoints infer meaning from which of the two is present (see the three
+> shapes table above). Deleting only the `.json` leaves a record that reports
+> itself as `refused` — as though the submission had been rejected over the
+> size cap — and deleting only the `.csv` leaves one that reports `incomplete`,
+> as though the import had crashed mid-write. Either way the history now
+> asserts something that did not happen, which is worse than the entry being
+> gone.
+
+**4. Confirm the result.** Reload `/events/imports`: it lists what survived, and
+an empty archive renders as an empty list rather than an error. Then run a small
+bulk import — it writes a fresh pair and appears in the history as usual.
+
+Two things worth knowing:
+
+- **Keeping the directory is optional.** The list endpoint treats a missing
+  archive directory as "no imports yet", and the next submission recreates it at
+  mode `0750` before writing. Removing the directory itself with `rm -rf` is
+  therefore safe; recreating it by hand is not necessary, and if you do, match
+  that mode — these files are PHI and must not be world-readable.
+- **Purging removes the audit trail, not the data.** The events and criteria
+  those imports created remain exactly as they are; nothing in the application
+  links an event back to the submission that produced it. After a purge you can
+  still see what exists in the study, but no longer what was uploaded to
+  produce it, who uploaded it, or which rows were skipped.
 
 ## 🧪 Testing Guide
 

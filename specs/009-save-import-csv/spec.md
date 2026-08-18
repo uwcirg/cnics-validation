@@ -24,6 +24,11 @@ The same page fails the administrator while the import is running and when it fi
 - Q: Which notifications become persistent and manually dismissible? → A: Application-wide in the shared notification component — warning and error notifications persist until the administrator dismisses them and their text is selectable for copying; success and informational notifications continue to auto-dismiss.
 - Q: How should the app-wide button restyle be scoped? → A: A single accessible default button style applied application-wide, meeting WCAG AA (≥3:1 for the button against the page background, ≥4.5:1 for its label), with visible hover, focus, and disabled states. No primary/secondary variants and no per-page markup changes.
 - Q: How should the import result present its skipped-row detail? → A: A summary headline with the counts, followed by every skipped row on its own line in a scrollable, selectable region, a copy-all control, and a link to this submission's record in the import history.
+- Q: Where does the manual-purge procedure for the import archive get documented? → A: In place, in the existing `## 🗄️ Bulk-Import Archive` section of `docs/file-handling-improvements.md` — no new document.
+- Q: Who is the purge procedure written for, and does the application surface it? → A: The **operator** — whoever has shell/Docker access on the deployment host (FR-012's term). The application-role administrator is a distinct audience; no UI change accompanies the procedure.
+- Q: Which purge procedures are documented? → A: Two — purge the whole archive, and remove one import by id — each stressing that the `.csv`/`.json` pair must be removed together, since a lone file renders as an incomplete or refused record. No age-based or scheduled variant, which would contradict the out-of-scope retention policy.
+- Q: How does the procedure treat a copy taken before purging? → A: Optional, never mandatory, and carried with an explicit PHI warning — any copy lands in an access-controlled location and is deleted when no longer needed; the uploads volume is named as the protected store.
+- Q: Is documenting the purge a tracked deliverable of this feature? → A: Yes — FR-021 requires the deployment documentation to describe operator removal, and one task in `tasks.md` covers the edit.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -153,6 +158,7 @@ Every button in the application — Add on the bulk-import page and its counterp
 - **FR-018**: The result of a bulk import MUST present a summary of the counts followed by each skipped row on its own line in a scrollable region, a control that copies the full result as text, and a link to that submission's record in the import history.
 - **FR-019**: The deployment MUST allow a bulk import to run to completion without the request being terminated by an intermediary; the read timeout of any proxy or server in front of the application MUST exceed the time a maximum-size import takes to process.
 - **FR-020**: Buttons throughout the application MUST meet WCAG AA contrast — at least 3:1 for the button against the page background and at least 4.5:1 for its label against the button — and MUST have visually distinct hover, keyboard-focus, and unavailable states. This applies to every button in the application, not only those on the bulk-import page.
+- **FR-021**: The deployment documentation MUST describe how an operator removes archived submissions — both purging the archive in full and removing a single import by id — including that a submission's file and its record must be removed together, that any copy taken beforehand is optional and holds PHI, and how to confirm the result. The application itself MUST still never remove them (FR-012).
 
 ### Key Entities
 
@@ -182,7 +188,7 @@ Every button in the application — Add on the bulk-import page and its counterp
 ## Assumptions
 
 - **Failure to archive blocks the import.** If a submitted file cannot be retained (storage unavailable, full, or read-only), the submission is refused with a clear message and no events are created, rather than importing without an archival copy. A bulk import that leaves no record is the exact situation this feature exists to prevent, and refusing is recoverable — the administrator can retry once storage is fixed — whereas a silent unarchived import is not. Flagged for confirmation: this makes a storage fault block event creation, which is a real operational trade-off.
-- **Retention is indefinite.** Archived submissions are small text files; no automatic expiry or purge is defined. Removal is a deliberate operator action, out of scope here.
+- **Retention is indefinite.** Archived submissions are small text files; no automatic expiry or purge is defined and the application never removes one. Removal is a deliberate operator action performed directly on the uploads volume; the procedure for it is documented rather than built (FR-021), and the operator who runs it is a different audience from the application-role administrator who performs imports.
 - **Size limit default.** Submissions above roughly 10 MB have their contents refused. Real bulk imports are a few kilobytes to a few hundred kilobytes; this bound exists to stop a mis-selected file from filling study storage, not to constrain legitimate use. The refusal itself is recorded, so the trade-off is "we did not keep 200 MB", never "nobody can tell this happened".
 - **Audience is administrators only.** Bulk import is already restricted to administrators, so the archive inherits that same audience. No new role is introduced.
 - **Archived CSVs contain PHI.** They carry site patient identifiers and event dates, so they are treated exactly like event packets: protected storage, authenticated access, never logged.
@@ -197,7 +203,7 @@ Every button in the application — Add on the bulk-import page and its counterp
 
 - Editing, re-running, or rolling back a past import.
 - Linking an individual created event back to the import that produced it.
-- Automatic purging, archiving to cold storage, or retention policy enforcement.
+- Automatic or scheduled purging, archiving to cold storage, and retention policy enforcement. A manual operator purge is documented (FR-021) but never performed, prompted, or scheduled by the application, and no age-based recipe is offered.
 - Extending archival to other uploads (event packets and scrubbed charts are already retained by existing behavior).
 - Any change to CSV format, parsing rules, or validation messages. The wording of a skipped-row reason is unchanged; only how those reasons are displayed changes.
 - Converting bulk import to an asynchronous background job, and the true row-by-row percentage progress that would enable.
