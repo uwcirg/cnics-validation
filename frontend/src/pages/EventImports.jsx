@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import DataTable from '../components/DataTable'
 import { showToast } from '../components/Toast'
 
@@ -37,6 +38,11 @@ function EventImports() {
   const [totalCount, setTotalCount] = useState(null)
   const [selected, setSelected] = useState(null)
   const [loaded, setLoaded] = useState(false)
+  // The selection lives in the URL so the bulk-import result panel can link
+  // straight to one record (FR-018) rather than to an undifferentiated list in
+  // which the administrator has to find their own import by timestamp.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedImportId = searchParams.get('import_id')
 
   // The whole page is fetched at once and DataTable paginates and sorts it —
   // 20 rows a page, any column — which is why PAGE_LIMIT matches the API's
@@ -61,6 +67,18 @@ function EventImports() {
       })
       .catch(() => setLoaded(true))
   }, [])
+
+  // Open the record named by `?import_id=` once the list is in hand. Kept
+  // separate from the fetch so that selecting a row — which writes the same
+  // parameter back to the URL — does not re-request the list.
+  useEffect(() => {
+    if (!loaded || !requestedImportId) return
+    const requested = records.find((r) => r.import_id === requestedImportId)
+    if (requested) setSelected(requested)
+    else if (records.length > 0) {
+      showToast('That import is not among the imports listed here.', 'warning')
+    }
+  }, [loaded, records, requestedImportId])
 
   // DataTable renders whatever keys the column list names, so the display
   // shape is built here and the raw record is carried along for the detail
@@ -103,7 +121,15 @@ function EventImports() {
             'Skipped',
             'Outcome',
           ]}
-          onRowClick={(row) => setSelected(row.record)}
+          onRowClick={(row) => {
+            setSelected(row.record)
+            // Keep the URL in step with the selection, so a selected record can
+            // be linked to or reloaded. `replace` keeps the Back button
+            // pointing at wherever the administrator came from.
+            if (row.record?.import_id) {
+              setSearchParams({ import_id: row.record.import_id }, { replace: true })
+            }
+          }}
         />
       )}
 

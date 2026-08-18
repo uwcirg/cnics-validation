@@ -281,3 +281,348 @@ satisfied by the existing pagination rather than new code.
 | Existing test disposition | Rewritten, not deleted (D7) |
 | Study-specific handling | None needed; no VTE fork (D9) |
 | Migration plan | Not applicable — no schema change (D2) |
+
+---
+
+# Phase 0 (amendment, 2026-08-17) — import feedback and button legibility
+
+Decisions D10–D19 cover the spec amendment. D1–D9 above are unchanged.
+
+## D10. Why a successful import reported "CSV upload failed" (recorded before modification, per Principle VI)
+
+**Observed**: The administrator's browser received, as the response to
+`POST /api/events/bulk`, the application's own HTML shell. The captured body
+contains `import { injectIntoGlobalHook } from "/@react-refresh"` and
+`<script type="module" src="/@vite/client">`. Neither string exists in any file
+in this repository — both are injected at request time by the **Vite dev
+server**. The response therefore came from the `web` service, not from Flask
+and not from a static build.
+
+**Mechanism**: `frontend/default.env:5` sets `VITE_API_URL=` (empty), so
+`EventAddMany.jsx:7` resolves `apiUrl` to `''` and posts **same-origin** to
+`/api/events/bulk` — at the frontend origin. `frontend/vite.config.js` declares
+no `server.proxy`, so any `/api/...` request that actually arrives at the Vite
+dev server falls through its history-fallback middleware and is answered with a
+200 and the transformed `index.html`. For the app to work at all the edge must
+normally proxy `/api` to `backend`; the observed body is what comes back when
+that proxy does not handle the request and it lands on the SPA fallback instead.
+A read timeout on a ~60-second request is the failure mode that fits: the
+backend keeps working and commits, while the client is handed the fallback page.
+
+**Why the UI called it a failure**: `EventAddMany.jsx:20-25` wraps
+`await res.json()` in a `try` and, on any parse error, assigns `body = {}`.
+`imported` then defaults to `0` at line 26, and the `res.ok && imported > 0`
+test at line 28 fails, routing an import that created every row into the error
+branch at line 39. `res.ok` is never consulted on its own, and a response that
+is not JSON is never distinguished from a JSON-encoded error. The database
+state the administrator found — one `events` row and its `criterias` rows per
+CSV line — is the correct outcome; only the message was wrong.
+
+**Conclusion**: Two independent defects. A transport defect (the request can be
+answered by the wrong server) and a reporting defect (the client asserts failure
+from the absence of evidence). FR-019 addresses the first, FR-015 the second.
+FR-015 is the load-bearing one: it holds even when the transport cannot be
+fixed.
+
+---
+
+## D11. Where the read timeout is fixed
+
+**Decision**: Two places, and only the first is in this repository.
+
+1. **`frontend/vite.config.js` — add `server.proxy` for `/api`** with an
+   explicit long `timeout` and `proxyTimeout`. This is a real fix, not a
+   workaround: it makes the Vite dev server forward `/api` to `backend` instead
+   of answering with `index.html`. Once present, the specific failure captured
+   in D10 — an HTML shell returned for an API call — becomes impossible at that
+   hop, because the path is no longer eligible for the SPA fallback.
+2. **The Apache edge `ProxyTimeout` / `Timeout`** — out of tree. The
+   `.htaccess` at the repository root is annotated *"Managed in
+   https://gitlab.cirg.washington.edu/"* and carries no proxy directive; the
+   real vhost lives in that other repository. Apache's default `Timeout` is 60
+   seconds, which is the same order as the observed ~60-second import. Raising
+   it is a deployment action.
+
+**Rationale**: The clarification session recorded "the timeout may live outside
+this repository" as an open risk. Investigation narrowed it: part of it is
+in-tree and fixable here, part is not. Shipping (1) is worthwhile on its own —
+the `web` service runs `target: development_build` in the canonical
+`docker-compose.yaml:98`, so the Vite dev server is what serves study
+deployments, and an unproxied `/api` path on it is a live trap.
+
+**Alternatives considered**: Point `VITE_API_URL` at the backend origin so the
+browser bypasses the frontend host entirely. Rejected — it would move the app
+off same-origin onto the CORS path that `.htaccess` only allows for one
+hard-coded origin, and `default.env` documents same-origin as the recommended
+configuration.
+
+---
+
+## D12. Why 800 rows takes a minute
+
+**Decision**: Documented, not fixed. No optimization in this feature.
+
+**Rationale**: `app.py:1509-1513` runs one
+`session.query(models.PatientsView).filter_by(...)` per CSV row. `patients_view`
+is the FederatedX bridge to `cnics_data`, which in production is reached over an
+SSH tunnel to a separate VM. 800 rows is 800 sequential round-trips across that
+tunnel; ~75 ms each accounts for the full minute. The cost is per-row network
+latency, not parsing or insertion.
+
+A single batched lookup — collect all `(site, site_patient_id)` pairs, one `IN`
+query, resolve from a dict — would very likely cut the wall-clock by an order of
+magnitude and is the obvious future improvement. It is deliberately out of scope
+here: it changes import semantics under concurrent modification, it needs its
+own tests against the federated bridge, and the user's stated requirement is
+that the interface *communicate* the wait, not that the wait disappear. Recorded
+so the next person does not have to rediscover it.
+
+**Consequence for the plan**: because the duration stays, FR-013 (in-flight
+indication) and FR-019 (timeout headroom) are both load-bearing rather than
+belt-and-braces.
+
+---
+
+## D13. In-flight indication
+
+**Decision**: A single `submitting` boolean in the page drives three things: the
+submit button's `disabled` + busy label, an indeterminate CSS spinner in a
+`role="status"` live region, and an elapsed-second counter driven by a
+`setInterval` started at submit and cleared in a `finally`. No percentage.
+
+**Rationale**: The clarification chose spinner + disabled + elapsed and
+explicitly rejected an estimated percentage. The server cannot report progress
+within one synchronous request, so any bar would be a guess that drifts against
+the per-row federated latency measured in D12. An elapsed counter is honest, is
+free to compute, and is what distinguishes "working" from "hung" over a
+60-second wait where a static spinner reads as frozen.
+
+`disabled` on the submit button is also the FR-014 mechanism: it removes the
+double-submit path structurally rather than by guarding a flag inside the
+handler, so a double-click cannot slip between the check and the `fetch`.
+
+**Alternatives considered**: `AbortController` with a client-side timeout —
+rejected, because aborting the request does not abort the import, which
+continues on the server; the client would then be certain of nothing while the
+server commits, which is the D10 failure with extra steps.
+
+---
+
+## D14. Classifying the response
+
+**Decision**: Classify every completed request into exactly one of five
+outcomes, in this order, before any message is composed:
+
+| Order | Test | Outcome |
+|---|---|---|
+| 1 | `fetch` itself threw | `network` |
+| 2 | `res.status === 413` | `refused` |
+| 3 | response `Content-Type` is not JSON, **or** `res.json()` throws | `undetermined` |
+| 4 | parsed, `imported > 0` | `imported` (with `errors[]` → partial) |
+| 5 | parsed, `imported === 0` | `nothing` (with the server's reason) |
+
+**Rationale**: This is the FR-015 / FR-016 core. The decisive change is that a
+non-JSON body is its own outcome rather than collapsing into failure. Checking
+`Content-Type` *before* calling `res.json()` matters: it catches the D10 case on
+the header rather than relying on a parse throw, which makes the classification
+explicit instead of incidental. Ordering `413` ahead of the JSON test keeps the
+existing oversize-refusal path (009 FR-006) intact, since that response *is*
+JSON and would otherwise be reported as a plain failure.
+
+The `undetermined` message must name the uncertainty and route to evidence:
+the import may have succeeded, and `/events/imports` is where the truth is —
+009 writes a record for every submission the server processed, so the answer is
+always there.
+
+**Alternatives considered**: Treat any `res.ok === false` as failure and
+everything else as success. Rejected — the D10 response was `200 OK` with an
+HTML body, so status alone would have reported that import as a *success* with
+zero events, which is a different wrong answer.
+
+---
+
+## D15. Persistent notifications without rewriting 77 call sites
+
+**Decision**: Change `frontend/src/components/Toast.js` internally and keep its
+signature. `showToast(message, type, timeoutMs)` continues to work unchanged;
+`warning` and `error` now ignore the timeout and render a dismiss control,
+while `success` and `info` keep auto-dismissing.
+
+**Rationale**: There are 77 `showToast` call sites across 30 files — 48
+`error`, 11 `warning`, 14 `success`, 2 `info`. Changing behavior by type inside
+the one shared module reaches all of them without touching any; changing the API
+would mean 77 edits and a migration window. The two call sites that pass an
+explicit `timeoutMs` (`EventAddMany.jsx:36` and `:43`, both about to be rewritten
+anyway) are the only places the ignored argument is even visible.
+
+**Scope note, stated plainly**: this makes **59 of 77** notifications
+click-to-dismiss application-wide. That is the intent of the clarification, not
+a side effect, but it is a broad behavioral change and every affected page
+should be smoke-tested for a notification that now lingers where a transient one
+was assumed.
+
+**Stacking**: `BaseLayout.jsx:6` mounts `#toast-root` as a bare fixed container
+at the lower right with no height bound. Persistent entries can now accumulate,
+so the container gains `max-height` with `overflow-y: auto`, and the module caps
+the number of simultaneously visible persistent toasts, removing the oldest
+first. Without this, a page that reports several errors in a loop would grow a
+column of undismissable boxes off the top of the viewport.
+
+**Accessibility**: the dismiss control is a real `<button>` with an accessible
+name, so it is keyboard-reachable; error toasts get `role="alert"`. Text is
+already selectable — the current implementation sets no `user-select` — and
+gains an explicit copy affordance only in the import result (D16), not in every
+toast.
+
+---
+
+## D16. Where the import result is shown
+
+**Decision**: Not in a toast. The bulk-import page renders a dedicated result
+panel in the page body, below the form. The toast for the import result is
+dropped.
+
+**Rationale**: FR-018 requires a summary, every skipped row on its own line in a
+scrollable region, a copy-all control, and a link to the import record. A
+lower-right toast is the wrong container for all four: it is narrow, it is not
+scrollable, and the observed failing file produced hundreds of error strings,
+which the current code joins with `'; '` into one line
+(`EventAddMany.jsx:31-33`) — the direct cause of the unreadable dialog in the
+screenshot. A panel in the normal document flow can be sized, scrolled,
+selected, and screenshotted, and it stays where the administrator is already
+looking.
+
+Persistent toasts (D15) remain the right mechanism for the many other pages that
+report a one-line error. The two mechanisms are complementary: D15 fixes the
+general case, D16 handles the one result that is a structured document rather
+than a sentence.
+
+**Copy control**: `navigator.clipboard.writeText` with the panel's text
+content, falling back to leaving the text selected if the clipboard API is
+unavailable — it requires a secure context, which the deployment has
+(`SSLRequireSSL` in `.htaccess`), but a fallback costs nothing.
+
+**Alternatives considered**: Expand the toast into a resizable dialog. Rejected
+as building a modal system for one screen when the page already has the room.
+
+---
+
+## D17. The button style
+
+**Decision**: Replace the rule at `frontend/src/index.css:39-55` with a single
+solid, bordered button style plus explicit `:hover`, `:focus-visible`,
+`:disabled`, and `:active` states. No new classes, no variants, no markup
+changes anywhere.
+
+**Rationale**: The current rule is the unmodified Vite scaffold —
+`background-color: #f9f9f9` with `border: 1px solid transparent` on the
+`#ffffff` body set at `index.css:8`. That is a contrast ratio of about
+**1.05:1** against the page, far below the 3:1 that FR-020 requires; the button
+is effectively invisible except for its text, which is exactly what the
+screenshot shows.
+
+The survey that makes this a one-file change: **90 `<button>` elements across 42
+files**, and `index.css` is the *only* stylesheet in the repository containing a
+`button` rule. Just four buttons carry a `className` at all
+(`EventViewAll.jsx:97,99` and the VTE copy at `:89,91`, using `hide`/`show`),
+and no CSS defines those classes, so nothing overrides the element rule and
+nothing is at risk of a specificity conflict. One rule reaches every button in
+the application.
+
+A `:disabled` state is newly required rather than merely nice: FR-013 disables
+the Add button during import, and the scaffold rule defines no disabled
+appearance, so without it the button would look identical while inert.
+
+**Colors**: a mid-dark blue fill with white text clears both thresholds with
+margin (≥3:1 fill-to-page, ≥4.5:1 text-to-fill) and keeps the existing visual
+language, which already uses blue for links and for the info toast
+(`Toast.js:14`). Exact values are chosen and *measured* during implementation
+rather than asserted here — FR-020 is stated as a measurement, and the
+verification step records the computed ratios.
+
+**Alternatives considered**: Primary/secondary variants, offered during
+clarification and declined. Recorded so the choice is not silently revisited:
+it would require auditing all 90 buttons and adding classes, for hierarchy the
+user did not ask for.
+
+---
+
+## D18. The VTE fork's copy of the same bug
+
+**Decision**: **Out of scope.** `frontend/src/studies/vte/EventAddMany.jsx` is
+not modified. It inherits the button restyle (D17) and the notification change
+(D15) automatically, because those are shared, and receives nothing else.
+
+**Rationale**: The VTE tree is legacy the project does not intend to use. It is
+reachable only by typing `/vte` — `App.jsx:140` registers the route with no
+`STUDY_TYPE` gate, but no shared page links into it; the only links to
+`/vte/addMany` are `studies/vte/Admin.jsx:21` and `studies/vte/Home.jsx:149`,
+both inside the fork itself. Route registration is not use.
+
+An earlier draft of this decision put the page in scope on the grounds that
+FR-015 is written without qualification. That was the wrong reading. The spec
+governs the system the project intends to run; applying a requirement to a
+subsystem slated for retirement converts a requirement into busywork and grows
+the fork's surface at the moment it should be shrinking. Principle VI's unused
+subsystem hygiene gives the correct treatment for code in this state —
+*document as unused, or remove* — and neither is "bring it up to spec".
+
+**What it inherits anyway**: the button rule in `index.css` and the behavior
+change in `Toast.js` are single shared definitions, so the VTE page's button
+becomes legible and its error notification becomes persistent whether or not
+anyone wants that. This is free and unavoidable, not scope. Its "CSV upload
+failed. Please check the file and try again." message at line 28 keeps the
+false-failure bug, now displayed persistently rather than briefly. That is
+acceptable for a page nobody is meant to open, and is one more reason to
+resolve the fork's status.
+
+**Consequence for the shared modules**: with a single consumer, the extraction
+in D16/D13 is no longer required by Principle I. It is retained on narrower
+grounds — the six-way classification plus the timer state machine is
+branch-heavy logic worth keeping out of a page component, and worth being
+importable if a frontend test framework is added later. Had the logic been
+trivial, it would now belong inline in the page.
+
+**Follow-up, not in this feature**: the VTE tree's status should be settled
+explicitly — documented as unused or removed — per Principle VI. Twenty-four
+`studies/vte/*` modules are imported and routed unconditionally in `App.jsx`,
+which is what made the fork look live during this research. Worth its own
+issue.
+
+---
+
+## D19. Making "view this import" a real link
+
+**Decision**: `frontend/src/pages/EventImports.jsx` accepts an
+`?import_id=<id>` query parameter and opens that record's detail on load.
+
+**Rationale**: FR-018 requires the result panel to link to *this submission's*
+record. `POST /api/events/bulk` already returns `import_id` in its response body
+(added by 009), so the page has the value. But `EventImports.jsx:38` holds the
+selection in local `useState` with no URL binding, so today the only reachable
+target is the undifferentiated list — the administrator would have to find their
+own import by timestamp. Reading the parameter on mount and pre-selecting is a
+small change to an existing page that turns the requirement into an actual
+one-click route.
+
+This also makes the D14 `undetermined` message useful: it can link straight to
+the record for the import whose outcome the client failed to learn — except in
+the one case where the client never received the id, where it links to the list.
+
+---
+
+## Resolved unknowns summary (amendment)
+
+| Unknown | Resolution |
+|---|---|
+| Why a successful import reported failure | Vite SPA fallback + client asserting failure from unparseable body (D10) |
+| Where the timeout is fixed | `vite.config.js` proxy in-tree; Apache `ProxyTimeout` out of tree (D11) |
+| Why the import is slow | One federated patient lookup per row; documented, not optimized (D12) |
+| Progress indication | Spinner + disabled button + elapsed counter; no percentage (D13) |
+| Distinguishing outcomes | Five-way ordered classification, content-type checked first (D14) |
+| Persisting notifications | Behavior by type inside shared `Toast.js`; 59 of 77 become persistent (D15) |
+| Where the result renders | Dedicated in-page panel, not a toast (D16) |
+| Button restyle scope | One rule in `index.css`; 90 buttons, no competing stylesheet (D17) |
+| The VTE fork | Out of scope — legacy, not linked from the shared tree; inherits shared CSS/Toast only (D18) |
+| Linking to the import record | `?import_id=` deep link on the existing page (D19) |
+| Frontend test strategy | Unchanged — no test framework in `package.json`; manual per quickstart |

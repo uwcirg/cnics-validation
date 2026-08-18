@@ -36,21 +36,65 @@ h1 {
   line-height: 1.1;
 }
 
+/* The single button rule for the whole application — 90 buttons across 42
+   files inherit it, and no other stylesheet in this repository defines one.
+   The Vite scaffold style it replaces was #f9f9f9 on the #ffffff body above,
+   about 1.05:1, which made buttons effectively invisible (research D17).
+   Measured: fill #1565c0 vs. the page's #ffffff is 5.75:1 (needs >= 3:1), and
+   the #ffffff label on that fill is the same 5.75:1 (needs >= 4.5:1). */
 button {
   border-radius: 8px;
-  border: 1px solid transparent;
+  border: 1px solid #10488f;
   padding: 0.6em 1.2em;
   font-size: 1em;
   font-weight: 500;
   font-family: inherit;
-  background-color: #f9f9f9;
+  background-color: #1565c0;
+  color: #ffffff;
   cursor: pointer;
-  transition: border-color 0.25s;
+  transition: background-color 0.15s, border-color 0.15s;
 }
-button:hover {
-  border-color: #646cff;
+button:hover:enabled {
+  background-color: #0d47a1;
+  border-color: #08356f;
 }
-button:focus,
+button:active:enabled {
+  background-color: #08356f;
+}
 button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+  outline: 3px solid #0d47a1;
+  outline-offset: 2px;
+}
+/* Newly required rather than merely nice: the bulk-import Add button is
+   disabled for the duration of an import (FR-014), and without this it would
+   look identical while inert. */
+button:disabled {
+  background-color: #cfd8dc;
+  border-color: #90a4b8;
+  color: #37474f;
+  cursor: not-allowed;
+}
+
+/* Indeterminate activity indicator for the bulk import. The import runs inside
+   one synchronous request and cannot report progress, so there is nothing to
+   fill a bar with (research D13); the elapsed counter beside it is what
+   separates "working" from "hung" over a minute-long wait. */
+.spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 2px solid #cfd8dc;
+  border-top-color: #1565c0;
+  border-radius: 50%;
+  animation: spinner-rotate 0.8s linear infinite;
+}
+@keyframes spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 3s;
+  }
 }

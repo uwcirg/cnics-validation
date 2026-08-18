@@ -2,7 +2,7 @@
 description: "Task list for 009-save-import-csv"
 ---
 
-# Tasks: Archive Bulk-Import CSV Files
+# Tasks: Archive Bulk-Import CSV Files and Report Import Outcomes Honestly
 
 **Input**: Design documents from `/specs/009-save-import-csv/`
 **Prerequisites**: plan.md, spec.md, research.md, data-model.md, contracts/imports-api.yaml, quickstart.md
@@ -223,3 +223,191 @@ so a stall at any checkpoint leaves a coherent system.
 - Out of scope and deliberately untouched: `GET /api/events/download/<event_id>`
   (`flask_backend/app.py:1059`) has `@requires_auth` but no role decorator, so
   any authenticated user can fetch any event's packet. Worth its own issue
+
+---
+
+# Amendment (2026-08-17) — import feedback and button legibility
+
+T001–T026 are complete; T027–T028 remain open from the archival slice. The
+tasks below cover the spec's **User Story 4** (honest, visible import feedback)
+and **User Story 5** (button legibility), added after the archival work landed.
+Numbering continues at T029.
+
+**Tests**: No test tasks. The constitution's testing gate asks for pytest
+coverage on new *backend* endpoints; this amendment adds none — it touches no
+file under `flask_backend/`. `frontend/package.json` declares no test framework
+(eslint only), so verification is `npm run lint` plus the quickstart §6–§11
+walkthrough. Recorded in plan.md as an accepted gap, not an oversight.
+
+**Path Conventions**: unchanged. All paths repository-root-relative.
+
+---
+
+## Phase 7: Foundational (Blocking Prerequisites for US4)
+
+**Purpose**: The button rule must land before US4's disabled state has anything
+to render, and the shared modules must exist before the page can consume them.
+
+- [X] T029 [P] Replace the Vite scaffold button rule at `frontend/src/index.css:39-55` with a solid, bordered style, adding explicit `:hover`, `:focus-visible`, `:active`, and `:disabled` states — see T037 for the contrast thresholds it must satisfy
+- [X] T030 [P] Add `server.proxy` for `/api` to `frontend/vite.config.js`, targeting the `backend` service with an explicit long `timeout` and `proxyTimeout` (research D11), so `/api` paths can no longer fall through the Vite SPA history fallback
+
+**Checkpoint**: Buttons are visible with a real disabled state; `/api` is proxied.
+
+---
+
+## Phase 8: User Story 5 - Buttons are legible everywhere (Priority: P3)
+
+**Goal**: Every button in the application is clearly distinguishable from the
+page behind it, with distinct hover, focus, and disabled states.
+
+**Independent Test**: Measure a button's contrast against the page background
+and its label against its own fill, on the bulk-import page and two others;
+both thresholds met. Disabled state visually distinct.
+
+- [X] T031 [US5] Verify no stylesheet competes with the new rule: `grep -rn "button" frontend/src/**/*.css` must return hits only in `frontend/src/index.css`, and the `hide`/`show` classes at `frontend/src/pages/EventViewAll.jsx:97,99` must remain undefined in CSS (research D17)
+- [X] T032 [US5] Measure and record the two ratios in the PR description — button fill vs. `#ffffff` page background (must be ≥3:1) and label vs. button fill (must be ≥4.5:1). SC-012 is a measurement; asserting "looks better" does not satisfy it
+- [ ] T033 [US5] Confirm the restyle reached all three page families by loading one page from `frontend/src/pages/`, one from `frontend/src/components/`, and one from `frontend/src/studies/vte/` — all 90 buttons inherit one rule, so a miss means a specificity conflict T031 should have caught
+
+**Checkpoint**: US5 is complete and independently shippable. FR-020, SC-012.
+
+---
+
+## Phase 9: User Story 4 - The import tells the administrator what it is doing and what it did (Priority: P1) 🎯
+
+**Goal**: A running import is continuously visible, a second submission is
+impossible, and the result is accurate, persistent, readable, and copyable.
+
+**Independent Test**: Submit a slow CSV — button disabled, spinner and elapsed
+counter visible throughout, exactly one POST sent. Force an unparseable
+response on an import that succeeds — the result says the outcome is unknown
+and never says "failed".
+
+### 9a. In-flight indication (FR-013, FR-014)
+
+- [X] T034 [US4] Create `frontend/src/components/useCsvImport.js` with the submission state machine from data-model.md: `phase` (`idle`/`submitting`/`resolved`), `startedAt`, `elapsedSeconds` ticking on a `setInterval` while submitting, and cleanup in a `finally` so the interval cannot outlive the request
+- [X] T035 [US4] In `frontend/src/pages/EventAddMany.jsx`, drive the submit button's `disabled` attribute from `phase === 'submitting'` — the same flag that drives the spinner, so FR-013 and FR-014 cannot drift apart. Do not guard with a boolean inside the handler; the attribute is what closes the double-click window
+- [X] T036 [US4] Add an indeterminate CSS spinner and the elapsed-second counter to `frontend/src/pages/EventAddMany.jsx` inside a `role="status"` live region, with text naming the expected wait ("this can take a minute for large files"). No percentage — the synchronous import cannot measure progress (research D13)
+
+**Checkpoint**: The resubmission problem is fixed even before reporting is. SC-009, SC-010.
+
+### 9b. Honest reporting (FR-015, FR-016) — the slice that stops duplicate events
+
+- [X] T037 [US4] Implement the six-way classification in `frontend/src/components/useCsvImport.js` exactly in the order specified by `contracts/import-feedback-ui.md`: `network` → `refused` (413) → `undetermined` (non-JSON `Content-Type`) → `undetermined` (`res.json()` threw) → `imported`/`partial` → `nothing`
+- [X] T038 [US4] Check `Content-Type` **before** calling `res.json()` in `frontend/src/components/useCsvImport.js`, and never default a missing `imported` to `0` and treat that as failure — that exact defaulting at `frontend/src/pages/EventAddMany.jsx:20-26` is the bug being fixed (research D10)
+- [X] T039 [US4] Order the `413` test ahead of the JSON test in `frontend/src/components/useCsvImport.js` so the oversize-refusal path from 009 FR-006, whose body *is* JSON, keeps its specific message rather than becoming a generic failure
+- [X] T040 [US4] Create `frontend/src/components/ImportResult.jsx` rendering the summary headline plus, for each outcome, the messages required by the "Required output per outcome" table in `contracts/import-feedback-ui.md`
+- [X] T041 [US4] In `frontend/src/components/ImportResult.jsx`, render `errors` as a list with one skipped row per line inside a scrollable, selectable region — never joined into one string, which is what `frontend/src/pages/EventAddMany.jsx:31-33` does today and what made the observed dialog unreadable
+- [X] T042 [US4] Add a copy-all control to `frontend/src/components/ImportResult.jsx` using `navigator.clipboard.writeText`, falling back to leaving the text selected if the clipboard API is unavailable (research D16)
+- [X] T043 [US4] Wire `frontend/src/pages/EventAddMany.jsx` to render `ImportResult` in the page body below the form, and delete the two `showToast` calls at lines 34 and 43 — the panel replaces them; leaving both would report the same outcome twice
+- [X] T044 [US4] Assert the FR-015 invariant in `frontend/src/components/ImportResult.jsx`: the `undetermined` and `network` branches must contain no string asserting the import failed, and no count. Grep the finished component for "failed" and confirm every hit is in a branch where the server actually said so
+
+**Checkpoint**: A successful import can no longer be reported as a failure. SC-008, FR-016.
+
+### 9c. Persistent notifications (FR-017) — app-wide
+
+- [X] T045 [US4] Modify `frontend/src/components/Toast.js` so `warning` and `error` ignore `timeoutMs` and render a dismiss `<button>` with an accessible name, while `success` and `info` keep auto-dismissing. **Keep the `showToast(message, type, timeoutMs)` signature unchanged** — 77 call sites depend on it (research D15)
+- [X] T046 [US4] Add `role="alert"` to error entries in `frontend/src/components/Toast.js` and confirm text remains selectable (no `user-select: none`)
+- [X] T047 [US4] Bound the container: give `#toast-root` at `frontend/src/components/BaseLayout.jsx:6` a `max-height` with `overflow-y: auto`, and cap simultaneously visible persistent entries in `frontend/src/components/Toast.js`, evicting oldest first — without this, a page reporting several errors grows a column of undismissable boxes off the top of the viewport
+- [ ] T048 [US4] Smoke-test the 59 affected call sites by sampling — enumerate them with `grep -rn "showToast(" frontend/src --include=*.jsx` — then trigger one `error` (must persist, dismissible by keyboard), one `success` (must still auto-dismiss), and several errors in a row on one page (container must scroll or cap). 48 `error` + 11 `warning` of 77 total change behavior
+
+**Checkpoint**: Error detail no longer evaporates anywhere in the application.
+
+### 9d. Deep link to the import record (FR-018)
+
+- [X] T049 [US4] Make `frontend/src/pages/EventImports.jsx` read an `?import_id=` query parameter on mount and pre-select that record, replacing the local-`useState`-only selection at line 38 (research D19)
+- [X] T050 [US4] Add the record link to `frontend/src/components/ImportResult.jsx`, targeting `/events/imports?import_id=<id>` from the `import_id` the endpoint already returns; fall back to the bare list when no id was received, which is the `network` case and sometimes the `undetermined` one
+
+**Checkpoint**: US4 is complete. FR-013–FR-018, SC-008–SC-011.
+
+---
+
+## Phase 10: Polish & Cross-Cutting Concerns (amendment)
+
+- [X] T051 [P] Run `npm run lint` in `frontend/` and resolve any new findings — this is the only automated gate the frontend has
+- [X] T052 [P] Confirm the amendment stayed out of the backend: `git diff --stat flask_backend/ openapi.json` must be empty. No route, request, or response shape moves, so `openapi.json` is deliberately **not** regenerated this time
+- [X] T053 [P] Review `frontend/src/components/ImportResult.jsx`, `frontend/src/components/useCsvImport.js`, and `frontend/src/components/Toast.js` for the PHI rule: skipped-row messages embed `site_patient_id` values and are now persistent and copyable. Confirm none of the three writes them to `console`, `localStorage`, or `sessionStorage`
+- [ ] T054 Run the full `quickstart.md` §6–§11 walkthrough on the deployed stack, including forcing the `undetermined` case via devtools response override against an import that genuinely succeeds (SC-008)
+- [ ] T055 In the PR description, state that this affects **all studies** (shared CSS and shared notification component), call out that **59 of 77** notifications become click-to-dismiss, and record the two measured contrast ratios from T032
+- [ ] T056 In the PR description, flag the Apache `ProxyTimeout` as a **deployment action that cannot be done from this repository** — its vhost is managed in gitlab.cirg.washington.edu (research D11). Without it, long imports still report an honest "outcome undetermined" rather than a false failure, so this is a follow-up, not a blocker
+
+---
+
+## Dependencies & Execution Order (amendment)
+
+### Phase Dependencies
+
+```text
+Phase 7 (Foundational) ──┬──▶ Phase 8 (US5)   — independent, shippable alone
+                         └──▶ Phase 9 (US4)
+                                 9a ──┐
+                                 9b ──┼──▶ 9c   (smoke-test once, against final behavior)
+                                      └──▶ 9d   (needs an import_id to link)
+                                                     │
+                                                     ▼
+                                            Phase 10 (Polish)
+```
+
+- **T029 before 9a** — the disabled button needs a `:disabled` style, or it looks identical while inert
+- **T034 before T035–T036** — both read the state machine's `phase`
+- **T037–T039 before T040–T044** — the panel renders outcomes the classifier produces
+- **9b before 9c** — sequence the app-wide toast change after the panel so the 59-call-site smoke pass runs once, against final behavior
+- **T043 before T049–T050** — the panel must exist before it gets a link
+- **T030 is independent** of everything else and can land at any point
+
+### Parallel Opportunities
+
+- **T029 and T030** — different files, no shared state
+- **All of Phase 8 (T031–T033)** — verification only, once T029 lands
+- **T040 and T041–T042** are same-file and must serialize; **T034 and T040** are different files and can proceed in parallel once the classification contract is fixed
+- **T051, T052, T053** — independent checks over different surfaces
+
+---
+
+## Implementation Strategy (amendment)
+
+### Smallest useful increment
+
+**Phase 7 + Phase 8** alone. One CSS rule and its measurement: no JavaScript, no
+behavior change, trivially reviewable, and it fixes a complaint that spans every
+page. Ship it independently of US4 if US4 needs more review time.
+
+### Highest-value increment
+
+**9b (T037–T044)**. This is the slice that stops duplicate events being created,
+because it stops telling administrators that completed imports failed. If only
+one thing from this amendment ships, it is this.
+
+### Incremental Delivery
+
+1. Phase 7 → buttons legible, `/api` proxied
+2. Phase 8 → US5 verified and measured
+3. 9a → resubmission problem gone
+4. 9b → **false-failure bug gone** — the point of the amendment
+5. 9c → error detail persists app-wide
+6. 9d → one-click route to the record
+7. Phase 10 → lint, PHI review, walkthrough, PR notes
+
+Each increment is coherent on its own: 9a helps even while reporting is still
+wrong, and 9b helps even without the elapsed counter.
+
+---
+
+## Notes (amendment)
+
+- **No backend file is touched.** T052 enforces this. If a task seems to require
+  a backend change, the classification in `contracts/import-feedback-ui.md` is
+  being misread — the server already reports correctly
+- **The ~60s import is not fixed here.** It is one federated `patients_view`
+  lookup per row over the SSH-tunnelled bridge (`flask_backend/app.py:1509-1513`,
+  research D12). Batching those lookups is the obvious next improvement and is
+  deliberately out of scope; the requirement was to communicate the wait
+- **`frontend/src/studies/vte/EventAddMany.jsx` is out of scope** and must not
+  be modified (research D18). It inherits T029's button rule and T045's toast
+  change because those are shared definitions, so its own false-failure message
+  at line 28 will now persist rather than vanish. Expected, not a regression
+- Settling the VTE tree's status — documented as unused or removed, per the
+  constitution's unused-subsystem hygiene rule — is a separate follow-up.
+  `frontend/src/App.jsx` imports and routes 24 `studies/vte/*` modules
+  unconditionally, with no `STUDY_TYPE` gate
+- T028 (the original PR-description task) and T055–T056 land in the same PR
+  description if both slices ship together

@@ -214,3 +214,100 @@ None automated. Nothing in the application deletes, truncates, rotates, or
 overwrites an archived file or manifest (FR-012). Growth is bounded in practice
 by usage: a few submissions a month at a few hundred KB each. Purging, if ever
 needed, is an operator action on the volume.
+
+---
+
+# Amendment (2026-08-17) — import feedback state
+
+Nothing below is persisted. The archive layout, manifest, and id grammar above
+are unchanged; this section models the **client-side state** the bulk-import
+page holds while a submission is in flight and after it resolves. It exists
+because the spec added "Import outcome, as shown" as an entity distinct from
+the stored import record — the record is always written by the server, whereas
+the shown outcome may be `undetermined` precisely when the client could not
+learn what the record says.
+
+## Submission state (client)
+
+One page-level state machine, from the moment the administrator submits:
+
+```text
+idle ──submit──▶ submitting ──response──▶ resolved(outcome) ──dismiss──▶ idle
+                      │
+                      └──fetch threw──▶ resolved(network)
+```
+
+| Field | Type | Meaning |
+|---|---|---|
+| `phase` | `'idle' \| 'submitting' \| 'resolved'` | Drives the form's disabled state and which region renders |
+| `startedAt` | epoch ms, set on submit | Origin for the elapsed counter (FR-013) |
+| `elapsedSeconds` | integer, ticks while `submitting` | Displayed; interval cleared when the phase leaves `submitting` |
+| `outcome` | see below, set on resolve | Which of the five results occurred (FR-016) |
+| `result` | outcome payload, below | What the panel renders |
+
+`phase === 'submitting'` is the single source for both the spinner and the
+submit button's `disabled` attribute, so FR-013 and FR-014 cannot drift apart.
+
+## Outcome, as shown
+
+Exactly one of five, assigned by the ordered classification in research D14:
+
+| `outcome` | When | Carries |
+|---|---|---|
+| `imported` | Parsed JSON, `imported > 0`, no `errors` | count, `import_id` |
+| `partial` | Parsed JSON, `imported > 0`, `errors` non-empty | count, skipped count, ordered `errors[]`, `import_id` |
+| `nothing` | Parsed JSON, `imported === 0` | server's reason, any `errors[]`, `import_id` |
+| `refused` | HTTP 413 | server's reason, `import_id` |
+| `undetermined` | Non-JSON `Content-Type`, or `res.json()` threw | no counts — the client has no evidence either way |
+| `network` | `fetch` itself threw | no counts, no `import_id` |
+
+Six rows, five *server-answered* outcomes plus `network`: FR-016 enumerates the
+five the server can produce; a request that never completed is the sixth and is
+reported as its own case rather than folded into `undetermined`, because the
+administrator's next action differs — retry, versus go check the history.
+
+**Invariant**: `undetermined` and `network` MUST NOT render any word asserting
+failure of the import (FR-015). They assert only what is true: the client does
+not know the outcome.
+
+## Result payload
+
+| Field | Type | Source | Notes |
+|---|---|---|---|
+| `importedCount` | integer \| null | `data.imported` | `null` when unknown |
+| `skippedCount` | integer \| null | `data.errors.length` | `null` when unknown |
+| `errors` | string[] | `data.errors` | Order preserved from the server; one entry per skipped row, rendered one per line (FR-018) |
+| `importId` | string \| null | `data.import_id` | Feeds the record deep link (research D19) |
+| `reason` | string \| null | `data.error` | The server's own message, shown verbatim |
+
+`errors` is rendered as a list, never joined into a single string — the joining
+at `EventAddMany.jsx:31-33` is what made the observed result unreadable. The
+region is scrollable and its full text is what the copy control emits.
+
+## Relationship to the stored record
+
+| Shown outcome | Stored manifest `outcome` | Note |
+|---|---|---|
+| `imported` / `partial` | `imported` | Counts agree |
+| `nothing` | `rejected` | Counts agree |
+| `refused` | `refused` | Contents not archived (009 FR-006) |
+| `undetermined` | any of the above | **The record is authoritative**; the client simply did not receive it |
+| `network` | any, or none written | The request may not have reached the server at all |
+
+The last two rows are the reason FR-018 requires a link into the import history:
+for those outcomes the panel's job is not to report the result but to route the
+administrator to where the result actually lives.
+
+## Notification state (shared)
+
+`components/Toast.js` gains per-entry state it did not have:
+
+| Field | Derivation | Effect |
+|---|---|---|
+| `persistent` | `type === 'warning' \| 'error'` | Suppresses the auto-removal timer; renders a dismiss control (FR-017) |
+| `dismissed` | user action | Removes the entry |
+
+The container caps simultaneously visible persistent entries and evicts oldest
+first (research D15). No call site supplies or reads these fields — they are
+derived from the existing `type` argument, which is why all 77 call sites are
+unaffected.

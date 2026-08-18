@@ -1,52 +1,22 @@
 import { useState } from 'react'
-import { showToast } from '../components/Toast'
+import ImportResult from '../components/ImportResult'
+import { useCsvImport } from '../components/useCsvImport'
 
 function EventAddMany() {
   const [file, setFile] = useState(null)
-  const [status, setStatus] = useState(null)
-  const apiUrl = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || '')
+  const { phase, elapsedSeconds, result, submit, dismiss } = useCsvImport()
+  const submitting = phase === 'submitting'
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!file) return
-    const form = new FormData()
-    form.append('events_csv', file)
-    try {
-      const res = await fetch(`${apiUrl}/api/events/bulk`, {
-        method: 'POST',
-        credentials: 'include',
-        body: form,
-      })
-      let body = {}
-      try {
-        body = await res.json()
-      } catch {
-        body = {}
-      }
-      const imported = body?.data?.imported ?? 0
-      const rowErrors = body?.data?.errors || []
-      if (res.ok && imported > 0) {
-        setStatus('saved')
-        setFile(null)
-        e.target.reset()
-        const suffix = rowErrors.length
-          ? ` ${rowErrors.length} row(s) were skipped: ${rowErrors.join('; ')}`
-          : ''
-        showToast(
-          `Imported ${imported} event${imported === 1 ? '' : 's'}.${suffix}`,
-          rowErrors.length ? 'warning' : 'success',
-          rowErrors.length ? 10000 : 3000,
-        )
-      } else {
-        setStatus('error')
-        const detail = rowErrors.length
-          ? rowErrors.join('; ')
-          : body?.error || 'Please check the file and try again.'
-        showToast(`CSV upload failed. ${detail}`, 'error', 10000)
-      }
-    } catch {
-      setStatus('error')
-      showToast('CSV upload failed due to a network or server error.', 'error')
+    if (!file || submitting) return
+    // Captured before awaiting: `e.currentTarget` is null by the time the
+    // import resolves.
+    const form = e.currentTarget
+    const outcome = await submit(file)
+    if (outcome && (outcome.outcome === 'imported' || outcome.outcome === 'partial')) {
+      setFile(null)
+      form.reset()
     }
   }
 
@@ -76,7 +46,7 @@ function EventAddMany() {
       troponins,2,CK,5
       </li>
       <li>
-      troponins,2,CK,5,procedures,"CPR,defibrillation" 
+      troponins,2,CK,5,procedures,"CPR,defibrillation"
       </li>
       </ul>
 
@@ -91,14 +61,31 @@ function EventAddMany() {
             <input
               type="file"
               name="events_csv"
+              disabled={submitting}
               onChange={(e) => setFile(e.target.files[0])}
             />
           </label>
         </div>
-        <button type="submit">Add</button>
+        {/* The disabled attribute, not a flag inside the handler, is what
+            closes the double-click window (FR-014), and it is driven by the
+            same phase that drives the spinner below. */}
+        <button type="submit" disabled={submitting}>
+          {submitting ? 'Importing…' : 'Add'}
+        </button>
       </form>
-      {status === 'saved' && <p>Events saved.</p>}
-      {status === 'error' && <p>Failed to save events.</p>}
+
+      {submitting && (
+        <p role="status" style={{ display: 'flex', alignItems: 'center', gap: '0.6em' }}>
+          <span className="spinner" aria-hidden="true" />
+          <span>
+            Importing&hellip; {elapsedSeconds}s elapsed. Each row is checked against
+            the patient records, so this can take a minute for large files. Leave
+            this page open.
+          </span>
+        </p>
+      )}
+
+      <ImportResult result={result} onDismiss={dismiss} />
     </div>
   )
 }

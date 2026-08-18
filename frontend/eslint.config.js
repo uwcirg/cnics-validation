@@ -7,6 +7,13 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   globalIgnores(['dist']),
   {
+    // The Vite config runs in Node, not the browser, so `process` is defined
+    // there. Without this it reports a no-undef error per env read — noise that
+    // hides real findings in the only automated gate the frontend has.
+    files: ['vite.config.js'],
+    languageOptions: { globals: globals.node },
+  },
+  {
     files: ['**/*.{js,jsx}'],
     extends: [
       js.configs.recommended,

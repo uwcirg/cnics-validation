@@ -173,3 +173,128 @@ inside `import_archive.py` or the new endpoints.
   `GET /api/events/download/<event_id>` (`app.py:1059`) has `@requires_auth`
   but no role decorator, so any authenticated user can fetch any event's
   packet. Worth its own issue.
+
+---
+
+# Amendment (2026-08-17) — verifying the feedback and button work
+
+All of this is frontend and configuration. `frontend/package.json` declares no
+test framework — only `eslint` — so verification is `npm run lint` plus the
+manual walkthrough below. Per the project's working constraint, none of this can
+be exercised locally; run it on the deployed stack.
+
+## 6. Button legibility (FR-020, SC-012)
+
+1. Load any page with a button. The button must be plainly visible as a shape
+   against the page, not merely a line of text.
+2. Measure it. In devtools, take the button's computed `background-color` and
+   the body's `#ffffff`, and compute the ratio — or use the Accessibility pane's
+   contrast readout on the label.
+   - Button vs. page background: **≥ 3:1**
+   - Label vs. button fill: **≥ 4.5:1**
+   Record both numbers; SC-012 is a measurement, not an impression.
+3. Tab to the button. The focus ring must be clearly visible.
+4. Hover it. The hover state must be distinguishable from rest.
+5. Repeat on two other pages — one under `pages/`, one under `studies/vte/` —
+   to confirm the single `index.css` rule reached everything.
+
+## 7. In-flight indication (FR-013, FR-014, SC-009, SC-010)
+
+Use a CSV large enough to take several seconds; on the deployed stack a few
+hundred rows suffices, since each row costs a federated patient lookup
+(research D12).
+
+1. Submit it. Immediately confirm, without waiting:
+   - the Add button is disabled and reads as busy,
+   - a spinner is visible,
+   - an elapsed-seconds counter is incrementing.
+2. While it runs, click Add repeatedly and press Enter in the form. Open the
+   Network pane and confirm **exactly one** `POST /api/events/bulk` was sent.
+3. When it resolves, confirm the spinner and counter are gone and the button is
+   usable again.
+4. There must be no interval longer than a second with no sign of activity
+   (SC-009) — watch the counter, which is the evidence.
+
+## 8. Honest outcome reporting (FR-015, FR-016, SC-008)
+
+This is the important one. Verify all six classifications.
+
+| To produce | Do this | Expect |
+|---|---|---|
+| `imported` | A CSV where every row is valid | Count of events created |
+| `partial` | The valid/invalid mix from step 2 of the original walkthrough | Both counts and every skipped row |
+| `nothing` | A CSV where every `site_patient_id` is unknown | The server's reason plus the per-row messages |
+| `refused` | A file over `MAX_IMPORT_CSV_BYTES` | The oversize message and the limit |
+| `undetermined` | See below | "Outcome unknown", a link to the history, and **no** use of the word "failed" |
+| `network` | Devtools → offline, then submit | "Request did not complete", link to the history |
+
+**Forcing `undetermined`** — reproduce the original defect deliberately. Easiest
+is devtools request interception: override the response to
+`POST /api/events/bulk` with `Content-Type: text/html` and any HTML body, status
+200. The panel must report an undetermined outcome. Then check the import list:
+the record is there, and it says what actually happened.
+
+**SC-008 is the regression this whole amendment exists for.** Run the
+`undetermined` case against an import that genuinely succeeds, then confirm in
+the database that the events were created *and* that the UI never said
+"failed". Before this change, that combination printed "CSV upload failed."
+
+## 9. The result panel (FR-017, FR-018, SC-011)
+
+1. Run an import where **every** row fails — several hundred rows with bad
+   patient ids. This is the case from the original report.
+2. The result must render each skipped row on its own line in a scrollable
+   region, not joined onto one line.
+3. Leave it alone for a minute. It must still be there — nothing removes it on a
+   timer.
+4. Select its text with the mouse: it must be selectable. Then use the copy
+   control and paste elsewhere: the full list must come through.
+5. Take a screenshot. The result must be legible in it — this is the literal
+   user requirement.
+6. Dismiss it. It must disappear and not return.
+7. Follow the "view this import" link. It must land on
+   `/events/imports?import_id=<id>` with **that** record already open
+   (research D19).
+
+## 10. Persistent notifications app-wide (FR-017, D15 scope note)
+
+59 of the 77 `showToast` call sites become persistent. Spot-check that this did
+not create a nuisance:
+
+1. Trigger an `error` toast on any page — a `403` from a non-admin action works.
+   It must stay until dismissed and offer a dismiss control reachable by keyboard.
+2. Trigger a `success` toast — a normal save. It must still auto-dismiss.
+3. Trigger several errors in a row on one page. The container must scroll or cap
+   rather than growing a column off the top of the viewport.
+
+## 11. Timeout headroom (FR-019, SC-013)
+
+1. Confirm `frontend/vite.config.js` now declares `server.proxy` for `/api`
+   with an explicit long timeout.
+2. Request an `/api/...` path directly against the `web` service. It must **not**
+   return HTML. Before this change it returned the Vite-transformed
+   `index.html`, which is the whole of research D10.
+3. Run an import at or near the size cap and confirm it completes without the
+   request being cut off.
+4. **If step 3 still fails**, the remaining timeout is at the Apache edge, whose
+   vhost is managed in a separate repository (research D11). Raise `ProxyTimeout`
+   there. This is a deployment action and cannot be done from this repo — but
+   note that FR-015 means the administrator now gets an honest "outcome unknown"
+   rather than a false failure even while it remains unfixed.
+
+## Notes (amendment)
+
+- **No backend change in this amendment.** No route, request, or response shape
+  moves, so `openapi.json` does **not** need regeneration this time — unlike the
+  original 009 work, which did. Confirm with `git diff --stat flask_backend/`
+  showing no change to routes before merging.
+- The ~60-second import is **not** fixed here. It is one federated patient
+  lookup per row over the SSH-tunnelled bridge (research D12). Batching those
+  lookups is the obvious next improvement and is deliberately out of scope; the
+  requirement was to communicate the wait, not remove it.
+- `frontend/src/studies/vte/EventAddMany.jsx` is **out of scope** (research
+  D18) — legacy, reachable only by typing `/vte`, and not linked from any shared
+  page. It is not modified. It does inherit the button and notification changes,
+  since those are shared definitions, so its false-failure message now persists
+  instead of vanishing. Expected, not a regression to chase. Settling the VTE
+  tree's status per Principle VI is a separate follow-up.

@@ -3,7 +3,23 @@ import './BaseLayout.css'
 import MenuBar from './MenuBar'
 
 function Toasts() {
-  return <div id="toast-root" style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 1000 }} />
+  // Warning and error notifications persist until dismissed (Toast.js), so
+  // this container is bounded and scrolls rather than growing a column of
+  // boxes off the top of the viewport.
+  return (
+    <div
+      id="toast-root"
+      style={{
+        position: 'fixed',
+        right: 16,
+        bottom: 16,
+        zIndex: 1000,
+        maxHeight: '60vh',
+        overflowY: 'auto',
+        maxWidth: 'min(420px, 90vw)',
+      }}
+    />
+  )
 }
 
 function BaseLayout({ children, auth, study_title }) {
