@@ -113,8 +113,20 @@ function TableWrapper({ endpoint, columns, renderActions, pageSize = PAGE_SIZE }
   )
 }
 
-function EventUpload({ studyType, configResolved = true }) {
+function EventUpload({ studyType, configResolved = true, workflow }) {
   const [searchParams] = useSearchParams()
+
+  // What happens to a packet after upload depends on which optional stages the
+  // deployment runs, so the confirmation names the stage the event actually
+  // enters next rather than assuming the full workflow (spec 003, FR-018 and
+  // FR-021). The `!== false` form matches EventViewAll: a missing, unresolved,
+  // or malformed control keeps the conservative full-workflow wording.
+  const wf = workflow || {}
+  const uploadSuccessMessage = wf.scrubbing !== false
+    ? 'Upload successful. Packet is now queued for scrubbing.'
+    : wf.screening !== false
+      ? 'Upload successful. Packet is now queued for screening.'
+      : 'Upload successful. Packet is now ready for assignment.'
 
   // Body content for the "Review packets should contain" box, chosen by the
   // deployment's study type. Resolved the same way as Home so both pages show
@@ -292,7 +304,7 @@ function EventUpload({ studyType, configResolved = true }) {
               )}
               {uploadStatus === 'success' && (
                 <div style={{ color: 'green', paddingTop: '6px' }}>
-                  Upload successful. Packet is now queued for scrubbing.
+                  {uploadSuccessMessage}
                 </div>
               )}
             </form>

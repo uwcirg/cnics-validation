@@ -268,7 +268,7 @@ function App() {
           {/* Uploader routes (uploader or admin) */}
           <Route path="/events/upload" element={
             <ProtectedRoute requiredRoles={['uploader', 'admin']} auth={auth}>
-              <EventUpload studyType={studyType} configResolved={configResolved} />
+              <EventUpload studyType={studyType} configResolved={configResolved} workflow={workflow} />
             </ProtectedRoute>
           } />
           <Route path="/vte/upload" element={
