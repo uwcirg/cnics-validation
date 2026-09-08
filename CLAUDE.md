@@ -1,6 +1,6 @@
 # cnics-validation Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-08-17
+Auto-generated from all feature plans. Last updated: 2026-09-08
 
 ## Active Technologies
 - N/A — documentation, Markdown, and inline comments + None added. `python-keycloak` is retained (already (002-constitution-sync)
@@ -18,6 +18,8 @@ Auto-generated from all feature plans. Last updated: 2026-08-17
 - MariaDB 10.11, shared schema under `init/`. **No schema change in this feature** — all four values already exist and are populated (008-upload-event-identifiers)
 - Python 3.11 (Flask backend); JavaScript / JSX, React 19 (frontend) + Flask, SQLAlchemy, mysql-connector-python; React 19, react-router-dom 6, Vite 7 — **no new dependency**; the archive uses `csv`, `json`, `os`, `uuid`, and `datetime` from the standard library (009-save-import-csv)
 - Filesystem only — `<DOWNLOADS_DIR>/imports/`, on the existing `cnics-downloads` named volume. **No schema change, no migration**; the import record is a JSON sidecar, not a table (research D2) (009-save-import-csv)
+- Python 3.11 (Flask backend); JavaScript / JSX, React 19 (frontend) + Flask, SQLAlchemy (backend); React 19, react-router-dom 6, Vite 7 (frontend) — **no new dependency** (010-study-aware-packet-heading)
+- MariaDB 10.11, shared schema under `init/`. **No schema change** — every value here is runtime configuration or derived presentation state (010-study-aware-packet-heading)
 
 - N/A — no code in a programming language is being + N/A. The repository's runtime stack (Flask + (001-mark-fhir-unused)
 
@@ -38,6 +40,7 @@ tests/
 N/A — no code in a programming language is being: Follow standard conventions
 
 ## Recent Changes
+- 010-study-aware-packet-heading: Added Python 3.11 (Flask backend); JavaScript / JSX, React 19 (frontend) + Flask, SQLAlchemy (backend); React 19, react-router-dom 6, Vite 7 (frontend) — **no new dependency**
 - 009-save-import-csv: Added Python 3.11 (Flask backend); JavaScript / JSX, React 19 (frontend) + Flask, SQLAlchemy, mysql-connector-python; React 19, react-router-dom 6, Vite 7 — **no new dependency**; the archive uses `csv`, `json`, `os`, `uuid`, and `datetime` from the standard library
 - 008-upload-event-identifiers: Added Python 3.11 (Flask backend); JavaScript / JSX, React 19 (frontend) + Flask, SQLAlchemy, mysql-connector-python; React 19, react-router-dom 6, Vite 7 — **no new dependency**
 

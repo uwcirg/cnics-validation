@@ -1,11 +1,20 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { headingSuffix } from '../components/studyHeading'
 
-function EventScreen() {
+function EventScreen({ studyLabel, configResolved = true }) {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const apiUrl = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || '')
   const eventId = searchParams.get('event_id')
+
+  // The study word shown in this page's heading. Withheld until GET /api/config
+  // has resolved, so the heading never paints one study's name and then swaps
+  // it for another (spec 010, FR-009) — the same gate Home.jsx applies to its
+  // study-aware boxes. `headingSuffix` collapses an empty label to the bare
+  // event identifier, so the pre-resolution form is the bare id, with no
+  // stray space (e.g. "Screen charts for 4821").
+  const headingText = headingSuffix(configResolved ? studyLabel : '', eventId)
 
   const [details, setDetails] = useState(null)
   const [decision, setDecision] = useState('accept')
@@ -50,7 +59,7 @@ function EventScreen() {
 
   return (
     <div>
-      <h1>Screen charts for MI {eventId}</h1>
+      <h1>Screen charts for {headingText}</h1>
 
       {details && (
         <p>

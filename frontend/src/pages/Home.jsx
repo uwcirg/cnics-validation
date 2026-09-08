@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import DataTable from '../components/DataTable'
 import { resolveReviewGuidance } from '../components/reviewGuidance'
+import GuidanceLinks from '../components/GuidanceLinks'
 import './Home.css'
 
 // Base URL for the backend API. When running under Docker Compose the
@@ -86,29 +87,6 @@ function TableWrapper({ endpoint, columns, renderActions, pageSize = PAGE_SIZE }
       </div>
       <DataTable rows={rows} onRowClick={handleClick} onPageChange={fetchPage} totalCount={totalCount} columns={columns} renderActions={renderActions} />
     </>
-  )
-}
-
-// Render one guidance box's optional file links. Returns null when the box
-// defines no links, so no orphaned "Full instructions:" / "View as:" label is
-// shown (spec 007, FR-004). A `.doc`-style link downloads; a `.pdf`-style link
-// opens in a new tab — matching the original MI behavior.
-function GuidanceLinks({ box }) {
-  if (!box.links || box.links.length === 0) return null
-  return (
-    <div>
-      {box.linkLabel ? `${box.linkLabel} ` : ''}
-      {box.links.map((link, i) => (
-        <span key={link.href}>
-          {i > 0 ? ' | ' : ''}
-          {link.download ? (
-            <a href={`${API_BASE}${link.href}`} download>{link.label}</a>
-          ) : (
-            <a href={`${API_BASE}${link.href}`} target="_blank">{link.label}</a>
-          )}
-        </span>
-      ))}
-    </div>
   )
 }
 

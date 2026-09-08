@@ -18,7 +18,12 @@
  *
  *   Link   = { label: string, href: string, download: boolean }
  *   Box    = { items: string[], linkLabel?: string, links: Link[] }
- *   Guide  = { packets: Box, instructions: Box }
+ *   Guide  = { packets: Box, instructions: Box, scrubbing: Box }
+ *
+ * The `scrubbing` box was added by spec 010, which also made the scrubbing and
+ * review pages read their document links from this map instead of hard-coding
+ * one study's filenames. This file is now the single recorded source for every
+ * study document the application links to (spec 010, FR-014).
  *
  * A `Box` with an empty `links` array renders no link area at all — no
  * orphaned "Full instructions:" / "View as:" label (FR-004).
@@ -55,6 +60,18 @@ const STUDY_GUIDANCE = {
         { label: '.pdf', href: '/files/CNICS MI reviewer instructions.pdf', download: false },
       ],
     },
+    // The scrubbing protocol, moved verbatim off EventScrub.jsx where it was
+    // hard-coded (spec 010, FR-012). Note the filenames say `MI` while the
+    // study identity is `mci` — that mismatch is exactly why documents are
+    // recorded content rather than derived from the study label.
+    scrubbing: {
+      items: [],
+      linkLabel: 'View as:',
+      links: [
+        { label: '.doc', href: '/files/CNICS MI event scrubbing protocol.doc', download: true },
+        { label: '.pdf', href: '/files/CNICS MI event scrubbing protocol.pdf', download: false },
+      ],
+    },
   },
   // DEXA scans — short, study-specific guidance with no linked files
   // (spec 007, FR-006 / FR-007). Empty `links` ⇒ no link area shown.
@@ -68,6 +85,13 @@ const STUDY_GUIDANCE = {
     },
     instructions: {
       items: ['No additional instructions'],
+      links: [],
+    },
+    // DEXA scans has no scrubbing protocol document — and no scrubbing stage
+    // at all. Empty `links` ⇒ the scrubbing page renders no document area
+    // (spec 010, FR-016).
+    scrubbing: {
+      items: [],
       links: [],
     },
   },
@@ -88,10 +112,49 @@ const EMPTY_GUIDANCE = {
  * `mci` is undefined, a safe empty result is returned so the renderer never
  * crashes.
  *
+ * **This function falls back to `mci`; its sibling `resolveStudyDocuments()`
+ * below deliberately does not. That difference is intentional — do not "fix"
+ * either one to match the other.** The home page falls back so an unrecognized
+ * study still sees guidance prose (spec 007, FR-008); the workflow pages must
+ * not, because offering one study's *protocol document* to another study's
+ * reviewer is a worse failure than showing no document at all (spec 010,
+ * FR-017). Guidance prose is read; a protocol document is acted on. The two
+ * resolvers read the same map, so they can only disagree on a deployment whose
+ * STUDY_TYPE is unrecognized or unset — i.e. a misconfiguration. Whether the
+ * home page should stop falling back is tracked as follow-up (research R4).
+ *
  * @param {string|null|undefined} studyType raw study type
  * @returns {{packets: object, instructions: object}} guidance content, never null
  */
 export function resolveReviewGuidance(studyType) {
   const key = (studyType ?? '').toString().trim().toLowerCase()
   return STUDY_GUIDANCE[key] || STUDY_GUIDANCE.mci || EMPTY_GUIDANCE
+}
+
+
+/**
+ * Resolve the *document links* for a deployment's study type, for the
+ * scrubbing and review pages.
+ *
+ * Unlike {@link resolveReviewGuidance} above, this performs **no `|| mci`
+ * fallback**. An unrecognized or unset study type resolves to empty boxes, so
+ * those pages render no document area at all rather than offering another
+ * study's scrubbing protocol or reviewer instructions (spec 010, FR-017,
+ * FR-018). See the note on `resolveReviewGuidance` for why the two differ.
+ *
+ * Both boxes come from the same `STUDY_GUIDANCE` entry the home page reads, so
+ * for any configured, recognized study the review page's instruction links and
+ * the home page's are identical by construction (FR-014).
+ *
+ * @param {string|null|undefined} studyType raw study type
+ * @returns {{scrubbing: object, instructions: object}} never null; each box
+ *   defaults to `{ links: [] }`, which renders nothing
+ */
+export function resolveStudyDocuments(studyType) {
+  const key = (studyType ?? '').toString().trim().toLowerCase()
+  const entry = STUDY_GUIDANCE[key] // deliberately no `|| STUDY_GUIDANCE.mci`
+  return {
+    scrubbing: entry?.scrubbing ?? { links: [] },
+    instructions: entry?.instructions ?? { links: [] },
+  }
 }

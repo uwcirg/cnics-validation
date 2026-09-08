@@ -7,6 +7,7 @@ from email.utils import formatdate, make_msgid
 from typing import Optional, List, Dict, Any
 
 from . import models
+from .study_config import get_study_label
 import logging
 
 logger = logging.getLogger(__name__)
@@ -56,8 +57,22 @@ def _build_urls(event_id: int) -> Dict[str, str]:
 
 
 def _format_subject(event_id: int) -> str:
-    prefix = os.getenv("EMAIL_SUBJECT_PREFIX", "CNICS / NA-ACCORD")
-    return f"{prefix} MI Review Assignment – Event {event_id}"
+    """Build the assignment email's subject, naming this deployment's study.
+
+    The study word comes from `get_study_label()`, never from
+    `get_study_type()`: the latter defaults an unset STUDY_TYPE to `mci`, which
+    would name MCI to reviewers on a deployment that was never configured
+    (spec 010, FR-020, FR-024).
+
+    The parts are joined rather than interpolated so an empty label — or an
+    empty EMAIL_SUBJECT_PREFIX — collapses without leaving a double space:
+
+        mci   → "CNICS / NA-ACCORD MCI Review Assignment – Event 4821"
+        unset → "CNICS / NA-ACCORD Review Assignment – Event 4821"
+    """
+    prefix = os.getenv("EMAIL_SUBJECT_PREFIX", "CNICS / NA-ACCORD").strip()
+    parts = [p for p in (prefix, get_study_label(), "Review Assignment") if p]
+    return f"{' '.join(parts)} – Event {event_id}"
 
 
 def _format_signature() -> str:
@@ -74,8 +89,21 @@ def _build_body(first_name: str, last_name: str, urls: Dict[str, str]) -> str:
     # Emulate legacy style text email (CRLF newlines)
     parts: List[str] = []
     parts.append(f"Dear {first_name} {last_name}, \r\n")
+    # Name the study the reviewer is actually reviewing (spec 010, FR-021).
+    # "a review in the X study" deliberately puts NO indefinite article before
+    # the label: "an MCI" but "a CVA" is not derivable from a configured value,
+    # so any article-bearing phrasing is wrong for some study (FR-022). The
+    # full clinical name ("Myocardial Infarction") is dropped for the same
+    # reason — it exists for exactly one study (FR-023). With no study
+    # configured the clause is omitted entirely rather than guessed (FR-024).
+    study_label = get_study_label()
+    opening = (
+        f"You have been assigned a review in the {study_label} study."
+        if study_label
+        else "You have been assigned a review."
+    )
     parts.append(
-        "You have been assigned a Myocardial Infarction (MI) review.\r\n"
+        f"{opening}\r\n"
         "Please download the charts and complete the review at the links below.\r\n"
     )
     parts.append("")

@@ -62,6 +62,7 @@ def test_config_endpoint_returns_scans_config(admin_client, monkeypatch):
     assert res.status_code == 200
     data = res.get_json()["data"]
     assert data["study_type"] == "scans"
+    assert data["study_label"] == "SCANS"
     assert data["workflow"] == {
         "scrubbing": False,
         "screening": False,
@@ -93,7 +94,12 @@ def test_config_endpoint_exposes_only_workflow_keys(admin_client, monkeypatch):
     res = admin_client.get("/api/config")
 
     data = res.get_json()["data"]
-    assert set(data.keys()) == {"study_type", "study_title", "workflow"}
+    assert set(data.keys()) == {
+        "study_type",
+        "study_label",
+        "study_title",
+        "workflow",
+    }
     assert set(data["workflow"].keys()) == {
         "scrubbing",
         "screening",
@@ -155,3 +161,62 @@ def test_config_endpoint_allows_a_reviewer(mock_get_session):
     res = client.get("/api/config", headers={"X-Remote-User": "alice"})
 
     assert res.status_code == 200
+
+
+# --- study_label (spec 010, contracts/config-api.md) ------------------------
+
+
+def test_config_endpoint_serves_the_study_label(admin_client, monkeypatch):
+    """A configured study is published upper-cased as `study_label`."""
+    _clear_controls(monkeypatch)
+    monkeypatch.setenv("STUDY_TYPE", "mci")
+
+    data = admin_client.get("/api/config").get_json()["data"]
+
+    assert data["study_label"] == "MCI"
+    assert data["study_type"] == "mci"
+
+
+def test_config_endpoint_trims_and_upper_cases_the_study_label(admin_client, monkeypatch):
+    """Whitespace and case in STUDY_TYPE do not reach the label (FR-008)."""
+    _clear_controls(monkeypatch)
+    monkeypatch.setenv("STUDY_TYPE", "  scans  ")
+
+    data = admin_client.get("/api/config").get_json()["data"]
+
+    assert data["study_label"] == "SCANS"
+    # The raw type is served exactly as configured; only the label is normalized.
+    assert data["study_type"] == "  scans  "
+
+
+def test_config_endpoint_blank_label_when_study_type_unset(admin_client, monkeypatch):
+    """Unset STUDY_TYPE: `study_label` is "" while `study_type` keeps `mci`.
+
+    Asserted together because that is the whole point of the added field —
+    the frontend must be able to tell "unconfigured" from "configured as MCI"
+    so a heading can omit the study word (FR-005).
+    """
+    _clear_controls(monkeypatch)
+
+    data = admin_client.get("/api/config").get_json()["data"]
+
+    assert data["study_label"] == ""
+    assert data["study_type"] == "mci"
+
+
+def test_config_endpoint_label_does_not_disturb_title_or_workflow(admin_client, monkeypatch):
+    """Adding the label leaves `study_title` and `workflow` untouched."""
+    _clear_controls(monkeypatch)
+    monkeypatch.setenv("STUDY_TYPE", "mci")
+    monkeypatch.setenv("STUDY_TITLE", "  Cardiology  ")
+
+    data = admin_client.get("/api/config").get_json()["data"]
+
+    assert data["study_label"] == "MCI"
+    assert data["study_title"] == "Cardiology"
+    assert data["workflow"] == {
+        "scrubbing": True,
+        "screening": True,
+        "sending": True,
+        "reviewer_count": 2,
+    }
