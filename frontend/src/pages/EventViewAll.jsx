@@ -194,7 +194,7 @@ function EventViewAll({ workflow }) {
       <TableSection
         title="To Be Uploaded"
         endpoint="/api/events/need_packets"
-        columns={['ID', 'Date', 'Created', 'site']}
+        columns={['ID', 'Date', 'Created', 'Site']}
         renderActions={(row) => (
           <>
             <button onClick={(e) => { e.stopPropagation(); window.location.href = `/events/upload?event_id=${row['ID']}` }}>upload</button>
