@@ -748,9 +748,16 @@ def get_config():
     """Return the resolved workflow configuration for this deployment.
 
     Exposes only the four non-sensitive workflow-stage controls, the study
-    type, and the cosmetic banner study-title override — no secrets — so the
-    frontend can hide bypassed-stage UI by flag rather than by a hard-coded
-    study-name check (FR-021), and brand the banner and tab title by config.
+    type, its display label, and the cosmetic banner study-title override — no
+    secrets — so the frontend can hide bypassed-stage UI by flag rather than by
+    a hard-coded study-name check (FR-021), and brand the banner and tab title
+    by config.
+
+    `study_label` is the upper-cased study identity, empty when STUDY_TYPE is
+    unset. It is deliberately *not* derivable from `study_type`, which has
+    already been defaulted to `mci` by the time it is serialized here; the
+    label is what the page headings render, so an unconfigured deployment must
+    be able to show no study word at all (spec 010, FR-005).
     ---
     responses:
       200:
@@ -762,6 +769,8 @@ def get_config():
               type: object
               properties:
                 study_type:
+                  type: string
+                study_label:
                   type: string
                 study_title:
                   type: string
@@ -780,6 +789,7 @@ def get_config():
     cfg = get_workflow_config()
     return jsonify({'data': {
         'study_type': cfg.study_type,
+        'study_label': cfg.study_label,
         'study_title': cfg.study_title,
         'workflow': {
             'scrubbing': cfg.scrubbing,

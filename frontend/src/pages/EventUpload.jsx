@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import DataTable from '../components/DataTable'
 import { resolveReviewGuidance } from '../components/reviewGuidance'
+import { headingSuffix } from '../components/studyHeading'
 import './EventUpload.css'
 
 const PAGE_SIZE = 20
@@ -113,7 +114,7 @@ function TableWrapper({ endpoint, columns, renderActions, pageSize = PAGE_SIZE }
   )
 }
 
-function EventUpload({ studyType, configResolved = true, workflow }) {
+function EventUpload({ studyLabel, studyType, configResolved = true, workflow }) {
   const [searchParams] = useSearchParams()
 
   // What happens to a packet after upload depends on which optional stages the
@@ -138,6 +139,14 @@ function EventUpload({ studyType, configResolved = true, workflow }) {
   // the row action button all render the same thing. Older links may still
   // carry patient_id/date/criteria; those are ignored, not rejected.
   const eventId = searchParams.get('event_id')
+
+  // The study word shown in this page's heading. Withheld until GET /api/config
+  // has resolved, so the heading never paints one study's name and then swaps
+  // it for another (spec 010, FR-009) — the same gate Home.jsx applies to its
+  // study-aware boxes. `headingSuffix` collapses an empty label to the bare
+  // event identifier, so the pre-resolution form is the bare id, with no
+  // stray space (e.g. "Packet for 4821").
+  const headingText = headingSuffix(configResolved ? studyLabel : '', eventId)
   const [details, setDetails] = useState(null)
   // State for the upload UI only (search/table browsing removed to match Home)
   const [noPacketReason, setNoPacketReason] = useState('')
@@ -244,7 +253,7 @@ function EventUpload({ studyType, configResolved = true, workflow }) {
 
       {eventId && details && (
         <div className="infobox">
-          <div>Packet for MI {eventId}</div>
+          <div>Packet for {headingText}</div>
           {/* Patient ID and Site Patient ID are labelled separately on purpose:
               the uploader cross-references the site's own identifier against
               the packet, so collapsing the two into one line would defeat the

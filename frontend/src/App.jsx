@@ -71,6 +71,14 @@ function App() {
   // Study type from GET /api/config — the fallback source for the banner's
   // study title. Empty until the config resolves.
   const [studyType, setStudyType] = useState('')
+  // Upper-cased study label from GET /api/config — what the four workflow
+  // page headings render. Distinct from `studyType`: the server defaults an
+  // unset STUDY_TYPE to `mci` before serializing `study_type`, but sends
+  // `study_label` as '' so an unconfigured deployment shows no study word
+  // rather than naming a study it was never set up for (spec 010, FR-005).
+  // '' is therefore both the initial value and the correct steady state for
+  // an unconfigured deployment (FR-009).
+  const [studyLabel, setStudyLabel] = useState('')
   // Optional STUDY_TITLE override from GET /api/config — a free-form display
   // string (e.g. "DEXA Scans Validation") shown verbatim in the banner and
   // used to build the browser tab title. Empty when not configured.
@@ -105,6 +113,11 @@ function App() {
           if (wf) setWorkflow(wf)
           const st = json && json.data && json.data.study_type
           if (st) setStudyType(st)
+          const sl = json && json.data && json.data.study_label
+          // The `if (sl)` guard leaves the state at '' for an unconfigured
+          // deployment, which is exactly the no-study-word form FR-009 wants
+          // — there is nothing to distinguish from the initial value.
+          if (sl) setStudyLabel(sl)
           const stt = json && json.data && json.data.study_title
           if (stt) setStudyTitle(stt)
         }
@@ -268,7 +281,7 @@ function App() {
           {/* Uploader routes (uploader or admin) */}
           <Route path="/events/upload" element={
             <ProtectedRoute requiredRoles={['uploader', 'admin']} auth={auth}>
-              <EventUpload studyType={studyType} configResolved={configResolved} workflow={workflow} />
+              <EventUpload studyLabel={studyLabel} studyType={studyType} configResolved={configResolved} workflow={workflow} />
             </ProtectedRoute>
           } />
           <Route path="/vte/upload" element={
@@ -290,7 +303,7 @@ function App() {
           {/* Reviewer routes (reviewer or admin) */}
           <Route path="/events/review" element={
             <ProtectedRoute requiredRoles={['reviewer', 'admin']} auth={auth}>
-              <EventReview />
+              <EventReview studyLabel={studyLabel} studyType={studyType} configResolved={configResolved} />
             </ProtectedRoute>
           } />
           <Route path="/vte/review" element={
@@ -302,7 +315,7 @@ function App() {
           {workflow.screening && (
             <Route path="/events/screen" element={
               <ProtectedRoute requiredRoles={['reviewer', 'admin']} auth={auth}>
-                <EventScreen />
+                <EventScreen studyLabel={studyLabel} configResolved={configResolved} />
               </ProtectedRoute>
             } />
           )}
@@ -326,7 +339,7 @@ function App() {
           {workflow.scrubbing && (
             <Route path="/events/scrub" element={
               <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
-                <EventScrub />
+                <EventScrub studyLabel={studyLabel} studyType={studyType} configResolved={configResolved} />
               </ProtectedRoute>
             } />
           )}

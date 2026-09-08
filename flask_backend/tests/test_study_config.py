@@ -8,7 +8,12 @@ asserts on the freshly resolved configuration.
 
 import pytest
 
-from flask_backend.study_config import get_workflow_config, WorkflowConfigError
+from flask_backend.study_config import (
+    get_study_label,
+    get_study_type,
+    get_workflow_config,
+    WorkflowConfigError,
+)
 
 _CONTROL_VARS = (
     "STUDY_TYPE",
@@ -125,3 +130,71 @@ def test_malformed_boolean_token_raises(monkeypatch):
         get_workflow_config()
 
     assert "ENABLE_SCRUBBING" in str(exc.value)
+
+
+# --- Study label (spec 010) ------------------------------------------------
+#
+# `get_study_label()` and `get_study_type()` differ ONLY in how they treat an
+# unset STUDY_TYPE, and that difference is the entire point of the accessor.
+# The unset case below is load-bearing: if the label ever starts defaulting to
+# "MCI", every other assertion in this file still passes while an
+# unconfigured deployment silently names a study it was never set up for.
+
+
+def test_study_label_upper_cases_the_configured_study(monkeypatch):
+    """A configured study yields its upper-cased value (FR-003)."""
+    _clear_controls(monkeypatch)
+    monkeypatch.setenv("STUDY_TYPE", "mci")
+
+    assert get_study_label() == "MCI"
+
+
+def test_study_label_trims_and_upper_cases(monkeypatch):
+    """Surrounding whitespace and mixed case are tolerated (FR-008)."""
+    _clear_controls(monkeypatch)
+    monkeypatch.setenv("STUDY_TYPE", "  Scans  ")
+
+    assert get_study_label() == "SCANS"
+
+
+def test_study_label_is_empty_when_unset_but_study_type_still_defaults(monkeypatch):
+    """Unset STUDY_TYPE: the label reports "" while the type keeps its `mci` default.
+
+    Both halves are asserted together, in one test, so the distinction between
+    the two accessors cannot silently regress — collapsing them would make the
+    headings and the assignment email name MCI on a deployment that was never
+    configured (FR-005).
+    """
+    _clear_controls(monkeypatch)
+
+    assert get_study_label() == ""
+    assert get_study_type() == "mci"
+
+
+def test_study_label_is_empty_when_blank(monkeypatch):
+    """A whitespace-only STUDY_TYPE is treated as unset (FR-005)."""
+    _clear_controls(monkeypatch)
+    monkeypatch.setenv("STUDY_TYPE", "   ")
+
+    assert get_study_label() == ""
+
+
+def test_workflow_config_carries_the_study_label(monkeypatch):
+    """The resolved config exposes the label alongside the raw study type."""
+    _clear_controls(monkeypatch)
+    monkeypatch.setenv("STUDY_TYPE", "scans")
+
+    cfg = get_workflow_config()
+
+    assert cfg.study_type == "scans"
+    assert cfg.study_label == "SCANS"
+
+
+def test_workflow_config_label_is_empty_when_study_type_unset(monkeypatch):
+    """An unconfigured deployment resolves a blank label but the `mci` type."""
+    _clear_controls(monkeypatch)
+
+    cfg = get_workflow_config()
+
+    assert cfg.study_label == ""
+    assert cfg.study_type == "mci"

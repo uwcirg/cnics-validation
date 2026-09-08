@@ -64,6 +64,7 @@ class WorkflowConfig:
     """The resolved, immutable workflow configuration for this deployment."""
 
     study_type: str
+    study_label: str
     study_title: str
     scrubbing: bool
     screening: bool
@@ -74,6 +75,32 @@ class WorkflowConfig:
 def get_study_type() -> str:
     """Return the current study type from the environment (default ``mci``)."""
     return os.getenv("STUDY_TYPE", "mci")
+
+
+def get_study_label() -> str:
+    """Return the upper-cased display label for this deployment's study.
+
+    Returns the empty string when ``STUDY_TYPE`` is unset or blank — and only
+    then. This is the *one* place the raw, undefaulted variable is read.
+
+    **Why this differs from `get_study_type()`, deliberately**: that accessor
+    defaults an unset ``STUDY_TYPE`` to ``mci``, which is correct for
+    resolving workflow profiles and study-keyed content — an unconfigured
+    deployment should behave like the conservative default. It is wrong for
+    *display*, because it makes "not configured" indistinguishable from
+    "configured as MCI", and a heading or an email would then name a study
+    the deployment was never set up for. The safer value for a display label
+    is no label at all, so this accessor reports the unset state honestly and
+    its callers omit the study word entirely (FR-003, FR-005, FR-008).
+
+    Callers building a heading or an email MUST use this, never
+    `get_study_type()`. The two agree on every configured deployment and
+    differ only when nothing is configured, so a mistake here is invisible
+    until it reaches an unconfigured deployment.
+
+    Examples: ``mci`` → ``"MCI"``; ``"  Scans  "`` → ``"SCANS"``; unset → ``""``.
+    """
+    return os.getenv("STUDY_TYPE", "").strip().upper()
 
 
 def get_study_title() -> str:
@@ -172,6 +199,7 @@ def get_workflow_config() -> WorkflowConfig:
     profile = _profile_for(study_type)
     return WorkflowConfig(
         study_type=study_type,
+        study_label=get_study_label(),
         study_title=get_study_title(),
         scrubbing=_resolve_bool("ENABLE_SCRUBBING", profile["scrubbing"]),
         screening=_resolve_bool("ENABLE_SCREENING", profile["screening"]),

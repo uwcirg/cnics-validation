@@ -1,12 +1,30 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { showToast } from '../components/Toast'
+import GuidanceLinks from '../components/GuidanceLinks'
+import { resolveStudyDocuments } from '../components/reviewGuidance'
+import { headingSuffix } from '../components/studyHeading'
 
-function EventScrub() {
+function EventScrub({ studyLabel, studyType, configResolved = true }) {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const apiUrl = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || '')
   const eventId = searchParams.get('event_id')
+
+  // The study word shown in this page's heading. Withheld until GET /api/config
+  // has resolved, so the heading never paints one study's name and then swaps
+  // it for another (spec 010, FR-009) — the same gate Home.jsx applies to its
+  // study-aware boxes. `headingSuffix` collapses an empty label to the bare
+  // event identifier, so the pre-resolution form is the bare id, with no
+  // stray space (e.g. "Upload scrubbed charts for 4821").
+  const headingText = headingSuffix(configResolved ? studyLabel : '', eventId)
+
+  // Document links for this deployment's study, from the same recorded source
+  // the home page reads. A study with no scrubbing protocol resolves to an
+  // empty box and renders no link area at all — deliberately with no fallback
+  // to another study's protocol (spec 010, FR-016, FR-017).
+  const documents = resolveStudyDocuments(studyType)
+  const showScrubbingDocs = configResolved && documents.scrubbing.links.length > 0
 
   const [details, setDetails] = useState(null)
   const [file, setFile] = useState(null)
@@ -60,17 +78,19 @@ function EventScrub() {
 
   return (
     <div>
-      <div className="infobox" style={{ width: '300px', fontSize: '.95em' }}>
-        <h3>Scrubbing Instructions:</h3>
-        <div style={{ marginTop: '8px' }}>
-          View as:{' '}
-          <a href={`${apiUrl}/files/CNICS MI event scrubbing protocol.doc`} download>.doc</a>
-          {' | '}
-          <a href={`${apiUrl}/files/CNICS MI event scrubbing protocol.pdf`} target="_blank">.pdf</a>
+      {/* The whole box — header included — is withheld when this study has no
+          scrubbing protocol, so no orphaned "Scrubbing Instructions:" header
+          is left behind (spec 010, FR-015). */}
+      {showScrubbingDocs && (
+        <div className="infobox" style={{ width: '300px', fontSize: '.95em' }}>
+          <h3>Scrubbing Instructions:</h3>
+          <div style={{ marginTop: '8px' }}>
+            <GuidanceLinks box={documents.scrubbing} />
+          </div>
         </div>
-      </div>
+      )}
 
-      <h1>Upload scrubbed charts for MI {eventId}</h1>
+      <h1>Upload scrubbed charts for {headingText}</h1>
 
       {details && (
         <p>
