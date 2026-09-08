@@ -500,18 +500,24 @@ def events_need_packets():
     """
     limit = get_limit()
     offset = get_offset()
+    q = request.args.get('q') or None
+    sort_by = request.args.get('sort_by') or None
+    sort_dir = request.args.get('sort_dir') or None
     # Non-admin uploaders/reviewers are scoped to their own site (legacy
     # behavior); admins act across all sites, matching the admin bypass in
-    # upload_raw so they can see every event they are allowed to upload.
+    # upload_raw so they can see every event they are allowed to upload. The
+    # `site` query param narrows within that scope, so it is honored only for
+    # admins -- for anyone else their own site already is the whole scope.
     auth_user = getattr(g, 'auth_user', None) or {}
     if auth_user.get('admin'):
-        site = None
+        site = (request.args.get('site') or '').strip() or None
     else:
         site = (auth_user.get('site') or '').strip() or None
     try:
-        rows = table_service.get_events_need_packets(limit, offset, site)
-        # Optional: add total if we later add filtering here as well
-        return jsonify({'data': rows})
+        rows, total = table_service.get_events_need_packets_with_total(
+            limit, offset, q, site, sort_by, sort_dir
+        )
+        return jsonify({'data': rows, 'total': total})
     except Exception:
         app.logger.exception("Failed to fetch table data")
         return jsonify({'error': 'Failed to fetch table data'}), 500
