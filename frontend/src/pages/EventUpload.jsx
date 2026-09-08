@@ -151,20 +151,33 @@ function EventUpload({ studyLabel, studyType, configResolved = true, workflow })
   // State for the upload UI only (search/table browsing removed to match Home)
   const [noPacketReason, setNoPacketReason] = useState('')
   const [priorEventDateKnown, setPriorEventDateKnown] = useState('')
+  // The follow-up answers. These were rendered as uncontrolled inputs, so the
+  // coordinator's answers were unreadable even once a handler existed.
+  const [twoAttempts, setTwoAttempts] = useState('')
+  const [priorEventMonth, setPriorEventMonth] = useState('')
+  const [priorEventYear, setPriorEventYear] = useState('')
+  const [priorEventOnsite, setPriorEventOnsite] = useState('')
+  const [otherCause, setOtherCause] = useState('')
+  const [noPacketStatus, setNoPacketStatus] = useState('idle') // idle | submitting | success | error
+  const [noPacketError, setNoPacketError] = useState('')
   const [packetFile, setPacketFile] = useState(null)
   const [uploadStatus, setUploadStatus] = useState('idle') // idle | uploading | success | error
   const [uploadError, setUploadError] = useState('')
 
+  // Named once: it is long enough that repeating it invites a typo, and a
+  // mistyped reason would fail the backend's enum check rather than any
+  // check here.
+  const PRIOR_EVENT_REASON = 'Ascertainment diagnosis referred to a prior event'
+
   const noPacketReasons = [
     'Outside hospital',
     'Ascertainment diagnosis error',
-    'Ascertainment diagnosis referred to a prior event',
+    PRIOR_EVENT_REASON,
     'Other',
   ]
 
   const showTwoAttempts = noPacketReason === 'Outside hospital'
-  const showPriorEvent =
-    noPacketReason === 'Ascertainment diagnosis referred to a prior event'
+  const showPriorEvent = noPacketReason === PRIOR_EVENT_REASON
   const showOtherCause = noPacketReason === 'Other'
 
   // No homepage-style preloading or local search; use the shared TableWrapper instead
@@ -226,6 +239,131 @@ function EventUpload({ studyLabel, studyType, configResolved = true, workflow })
     } catch (err) {
       setUploadStatus('error')
       setUploadError('Network or server error while uploading.')
+    }
+  }
+
+  // Once recorded, the event is resolved: the form locks so the same
+  // declaration cannot be submitted twice (FR-020).
+  const noPacketDone = noPacketStatus === 'success'
+
+  // Client-side mirrors of the backend's V2-V8 rules. Convenience only — the
+  // backend re-validates everything — but it is what turns "nothing happened"
+  // into a message naming the answer that is missing (FR-011 to FR-015).
+  const noPacketValidationError = () => {
+    if (noPacketReason === 'Outside hospital' && twoAttempts !== '1' && twoAttempts !== '0') {
+      return 'Please answer whether 2 attempts were made to obtain the medical records.'
+    }
+    if (noPacketReason === 'Other') {
+      const cause = otherCause.trim()
+      if (!cause) return 'Please enter the other cause.'
+      if (cause.length > 100) return 'Other cause must be 100 characters or fewer.'
+    }
+    if (noPacketReason === PRIOR_EVENT_REASON) {
+      if (priorEventOnsite !== '1' && priorEventOnsite !== '0') {
+        return 'Please answer whether the event occurred while in care at your site.'
+      }
+      if (priorEventDateKnown === '1') {
+        const month = priorEventMonth.trim()
+        const year = priorEventYear.trim()
+        if (!month && !year) {
+          return 'Enter a month or a year for the prior event, or answer that the date is not known.'
+        }
+        if (month && !(/^\d+$/.test(month) && Number(month) >= 1 && Number(month) <= 12)) {
+          return 'Month must be between 1 and 12.'
+        }
+        if (year && !/^\d{4}$/.test(year)) {
+          return 'Year must be a four-digit year.'
+        }
+      }
+    }
+    return ''
+  }
+
+  // Answers belong to the reason that raised them. Clearing on change makes
+  // the "answered, then switched" case impossible to submit at all, rather
+  // than merely filtered out server-side (FR-006).
+  const handleNoPacketReasonChange = (e) => {
+    setNoPacketReason(e.target.value)
+    setTwoAttempts('')
+    setPriorEventDateKnown('')
+    setPriorEventMonth('')
+    setPriorEventYear('')
+    setPriorEventOnsite('')
+    setOtherCause('')
+    setNoPacketStatus('idle')
+    setNoPacketError('')
+  }
+
+  // Records that no packet can be obtained. The form previously had no
+  // onSubmit at all, so pressing Submit performed a default browser
+  // submission that React never intercepted and no request was ever made —
+  // the silent data loss this fixes.
+  const handleNoPacketSubmit = async (e) => {
+    e.preventDefault()
+    setNoPacketError('')
+    if (!eventId) {
+      setNoPacketStatus('error')
+      setNoPacketError('No event selected.')
+      return
+    }
+    if (noPacketStatus === 'submitting' || noPacketStatus === 'success') return
+
+    const invalid = noPacketValidationError()
+    if (invalid) {
+      setNoPacketStatus('error')
+      setNoPacketError(invalid)
+      return
+    }
+
+    // Only the fields the selected reason calls for are sent. The others may
+    // hold answers given before the reason was changed, and must not be
+    // persisted against a reason they do not belong to (FR-006).
+    const body = { reason: noPacketReason }
+    if (noPacketReason === 'Outside hospital') {
+      body.two_attempts = twoAttempts === '1'
+    }
+    if (noPacketReason === 'Other') {
+      body.other_cause = otherCause
+    }
+    if (noPacketReason === PRIOR_EVENT_REASON) {
+      body.prior_event_date_known = priorEventDateKnown === '1'
+      body.prior_event_onsite = priorEventOnsite === '1'
+      // Sent as typed, blanks included: a blank half is a real answer that
+      // the backend encodes as a zero sentinel, not an omission.
+      if (priorEventDateKnown === '1') {
+        body.prior_event_month = priorEventMonth
+        body.prior_event_year = priorEventYear
+      }
+    }
+
+    try {
+      setNoPacketStatus('submitting')
+      const res = await fetch(
+        `${API_BASE}/api/events/${encodeURIComponent(eventId)}/mark_no_packet`,
+        {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        },
+      )
+      if (!res.ok) {
+        let msg = 'Could not record that no packet is available.'
+        try {
+          const j = await res.json()
+          if (j && j.error) msg = j.error
+        } catch {
+          // A non-JSON body (a proxy error page, say) leaves the generic
+          // message in place; the point is that something is always shown.
+        }
+        setNoPacketStatus('error')
+        setNoPacketError(msg)
+        return
+      }
+      setNoPacketStatus('success')
+    } catch {
+      setNoPacketStatus('error')
+      setNoPacketError('Network or server error while recording the reason.')
     }
   }
 
@@ -323,13 +461,14 @@ function EventUpload({ studyLabel, studyType, configResolved = true, workflow })
             If no packet is available:
           </h2>
           <div className="indent2">
-            <form>
+            <form onSubmit={handleNoPacketSubmit}>
           <div id="noPacketReason" style={{ marginBottom: '12px' }}>
             Please document why there is no event packet:{' '}
             <select
               id="noPacketReasonSelect"
               value={noPacketReason}
-              onChange={(e) => setNoPacketReason(e.target.value)}
+              onChange={handleNoPacketReasonChange}
+              disabled={noPacketDone}
             >
               <option value="">Select a reason</option>
               {noPacketReasons.map((reason) => (
@@ -350,12 +489,27 @@ function EventUpload({ studyLabel, studyType, configResolved = true, workflow })
               </div>
               <div style={{ marginTop: '8px' }} className="indent3">
                 <label>
-                  <input type="radio" name="twoAttemptsFlag" value="1" /> Yes, 2
-                  attempts were made
+                  <input
+                    type="radio"
+                    name="twoAttemptsFlag"
+                    value="1"
+                    checked={twoAttempts === '1'}
+                    onChange={(e) => setTwoAttempts(e.target.value)}
+                    disabled={noPacketDone}
+                  />
+                  {' '}Yes, 2 attempts were made
                 </label>
                 &nbsp;&nbsp;&nbsp;&nbsp;
                 <label>
-                  <input type="radio" name="twoAttemptsFlag" value="0" /> No
+                  <input
+                    type="radio"
+                    name="twoAttemptsFlag"
+                    value="0"
+                    checked={twoAttempts === '0'}
+                    onChange={(e) => setTwoAttempts(e.target.value)}
+                    disabled={noPacketDone}
+                  />
+                  {' '}No
                 </label>
               </div>
             </div>
@@ -373,6 +527,7 @@ function EventUpload({ studyLabel, studyType, configResolved = true, workflow })
                       value="1"
                       checked={priorEventDateKnown === '1'}
                       onChange={(e) => setPriorEventDateKnown(e.target.value)}
+                      disabled={noPacketDone}
                     />
                     {' '}Yes
                   </label>
@@ -384,6 +539,7 @@ function EventUpload({ studyLabel, studyType, configResolved = true, workflow })
                       value="0"
                       checked={priorEventDateKnown === '0'}
                       onChange={(e) => setPriorEventDateKnown(e.target.value)}
+                      disabled={noPacketDone}
                     />
                     {' '}No
                   </label>
@@ -399,9 +555,23 @@ function EventUpload({ studyLabel, studyType, configResolved = true, workflow })
                 blank if it is unknown:
               </div>
               <div style={{ paddingTop: '6px' }} className="indent3">
-                Month: <input type="number" min="1" max="12" />{' '}
+                Month:{' '}
+                <input
+                  type="number"
+                  min="1"
+                  max="12"
+                  value={priorEventMonth}
+                  onChange={(e) => setPriorEventMonth(e.target.value)}
+                  disabled={noPacketDone}
+                />{' '}
                 Year:{' '}
-                <input type="text" size="4" />
+                <input
+                  type="text"
+                  size="4"
+                  value={priorEventYear}
+                  onChange={(e) => setPriorEventYear(e.target.value)}
+                  disabled={noPacketDone}
+                />
               </div>
             </div>
           )}
@@ -412,11 +582,27 @@ function EventUpload({ studyLabel, studyType, configResolved = true, workflow })
                 Did event occur while in care at your site?
                 <span className="indent3">
                   <label>
-                    <input type="radio" name="priorEventOnsite" value="1" /> Yes
+                    <input
+                      type="radio"
+                      name="priorEventOnsite"
+                      value="1"
+                      checked={priorEventOnsite === '1'}
+                      onChange={(e) => setPriorEventOnsite(e.target.value)}
+                      disabled={noPacketDone}
+                    />
+                    {' '}Yes
                   </label>
                   &nbsp;&nbsp;&nbsp;&nbsp;
                   <label>
-                    <input type="radio" name="priorEventOnsite" value="0" /> No
+                    <input
+                      type="radio"
+                      name="priorEventOnsite"
+                      value="0"
+                      checked={priorEventOnsite === '0'}
+                      onChange={(e) => setPriorEventOnsite(e.target.value)}
+                      disabled={noPacketDone}
+                    />
+                    {' '}No
                   </label>
                 </span>
               </div>
@@ -426,16 +612,41 @@ function EventUpload({ studyLabel, studyType, configResolved = true, workflow })
           {showOtherCause && (
             <div id="otherCause">
               <label>
-                Other cause: <input type="text" name="otherCause" />
+                Other cause:{' '}
+                {/* Deliberately no maxLength: the browser would silently
+                    truncate a pasted over-length cause, which is the class of
+                    failure this feature exists to end. Over-length is refused
+                    with the limit stated instead (FR-015). */}
+                <input
+                  type="text"
+                  name="otherCause"
+                  value={otherCause}
+                  onChange={(e) => setOtherCause(e.target.value)}
+                  disabled={noPacketDone}
+                />
               </label>
             </div>
           )}
 
           {(noPacketReason && (
             <div id="submit" style={{ paddingTop: '12px' }}>
-              <button type="submit">Submit</button>
+              <button
+                type="submit"
+                disabled={noPacketStatus === 'submitting' || noPacketDone}
+              >
+                {noPacketStatus === 'submitting' ? 'Submitting…' : 'Submit'}
+              </button>
             </div>
           )) || null}
+
+          {noPacketStatus === 'error' && noPacketError && (
+            <div style={{ color: 'red', paddingTop: '6px' }}>{noPacketError}</div>
+          )}
+          {noPacketStatus === 'success' && (
+            <div style={{ color: 'green', paddingTop: '6px' }}>
+              Recorded: no packet is available for {headingText}.
+            </div>
+          )}
         </form>
       </div>
         </>

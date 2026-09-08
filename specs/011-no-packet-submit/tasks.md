@@ -31,8 +31,8 @@ All paths below are repo-relative from `/home/debadmin/cnics-validation`.
 
 **Purpose**: Establish a green baseline and the shared test scaffolding every story's tests build on.
 
-- [ ] T001 Record the green baseline before any change: run `python -m pytest flask_backend/tests/ -q` and `cd frontend && npm run lint && npm run build`; note any pre-existing failures so they are not attributed to this feature
-- [ ] T002 Create `flask_backend/tests/test_mark_no_packet.py` with the module docstring citing the FRs and contract, a local non-admin uploader fixture (site `TEST`, `uploader=True`, `admin=False`) in the style of `conftest.py`'s `admin_client`, and `FakeEvent` / `FakeSession` doubles modeled on `flask_backend/tests/test_review_endpoint.py`
+- [X] T001 Record the green baseline before any change: run `python -m pytest flask_backend/tests/ -q` and `cd frontend && npm run lint && npm run build`; note any pre-existing failures so they are not attributed to this feature
+- [X] T002 Create `flask_backend/tests/test_mark_no_packet.py` with the module docstring citing the FRs and contract, a local non-admin uploader fixture (site `TEST`, `uploader=True`, `admin=False`) in the style of `conftest.py`'s `admin_client`, and `FakeEvent` / `FakeSession` doubles modeled on `flask_backend/tests/test_review_endpoint.py`
 
 **Checkpoint**: Baseline recorded; test module importable and collectible by pytest.
 
@@ -44,8 +44,8 @@ All paths below are repo-relative from `/home/debadmin/cnics-validation`.
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T003 Extract the same-site authorization check from `events_upload_raw` (`flask_backend/app.py:1863-1872`) into a module-level helper `_uploader_may_act_on_event(session, event, auth_user)` returning a bool, and call it from `upload_raw`; preserve the existing 403 message `'Uploader must match patient site'` verbatim (research D3, Principle IV)
-- [ ] T004 Confirm the extraction is behavior-preserving: run `python -m pytest flask_backend/tests/ -q` and verify no change versus the T001 baseline
+- [X] T003 Extract the same-site authorization check from `events_upload_raw` (`flask_backend/app.py:1863-1872`) into a module-level helper `_uploader_may_act_on_event(session, event, auth_user)` returning a bool, and call it from `upload_raw`; preserve the existing 403 message `'Uploader must match patient site'` verbatim (research D3, Principle IV)
+- [X] T004 Confirm the extraction is behavior-preserving: run `python -m pytest flask_backend/tests/ -q` and verify no change versus the T001 baseline
 
 **Checkpoint**: One authorization rule, one implementation, existing upload path unchanged.
 
@@ -63,14 +63,14 @@ event is gone from "Events That Need Packets" and present in "no packet availabl
 
 ### Tests for User Story 1
 
-- [ ] T005 [US1] Add persistence tests to `flask_backend/tests/test_mark_no_packet.py`: one per reason for `Outside hospital` (`two_attempts` true→`1`, false→`0`), `Ascertainment diagnosis error` (all four follow-ups NULL), and `Other` (`other_cause` set, others NULL); every case asserts `status='no_packet_available'`, `marker_id`, `markNoPacket_date=today`, and that `upload_date` / `uploader_id` remain NULL; plus a stale-field test (event carrying a prior `two_attempts_flag`, marked with reason `Other`, ends with that flag NULL — FR-006) and a 404 test for a missing event
+- [X] T005 [US1] Add persistence tests to `flask_backend/tests/test_mark_no_packet.py`: one per reason for `Outside hospital` (`two_attempts` true→`1`, false→`0`), `Ascertainment diagnosis error` (all four follow-ups NULL), and `Other` (`other_cause` set, others NULL); every case asserts `status='no_packet_available'`, `marker_id`, `markNoPacket_date=today`, and that `upload_date` / `uploader_id` remain NULL; plus a stale-field test (event carrying a prior `two_attempts_flag`, marked with reason `Other`, ends with that flag NULL — FR-006) and a 404 test for a missing event
 
 ### Implementation for User Story 1
 
-- [ ] T006 [US1] Implement `POST /api/events/<int:event_id>/mark_no_packet` in `flask_backend/app.py` per `contracts/mark-no-packet-api.md`: `@requires_auth` + `@requires_any_role('uploader', 'admin')`, the T003 helper for the site check (403), 404 for a missing event, reason validation V1 (400), the field-applicability mapping from `data-model.md` writing NULL explicitly to every non-applicable column, the `status` / `marker_id` / `markNoPacket_date` stamp, single-transaction commit with `session.rollback()` on exception and `session.close()` in `finally` (mirroring `events_screen` at line 1249), a Flasgger docstring, and PHI-safe logging that records the event id and error class only — **never `other_cause`**
-- [ ] T007 [P] [US1] Extend `get_event_details` in `flask_backend/table_service.py` (query at lines 884-926): select `e.no_packet_reason`, `e.two_attempts_flag`, `e.prior_event_date`, `e.prior_event_onsite_flag`, `e.other_cause`, and add `LEFT JOIN users mk ON mk.id = e.marker_id` yielding `mk.username AS marker_username` — following the export query's join at line 690 (research D7, FR-026)
-- [ ] T008 [P] [US1] In `frontend/src/pages/EventUpload.jsx`: bind the `twoAttemptsFlag` radios (lines 353, 358) and the `otherCause` text input (line 429) to new React state following the `priorEventDateKnown` pattern at lines 369-386, and add `handleNoPacketSubmit` attached to the `<form>` at line 325 — `e.preventDefault()`, guard on `eventId`, POST to `/api/events/{eventId}/mark_no_packet` with `credentials: 'include'` and a JSON body carrying **only** the fields applicable to the selected reason, mirroring `handleUploadSubmit`'s error extraction (lines 190-229)
-- [ ] T009 [P] [US1] In `frontend/src/pages/EventEdit.jsx`: beside the existing `markNoPacket_date` row (lines 209-211), render a conditional block when `details.no_packet_reason` is present, showing the reason, the applicable follow-up answers (flags as Yes/No), and `marker_username`
+- [X] T006 [US1] Implement `POST /api/events/<int:event_id>/mark_no_packet` in `flask_backend/app.py` per `contracts/mark-no-packet-api.md`: `@requires_auth` + `@requires_any_role('uploader', 'admin')`, the T003 helper for the site check (403), 404 for a missing event, reason validation V1 (400), the field-applicability mapping from `data-model.md` writing NULL explicitly to every non-applicable column, the `status` / `marker_id` / `markNoPacket_date` stamp, single-transaction commit with `session.rollback()` on exception and `session.close()` in `finally` (mirroring `events_screen` at line 1249), a Flasgger docstring, and PHI-safe logging that records the event id and error class only — **never `other_cause`**
+- [X] T007 [P] [US1] Extend `get_event_details` in `flask_backend/table_service.py` (query at lines 884-926): select `e.no_packet_reason`, `e.two_attempts_flag`, `e.prior_event_date`, `e.prior_event_onsite_flag`, `e.other_cause`, and add `LEFT JOIN users mk ON mk.id = e.marker_id` yielding `mk.username AS marker_username` — following the export query's join at line 690 (research D7, FR-026)
+- [X] T008 [P] [US1] In `frontend/src/pages/EventUpload.jsx`: bind the `twoAttemptsFlag` radios (lines 353, 358) and the `otherCause` text input (line 429) to new React state following the `priorEventDateKnown` pattern at lines 369-386, and add `handleNoPacketSubmit` attached to the `<form>` at line 325 — `e.preventDefault()`, guard on `eventId`, POST to `/api/events/{eventId}/mark_no_packet` with `credentials: 'include'` and a JSON body carrying **only** the fields applicable to the selected reason, mirroring `handleUploadSubmit`'s error extraction (lines 190-229)
+- [X] T009 [P] [US1] In `frontend/src/pages/EventEdit.jsx`: beside the existing `markNoPacket_date` row (lines 209-211), render a conditional block when `details.no_packet_reason` is present, showing the reason, the applicable follow-up answers (flags as Yes/No), and `marker_username`
 - [ ] T010 [US1] Verify User Story 1 against `specs/011-no-packet-submit/quickstart.md` steps 1-6, including the user's originally reported `Outside hospital` + "Yes, 2 attempts" and `Other` + "Data corruption" submissions
 
 **Checkpoint**: The reported defect is fixed — submissions persist, are displayed, and move the event between lists. Shippable as MVP.
@@ -88,13 +88,13 @@ value is shown.
 
 ### Tests for User Story 2
 
-- [ ] T011 [US2] Add prior-event encoding tests to `flask_backend/tests/test_mark_no_packet.py`: month 11 + year 2011 → `'11-2011'`; month blank + year 2008 → `'00-2008'`; month 1 + year blank → `'01-0000'`; date-known answered **No** → `prior_event_date` NULL (distinct from `'00-0000'`); `prior_event_onsite_flag` stored as 1/0; and `two_attempts_flag` / `other_cause` NULL in every case
+- [X] T011 [US2] Add prior-event encoding tests to `flask_backend/tests/test_mark_no_packet.py`: month 11 + year 2011 → `'11-2011'`; month blank + year 2008 → `'00-2008'`; month 1 + year blank → `'01-0000'`; date-known answered **No** → `prior_event_date` NULL (distinct from `'00-0000'`); `prior_event_onsite_flag` stored as 1/0; and `two_attempts_flag` / `other_cause` NULL in every case
 
 ### Implementation for User Story 2
 
-- [ ] T012 [US2] In `flask_backend/app.py`, add the prior-event branch to the `mark_no_packet` handler: build `prior_event_date` as zero-padded `MM-YYYY` using `00` for a blank month and `0000` for a blank year, store NULL when `prior_event_date_known` is false, and store `prior_event_onsite_flag` — per the encoding table in `data-model.md` (research D5)
-- [ ] T013 [US2] In `frontend/src/pages/EventUpload.jsx`: bind the prior-event month and year inputs (line 404) and the `priorEventOnsite` radios (lines 415, 420) to React state, and include `prior_event_date_known`, `prior_event_month`, `prior_event_year`, and `prior_event_onsite` in the request body when that reason is selected
-- [ ] T014 [US2] Verify the prior-event branch per `specs/011-no-packet-submit/quickstart.md` ("Prior-event blanks"), confirming `'00-2008'` for a blank month and NULL when the date is answered as not known
+- [X] T012 [US2] In `flask_backend/app.py`, add the prior-event branch to the `mark_no_packet` handler: build `prior_event_date` as zero-padded `MM-YYYY` using `00` for a blank month and `0000` for a blank year, store NULL when `prior_event_date_known` is false, and store `prior_event_onsite_flag` — per the encoding table in `data-model.md` (research D5)
+- [X] T013 [US2] In `frontend/src/pages/EventUpload.jsx`: bind the prior-event month and year inputs (line 404) and the `priorEventOnsite` radios (lines 415, 420) to React state, and include `prior_event_date_known`, `prior_event_month`, `prior_event_year`, and `prior_event_onsite` in the request body when that reason is selected
+- [X] T014 [US2] Verify the prior-event branch per `specs/011-no-packet-submit/quickstart.md` ("Prior-event blanks"), confirming `'00-2008'` for a blank month and NULL when the date is answered as not known
 
 **Checkpoint**: All four reasons round-trip completely.
 
@@ -110,12 +110,12 @@ Submit — a specific message names the missing answer and nothing is recorded.
 
 ### Tests for User Story 3
 
-- [ ] T015 [US3] Add validation-rejection tests to `flask_backend/tests/test_mark_no_packet.py` covering V2-V8 from `data-model.md`: missing `two_attempts`, empty and whitespace-only `other_cause`, `other_cause` at 100 chars (accepted) and 101 chars (rejected with the limit stated), missing `prior_event_onsite`, date-known with both month and year blank, month outside 1-12, and a non-four-digit year — each asserting HTTP 400, a message naming the offending field, and **no mutation of the event row** (FR-016)
+- [X] T015 [US3] Add validation-rejection tests to `flask_backend/tests/test_mark_no_packet.py` covering V2-V8 from `data-model.md`: missing `two_attempts`, empty and whitespace-only `other_cause`, `other_cause` at 100 chars (accepted) and 101 chars (rejected with the limit stated), missing `prior_event_onsite`, date-known with both month and year blank, month outside 1-12, and a non-four-digit year — each asserting HTTP 400, a message naming the offending field, and **no mutation of the event row** (FR-016)
 
 ### Implementation for User Story 3
 
-- [ ] T016 [US3] In `flask_backend/app.py`, add validation rules V2-V8 to the `mark_no_packet` handler with the exact messages tabulated in `contracts/mark-no-packet-api.md`, all evaluated **before** any field assignment so a rejected request cannot partially mutate the row
-- [ ] T017 [P] [US3] In `frontend/src/pages/EventUpload.jsx`, add the feedback layer per `contracts/no-packet-form-ui.md`: `noPacketStatus` (`idle | submitting | success | error`) and `noPacketError` state paralleling the existing `uploadStatus` / `uploadError`; client-side mirrors of V2-V8 that block submission with a field-specific message; Submit disabled while in flight; a green confirmation naming the event on success with the reason select and follow-ups disabled afterward; and a reason-change handler that clears `twoAttempts`, `otherCause`, `priorEventDateKnown`, `priorEventMonth`, `priorEventYear`, `priorEventOnsite`, and any error
+- [X] T016 [US3] In `flask_backend/app.py`, add validation rules V2-V8 to the `mark_no_packet` handler with the exact messages tabulated in `contracts/mark-no-packet-api.md`, all evaluated **before** any field assignment so a rejected request cannot partially mutate the row
+- [X] T017 [P] [US3] In `frontend/src/pages/EventUpload.jsx`, add the feedback layer per `contracts/no-packet-form-ui.md`: `noPacketStatus` (`idle | submitting | success | error`) and `noPacketError` state paralleling the existing `uploadStatus` / `uploadError`; client-side mirrors of V2-V8 that block submission with a field-specific message; Submit disabled while in flight; a green confirmation naming the event on success with the reason select and follow-ups disabled afterward; and a reason-change handler that clears `twoAttempts`, `otherCause`, `priorEventDateKnown`, `priorEventMonth`, `priorEventYear`, `priorEventOnsite`, and any error
 - [ ] T018 [US3] Verify the feedback layer per `specs/011-no-packet-submit/quickstart.md` ("Silence is gone", "Reason switch clears answers", "Over-long cause", "No double submit")
 
 **Checkpoint**: The silent-failure trap that caused the original report is closed on both sides.
@@ -132,12 +132,12 @@ already-uploaded event — refused with its current status named.
 
 ### Tests for User Story 4
 
-- [ ] T019 [US4] Add authorization and conflict tests to `flask_backend/tests/test_mark_no_packet.py` using the T002 non-admin uploader fixture: 403 for an uploader whose site differs from the event's patient site; 200 for an admin acting cross-site; 404 for a missing event; and 409 for each non-`created` status (`uploaded`, `scrubbed`, `screened`, `assigned`, `sent`, `done`, `rejected`, `no_packet_available`) asserting the current status appears in the message and the row is unchanged
+- [X] T019 [US4] Add authorization and conflict tests to `flask_backend/tests/test_mark_no_packet.py` using the T002 non-admin uploader fixture: 403 for an uploader whose site differs from the event's patient site; 200 for an admin acting cross-site; 404 for a missing event; and 409 for each non-`created` status (`uploaded`, `scrubbed`, `screened`, `assigned`, `sent`, `done`, `rejected`, `no_packet_available`) asserting the current status appears in the message and the row is unchanged
 
 ### Implementation for User Story 4
 
-- [ ] T020 [US4] In `flask_backend/app.py`, add the V11 status guard to the `mark_no_packet` handler: refuse any event whose `status != 'created'` with HTTP 409 and a message naming the event id and its current status, evaluated before any field assignment (research D4, FR-023)
-- [ ] T021 [US4] Verify authorization and conflict per `specs/011-no-packet-submit/quickstart.md` ("Authorization & conflict"), including that an admin can still act across sites
+- [X] T020 [US4] In `flask_backend/app.py`, add the V11 status guard to the `mark_no_packet` handler: refuse any event whose `status != 'created'` with HTTP 409 and a message naming the event id and its current status, evaluated before any field assignment (research D4, FR-023)
+- [X] T021 [US4] Verify authorization and conflict per `specs/011-no-packet-submit/quickstart.md` ("Authorization & conflict"), including that an admin can still act across sites
 
 **Checkpoint**: All four stories independently functional.
 
@@ -145,11 +145,11 @@ already-uploaded event — refused with its current status named.
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T022 Regenerate the API contract: `python -m flask_backend.generate_openapi` from the repository root, and commit the `openapi.json` delta in the same change (constitution API-contracts gate, research D11)
-- [ ] T023 [P] Confirm `frontend/src/studies/vte/EventUpload.jsx` is left untouched and that its inert no-packet form remains recorded as a known gap in `specs/011-no-packet-submit/quickstart.md` (research D9, Principle VI unused-subsystem hygiene)
-- [ ] T024 Run the full gate: `python -m pytest flask_backend/tests/ -q`, then `cd frontend && npm run lint && npm run build`; compare against the T001 baseline
+- [X] T022 Regenerate the API contract: `python -m flask_backend.generate_openapi` from the repository root, and commit the `openapi.json` delta in the same change (constitution API-contracts gate, research D11)
+- [X] T023 [P] Confirm `frontend/src/studies/vte/EventUpload.jsx` is left untouched and that its inert no-packet form remains recorded as a known gap in `specs/011-no-packet-submit/quickstart.md` (research D9, Principle VI unused-subsystem hygiene)
+- [X] T024 Run the full gate: `python -m pytest flask_backend/tests/ -q`, then `cd frontend && npm run lint && npm run build`; compare against the T001 baseline
 - [ ] T025 Run the complete `specs/011-no-packet-submit/quickstart.md` validation end to end, including all six manual steps and all six "Also verify" checks
-- [ ] T026 Write the PR description stating this affects **shared code, all studies** (no study-specific behavior, no workflow flag consulted), and include the Principle VI observed-behavior note from `specs/011-no-packet-submit/research.md` (D1) — that the form was unimplemented rather than broken, with the file:line evidence
+- [X] T026 Write the PR description stating this affects **shared code, all studies** (no study-specific behavior, no workflow flag consulted), and include the Principle VI observed-behavior note from `specs/011-no-packet-submit/research.md` (D1) — that the form was unimplemented rather than broken, with the file:line evidence
 
 ---
 
@@ -238,3 +238,32 @@ Each increment leaves the system in a better state than the one before, and none
 - No schema change, no migration, no new dependency in any task
 - Non-applicable fields are written **NULL explicitly**, never left alone — a row may carry stale values (T006)
 - Commit after each task or logical group; every checkpoint is a valid stopping point
+
+---
+
+## Verification status (implementation run, 2026-09-08)
+
+**Automated gate — green.** `pytest flask_backend/tests/ -q`: **196 passed**
+(155 baseline + 41 new in `test_mark_no_packet.py`). `npm run lint`: 31
+problems, **byte-identical to the T001 baseline** — every one pre-existing, none
+in the new code. `npm run build`: clean.
+
+**T010, T018, T025 are left open deliberately.** They are browser steps against
+a running stack, and there is no local deployment to run them on; the
+deployment lives on a server this workstation cannot reach. Everything in them
+that can be asserted without a browser has been, and is covered by the test
+module:
+
+| Quickstart check | Covered by |
+|---|---|
+| `Outside hospital` + "Yes, 2 attempts" persists | `test_outside_hospital_two_attempts_yes` |
+| `Other` + "Data corruption" persists | `test_other_stores_free_text_cause` |
+| Event leaves the needs-packet queue | `get_events_need_packets` is `status = 'created'` (code-verified) |
+| Event appears in "no packet available" | `by_status` allow-list + `EventViewAll.jsx:394` (code-verified) |
+| Reason switch clears prior answers | `test_stale_answers_from_a_previous_reason_are_cleared` |
+| Over-long cause refused, not truncated | `test_over_long_other_cause_rejected_with_the_limit_stated` |
+| Conflict names the current status | `test_event_past_packet_collection_is_refused` (8 statuses) |
+
+What still needs a browser: that the confirmation and error text actually
+render, that Submit is visibly disabled in flight and after success, and the
+end-to-end click-through of quickstart steps 1-6.

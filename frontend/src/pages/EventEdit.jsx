@@ -208,6 +208,30 @@ function EventEdit() {
                   </>)}
                   {details.markNoPacket_date && (<>
                     <tr><th>Date packet was marked as not available:</th><td>{details.markNoPacket_date}</td></tr>
+                    <tr><th>Marked by:</th><td>{details.marker_username || ''}</td></tr>
+                  </>)}
+                  {/* The recorded reason and whichever follow-up answers that
+                      reason called for. Each follow-up is rendered only when
+                      it holds a value, so a row that legitimately has none —
+                      an ascertainment diagnosis error raises no follow-up —
+                      shows the reason alone rather than a run of blanks. The
+                      flags are `0` for a recorded "No", which is a real
+                      answer, so they are tested against null rather than for
+                      truthiness (FR-026). */}
+                  {details.no_packet_reason && (<>
+                    <tr><th>No packet reason:</th><td>{details.no_packet_reason}</td></tr>
+                    {details.two_attempts_flag !== null && details.two_attempts_flag !== undefined && (
+                      <tr><th>2 attempts made to obtain records:</th><td>{details.two_attempts_flag ? 'Yes' : 'No'}</td></tr>
+                    )}
+                    {details.prior_event_date && (
+                      <tr><th>Prior event date (MM-YYYY):</th><td>{details.prior_event_date}</td></tr>
+                    )}
+                    {details.prior_event_onsite_flag !== null && details.prior_event_onsite_flag !== undefined && (
+                      <tr><th>Prior event occurred while in care at site:</th><td>{details.prior_event_onsite_flag ? 'Yes' : 'No'}</td></tr>
+                    )}
+                    {details.other_cause && (
+                      <tr><th>Other cause:</th><td>{details.other_cause}</td></tr>
+                    )}
                   </>)}
                   {details.scrub_date && (<>
                     <tr><th>Scrub Date:</th><td>{details.scrub_date}</td></tr>
