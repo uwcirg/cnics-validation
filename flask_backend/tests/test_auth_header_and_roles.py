@@ -113,11 +113,11 @@ def test_auth_me_401_without_header():
     assert res.status_code == 401
 
 
-@patch("flask_backend.table_service.get_events_need_packets")
+@patch("flask_backend.table_service.get_events_need_packets_with_total")
 @patch("flask_backend.models.get_session")
 def test_uploader_can_access_need_packets(mock_get_session, mock_svc):
     mock_get_session.return_value = _session_for(FakeUser(uploader=True))
-    mock_svc.return_value = [{"ID": 1}]
+    mock_svc.return_value = ([{"ID": 1}], 1)
 
     import importlib
     app_mod = importlib.import_module("flask_backend.app")
@@ -125,9 +125,9 @@ def test_uploader_can_access_need_packets(mock_get_session, mock_svc):
 
     res = client.get("/api/events/need_packets", headers={"X-Remote-User": "alice"})
     assert res.status_code == 200
-    assert res.get_json() == {"data": [{"ID": 1}]}
+    assert res.get_json() == {"data": [{"ID": 1}], "total": 1}
     # Non-admin uploaders stay scoped to their own site (FakeUser site='UW').
-    mock_svc.assert_called_with(None, 0, "UW")
+    mock_svc.assert_called_with(None, 0, None, "UW", None, None)
 
 
 @patch("flask_backend.table_service.get_events_for_reupload")
@@ -176,11 +176,11 @@ def test_reviewer_can_access_for_review(mock_get_session, mock_svc):
     assert res.get_json() == {"data": [{"ID": 3}]}
 
 
-@patch("flask_backend.table_service.get_events_need_packets")
+@patch("flask_backend.table_service.get_events_need_packets_with_total")
 @patch("flask_backend.models.get_session")
 def test_reviewer_can_access_need_packets(mock_get_session, mock_svc):
     mock_get_session.return_value = _session_for(FakeUser(reviewer=True))
-    mock_svc.return_value = [{"ID": 4}]
+    mock_svc.return_value = ([{"ID": 4}], 1)
 
     import importlib
     app_mod = importlib.import_module("flask_backend.app")
@@ -188,7 +188,7 @@ def test_reviewer_can_access_need_packets(mock_get_session, mock_svc):
 
     res = client.get("/api/events/need_packets", headers={"X-Remote-User": "alice"})
     assert res.status_code == 200
-    assert res.get_json() == {"data": [{"ID": 4}]}
+    assert res.get_json() == {"data": [{"ID": 4}], "total": 1}
 
 
 @patch("flask_backend.table_service.get_events_for_reupload")
@@ -206,11 +206,11 @@ def test_reviewer_can_access_need_reupload(mock_get_session, mock_svc):
     assert res.get_json() == {"data": [{"ID": 5}]}
 
 
-@patch("flask_backend.table_service.get_events_need_packets")
+@patch("flask_backend.table_service.get_events_need_packets_with_total")
 @patch("flask_backend.models.get_session")
 def test_no_roles_user_blocked_from_any_role_endpoint(mock_get_session, mock_svc):
     mock_get_session.return_value = _session_for(FakeUser())
-    mock_svc.return_value = []
+    mock_svc.return_value = ([], 0)
 
     import importlib
     app_mod = importlib.import_module("flask_backend.app")

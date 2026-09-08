@@ -48,15 +48,27 @@ def test_options_request_bypasses_auth(mock_service):
     app_mod.keycloak_openid = None
 
 
-@patch('flask_backend.table_service.get_events_need_packets')
+@patch('flask_backend.table_service.get_events_need_packets_with_total')
 def test_get_need_packets_route(mock_service, admin_client):
-    mock_service.return_value = [{'ID': 1}]
+    mock_service.return_value = ([{'ID': 1}], 1)
     res = admin_client.get('/api/events/need_packets?limit=2&offset=5')
     assert res.status_code == 200
-    assert res.get_json() == {'data': [{'ID': 1}]}
+    assert res.get_json() == {'data': [{'ID': 1}], 'total': 1}
     # Admins act across all sites (no site filter), matching the admin
     # bypass in upload_raw; site is therefore passed as None.
-    mock_service.assert_called_with(2, 5, None)
+    mock_service.assert_called_with(2, 5, None, None, None, None)
+
+
+@patch('flask_backend.table_service.get_events_need_packets_with_total')
+def test_get_need_packets_route_passes_search_and_sort(mock_service, admin_client):
+    mock_service.return_value = ([{'ID': 1}], 1)
+    res = admin_client.get(
+        '/api/events/need_packets?limit=2&offset=0&q=UW&site=UW&sort_by=Site&sort_dir=desc'
+    )
+    assert res.status_code == 200
+    # The queue honors the same search/sort/site controls as every other
+    # event table; an admin may narrow to a single site via the query param.
+    mock_service.assert_called_with(2, 0, 'UW', 'UW', 'Site', 'desc')
 
 
 @patch("flask_backend.table_service.get_table_data")
@@ -70,9 +82,9 @@ def test_auth_required(mock_service):
     assert res.status_code == 401
 
 
-@patch('flask_backend.table_service.get_events_need_packets')
+@patch('flask_backend.table_service.get_events_need_packets_with_total')
 def test_auth_required_need_packets(mock_service):
-    mock_service.return_value = []
+    mock_service.return_value = ([], 0)
     import importlib
     app_mod = importlib.import_module('flask_backend.app')
     app_mod.keycloak_openid = object()

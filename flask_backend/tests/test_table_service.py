@@ -62,6 +62,24 @@ def test_get_events_need_packets(mock_get_session):
 
 
 @patch('flask_backend.table_service.models.get_session')
+def test_get_events_need_packets_with_total_applies_search(mock_get_session):
+    mock_session = MagicMock()
+    mock_session.execute.return_value.mappings.return_value.all.return_value = [
+        {'ID': 1}
+    ]
+    mock_get_session.return_value = mock_session
+
+    rows, _total = ts.get_events_need_packets_with_total(5, 0, q='UW')
+
+    all_queries = [str(c.args[0]) for c in mock_session.execute.call_args_list]
+    all_params = [c.args[1] for c in mock_session.execute.call_args_list if len(c.args) > 1]
+    # The queue supports the same free-text search as the other event tables.
+    assert any('p.site LIKE :like' in q for q in all_queries)
+    assert any(p.get('like') == '%UW%' for p in all_params)
+    assert rows == [{'ID': 1}]
+
+
+@patch('flask_backend.table_service.models.get_session')
 def test_get_events_need_packets_no_limit(mock_get_session):
     mock_session = MagicMock()
     mock_session.execute.return_value.mappings.return_value.all.return_value = [

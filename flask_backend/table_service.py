@@ -197,26 +197,43 @@ def get_events_by_status(status: str, limit: Optional[int] = None, offset: int =
     return rows
 
 
-def get_events_need_packets(limit: Optional[int] = None, offset: int = 0, site: Optional[str] = None):
-    """Return events that still require packet uploads.
+def get_events_need_packets_with_total(
+    limit: Optional[int] = None,
+    offset: int = 0,
+    q: Optional[str] = None,
+    site: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    sort_dir: Optional[str] = None,
+):
+    """Return (rows, total) for events that still require packet uploads.
 
-    Events joined to patients_view with events.status = 'created', ordered by
-    events.id ASC. When ``site`` is given, results are restricted to that
-    patient site (p.site = <site>); when it is None, all sites are returned.
-    The caller (events_need_packets in app.py) passes the requesting user's
-    site for non-admins and None for admins, so admins see every site --
-    matching the admin bypass in upload_raw.
+    Events joined to patients_view with events.status = 'created'. When ``site``
+    is given, results are restricted to that patient site (p.site = <site>);
+    when it is None, all sites are returned. The caller (events_need_packets in
+    app.py) passes the requesting user's site for non-admins and None for
+    admins, so admins see every site -- matching the admin bypass in upload_raw.
+
+    ``q`` searches the same columns as every other event queue (id, dates, site,
+    site patient id, criteria); ``sort_by``/``sort_dir`` follow the same
+    whitelist. Ordering falls back to ID ascending, which is the queue's
+    working order, whenever the caller does not ask for a specific sort.
     """
-    # Reuse the more general helper but enforce site filter and ordering by ID ASC
-    rows, _total = get_events_by_status_with_total(
+    if not (sort_by and (sort_dir or '').lower() in {'asc', 'desc'}):
+        sort_by, sort_dir = 'ID', 'asc'
+    return get_events_by_status_with_total(
         status="created",
         limit=limit,
         offset=offset,
-        q=None,
+        q=q,
         site=site,
-        sort_by='ID',
-        sort_dir='asc',
+        sort_by=sort_by,
+        sort_dir=sort_dir,
     )
+
+
+def get_events_need_packets(limit: Optional[int] = None, offset: int = 0, site: Optional[str] = None):
+    """Return events that still require packet uploads (rows only)."""
+    rows, _total = get_events_need_packets_with_total(limit, offset, None, site)
     return rows
 
 
