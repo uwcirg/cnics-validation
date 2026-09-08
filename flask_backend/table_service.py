@@ -903,8 +903,14 @@ def get_event_details(event_id: int) -> dict:
               e.review3_date AS review3_date,
               e.rescrub_message AS rescrub_message,
               e.reject_message AS reject_message,
+              e.no_packet_reason AS no_packet_reason,
+              e.two_attempts_flag AS two_attempts_flag,
+              e.prior_event_date AS prior_event_date,
+              e.prior_event_onsite_flag AS prior_event_onsite_flag,
+              e.other_cause AS other_cause,
               cu.username AS creator_username,
               uu.username AS uploader_username,
+              mk.username AS marker_username,
               su.username AS scrubber_username,
               sc.username AS screener_username,
               au.username AS assigner_username,
@@ -916,6 +922,7 @@ def get_event_details(event_id: int) -> dict:
             LEFT JOIN patients_view p ON p.id = e.patient_id
             LEFT JOIN users cu ON cu.id = e.creator_id
             LEFT JOIN users uu ON uu.id = e.uploader_id
+            LEFT JOIN users mk ON mk.id = e.marker_id
             LEFT JOIN users su ON su.id = e.scrubber_id
             LEFT JOIN users sc ON sc.id = e.screener_id
             LEFT JOIN users au ON au.id = e.assigner_id

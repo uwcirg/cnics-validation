@@ -1825,6 +1825,27 @@ def events_upload_scrubbed(event_id: int):
         return jsonify({'error': 'Failed to upload scrubbed file'}), 500
 
 
+def _uploader_may_act_on_event(session, event, auth_user) -> bool:
+    """Whether `auth_user` may resolve this event's packet.
+
+    Uploading a packet and declaring that no packet exists resolve the same
+    queue item, so they carry the same right: admins act across all sites,
+    and everyone else must be at the same site as the event's patient. That
+    is also how `get_events_need_packets` scopes the queue itself, so a user
+    who cannot see an event cannot resolve it either.
+
+    Lifted out of `events_upload_raw` rather than copied into its second
+    caller — a divergent second copy of an authorization rule is exactly the
+    drift Constitution Principle IV exists to prevent (research D3).
+    """
+    if bool(auth_user.get('admin')):
+        return True
+    patient = session.query(models.PatientsView).get(event.patient_id)
+    user_site = (auth_user.get('site') or '').strip()
+    event_site = (getattr(patient, 'site', None) or '').strip()
+    return bool(user_site) and bool(event_site) and user_site == event_site
+
+
 @app.route('/api/events/<int:event_id>/upload_raw', methods=['POST'])
 @requires_auth
 @requires_any_role('uploader', 'admin')
@@ -1864,14 +1885,8 @@ def events_upload_raw(event_id: int):
                 return jsonify({'error': 'Event not found'}), 404
 
             auth_user = getattr(g, 'auth_user', None) or {}
-            is_admin = bool(auth_user.get('admin'))
-            if not is_admin:
-                # Enforce same-site rule for non-admin uploaders
-                patient = session.query(models.PatientsView).get(e.patient_id)
-                user_site = (auth_user.get('site') or '').strip()
-                event_site = (getattr(patient, 'site', None) or '').strip()
-                if not user_site or not event_site or user_site != event_site:
-                    return jsonify({'error': 'Uploader must match patient site'}), 403
+            if not _uploader_may_act_on_event(session, e, auth_user):
+                return jsonify({'error': 'Uploader must match patient site'}), 403
 
             # Generate file number (legacy behavior)
             file_number = random.randint(1, 1_000_000_000)
@@ -1895,6 +1910,273 @@ def events_upload_raw(event_id: int):
     except Exception:
         app.logger.exception('Failed to upload raw file for event %d', event_id)
         return jsonify({'error': 'Failed to upload raw file'}), 500
+
+
+# The four reasons the no-packet form offers, in the order it lists them.
+# Mirrors the `events.no_packet_reason` enum (models.py:66) exactly; the
+# column rejects anything else, so validating here turns a database error
+# into a message that names the field.
+NO_PACKET_REASONS = (
+    'Outside hospital',
+    'Ascertainment diagnosis error',
+    'Ascertainment diagnosis referred to a prior event',
+    'Other',
+)
+
+# `events.other_cause` is varchar(100). Stated in the rejection message
+# rather than silently truncated: real causes run long enough to hit it
+# ("Information obtain from death certificate database..." is 78), so a
+# coordinator needs to know their text was cut (FR-015, research D5).
+NO_PACKET_OTHER_CAUSE_MAX = 100
+
+
+def _no_packet_answer(value):
+    """Coerce a yes/no answer to 1/0, or None when it was not answered.
+
+    Deliberately not `_coerce_flag`, which folds "unanswered" into 0. Here
+    the two must stay apart: `two_attempts_flag = 0` is a real recorded
+    answer observed in production (research D5), so reading falsiness as
+    absence would record "No" for a coordinator who answered nothing.
+    Accepts both the form's radio strings and real JSON booleans.
+    """
+    if isinstance(value, bool):
+        return 1 if value else 0
+    if isinstance(value, int):
+        return 1 if value == 1 else (0 if value == 0 else None)
+    if isinstance(value, str):
+        token = value.strip().lower()
+        if token in {'1', 'true', 'yes'}:
+            return 1
+        if token in {'0', 'false', 'no'}:
+            return 0
+    return None
+
+
+def _no_packet_number(value):
+    """Parse an optional month/year entry into `(supplied, number)`.
+
+    "Leave a field blank if it is unknown" is printed on the form, so an
+    absent key and an empty string both mean unknown — a legitimate answer
+    that encodes as a zero sentinel rather than a rejection. `supplied` stays
+    True for anything the coordinator actually typed, so an unparseable entry
+    is reported instead of being silently read as blank.
+    """
+    if value is None:
+        return False, None
+    if isinstance(value, bool):
+        return True, None
+    if isinstance(value, int):
+        return True, value
+    token = str(value).strip()
+    if not token:
+        return False, None
+    try:
+        return True, int(token)
+    except ValueError:
+        return True, None
+
+
+@app.route('/api/events/<int:event_id>/mark_no_packet', methods=['POST'])
+@requires_auth
+@requires_any_role('uploader', 'admin')
+def events_mark_no_packet(event_id: int):
+    """Record that no chart packet can be obtained, resolving the event.
+
+    Writes the coordinator's reason and exactly the follow-up answers that
+    reason calls for, stamps the acting user and the date, and moves the
+    event to the existing `no_packet_available` terminal state. Fields
+    outside the selected reason's column are written NULL explicitly, so a
+    row cannot end up carrying answers from a reason the coordinator changed
+    away from (FR-006).
+
+    Only an event still awaiting a packet (`status = 'created'`) may be
+    marked; anything further along has either received a packet or been
+    resolved already, and overwriting it would destroy information.
+
+    Authorized identically to `upload_raw` — the two actions resolve the same
+    queue item, so they carry the same right.
+    ---
+    parameters:
+      - name: event_id
+        in: path
+        type: integer
+        required: true
+        description: ID of the event being resolved
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - reason
+          properties:
+            reason:
+              type: string
+              enum:
+                - Outside hospital
+                - Ascertainment diagnosis error
+                - Ascertainment diagnosis referred to a prior event
+                - Other
+            two_attempts:
+              type: boolean
+              description: Required when reason is "Outside hospital"; false is recorded
+            other_cause:
+              type: string
+              description: Required when reason is "Other"; 1-100 characters
+            prior_event_date_known:
+              type: boolean
+              description: Prior-event reason only; false stores a NULL prior_event_date
+            prior_event_month:
+              type: integer
+              description: Prior-event reason only; 1-12, blank stores the 00 sentinel
+            prior_event_year:
+              type: integer
+              description: Prior-event reason only; four digits, blank stores the 0000 sentinel
+            prior_event_onsite:
+              type: boolean
+              description: Required for the prior-event reason
+    responses:
+      200:
+        description: Event recorded as having no packet available
+        schema:
+          type: object
+          properties:
+            data:
+              type: object
+              properties:
+                event_id:
+                  type: integer
+                status:
+                  type: string
+                marked_date:
+                  type: string
+      400:
+        description: Reason missing or unrecognized, or a required follow-up answer missing or invalid
+      403:
+        description: Non-admin acting on an event outside their site
+      404:
+        description: Event not found
+      409:
+        description: Event is past packet collection and cannot be marked
+    """
+    data = request.get_json(silent=True) or {}
+    reason = (data.get('reason') or '').strip()
+    if reason not in NO_PACKET_REASONS:
+        return jsonify({
+            'error': 'reason must be one of: ' + ', '.join(NO_PACKET_REASONS)
+        }), 400
+
+    auth_user = getattr(g, 'auth_user', None) or {}
+    session = models.get_session()
+    try:
+        e = session.query(models.Events).get(event_id)
+        if e is None:
+            return jsonify({'error': 'Event not found'}), 404
+        if not _uploader_may_act_on_event(session, e, auth_user):
+            return jsonify({'error': 'Uploader must match patient site'}), 403
+        # `created` is precisely the membership rule of the needs-packet
+        # queue, so it is also the definition of "still awaiting a packet".
+        # An event past that point has either received a packet or been
+        # resolved already; either way a no-packet declaration would
+        # overwrite a record rather than add one (research D4, FR-023).
+        if e.status != 'created':
+            return jsonify({
+                'error': f'Event {event_id} is already "{e.status}" and cannot '
+                         'be marked as having no packet'
+            }), 409
+
+        # Every follow-up is resolved before a single field is assigned, so a
+        # rejected submission leaves the row exactly as it was (FR-016).
+        two_attempts_flag = None
+        prior_event_date = None
+        prior_event_onsite_flag = None
+        other_cause = None
+
+        if reason == 'Outside hospital':
+            two_attempts_flag = _no_packet_answer(data.get('two_attempts'))
+            if two_attempts_flag is None:
+                return jsonify({
+                    'error': 'two_attempts is required when the reason is '
+                             '"Outside hospital"'
+                }), 400
+        elif reason == 'Other':
+            other_cause = str(data.get('other_cause') or '').strip()
+            if not other_cause:
+                return jsonify({
+                    'error': 'other_cause is required when the reason is "Other"'
+                }), 400
+            if len(other_cause) > NO_PACKET_OTHER_CAUSE_MAX:
+                return jsonify({
+                    'error': f'other_cause must be {NO_PACKET_OTHER_CAUSE_MAX} '
+                             'characters or fewer'
+                }), 400
+        elif reason == 'Ascertainment diagnosis referred to a prior event':
+            prior_event_onsite_flag = _no_packet_answer(data.get('prior_event_onsite'))
+            if prior_event_onsite_flag is None:
+                return jsonify({
+                    'error': 'prior_event_onsite is required for this reason'
+                }), 400
+            # An absent answer is read as "not known", matching the form,
+            # where the month/year inputs only appear once the coordinator
+            # has said Yes.
+            if _no_packet_answer(data.get('prior_event_date_known')) == 1:
+                month_given, month = _no_packet_number(data.get('prior_event_month'))
+                year_given, year = _no_packet_number(data.get('prior_event_year'))
+                if not month_given and not year_given:
+                    return jsonify({
+                        'error': 'Enter a month or a year for the prior event, '
+                                 'or answer that the date is not known'
+                    }), 400
+                if month_given and (month is None or not 1 <= month <= 12):
+                    return jsonify({
+                        'error': 'prior_event_month must be between 1 and 12'
+                    }), 400
+                # Four digits literally, so the message stays true to the
+                # check. The point is to catch a typo ('201', '20111'), not
+                # to judge which years are plausible for a prior event.
+                if year_given and (year is None or not 1000 <= year <= 9999):
+                    return jsonify({
+                        'error': 'prior_event_year must be a four-digit year'
+                    }), 400
+                # Zero-padded MM-YYYY, with `00` / `0000` standing in for a
+                # half left blank — the legacy encoding, preserved so new
+                # rows are indistinguishable from CakePHP-era ones. A NULL
+                # here means something else entirely: that the coordinator
+                # denied knowing the date at all (research D5).
+                prior_event_date = '%02d-%04d' % (month or 0, year or 0)
+
+        today = datetime.date.today()
+        e.status = 'no_packet_available'
+        e.no_packet_reason = reason
+        e.marker_id = int(auth_user.get('id') or 0)
+        e.markNoPacket_date = today
+        # Assigned unconditionally, NULL included: the row may carry stale
+        # answers from an earlier reason, and leaving a column alone would
+        # preserve them (FR-006).
+        e.two_attempts_flag = two_attempts_flag
+        e.prior_event_date = prior_event_date
+        e.prior_event_onsite_flag = prior_event_onsite_flag
+        e.other_cause = other_cause
+        session.commit()
+        return jsonify({'data': {
+            'event_id': event_id,
+            'status': 'no_packet_available',
+            'marked_date': today.isoformat(),
+        }})
+    except Exception as exc:
+        session.rollback()
+        # Event id and error class only. A database exception can carry its
+        # bound parameters, and `other_cause` is coordinator-authored text
+        # about a patient's records — PHI-adjacent, never logged at any
+        # level. Same rule as `_write_import_record`.
+        app.logger.error(
+            'Failed to mark event %d as having no packet: %s',
+            event_id, exc.__class__.__name__,
+        )
+        return jsonify({'error': 'Failed to mark event as having no packet'}), 500
+    finally:
+        session.close()
+
 
 @app.route('/api/events/assign_many', methods=['POST'])
 @requires_auth

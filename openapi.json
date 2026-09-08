@@ -386,6 +386,72 @@ paths:
             '
   /api/events/{int:event_id}/upload_scrubbed: {}
   /api/events/{int:event_id}/upload_raw: {}
+  /api/events/{int:event_id}/mark_no_packet:
+    post:
+      parameters:
+      - name: event_id
+        in: path
+        type: integer
+        required: true
+        description: ID of the event being resolved
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+          - reason
+          properties:
+            reason:
+              type: string
+              enum:
+              - Outside hospital
+              - Ascertainment diagnosis error
+              - Ascertainment diagnosis referred to a prior event
+              - Other
+            two_attempts:
+              type: boolean
+              description: Required when reason is "Outside hospital"; false is recorded
+            other_cause:
+              type: string
+              description: Required when reason is "Other"; 1-100 characters
+            prior_event_date_known:
+              type: boolean
+              description: Prior-event reason only; false stores a NULL prior_event_date
+            prior_event_month:
+              type: integer
+              description: Prior-event reason only; 1-12, blank stores the 00 sentinel
+            prior_event_year:
+              type: integer
+              description: Prior-event reason only; four digits, blank stores the
+                0000 sentinel
+            prior_event_onsite:
+              type: boolean
+              description: Required for the prior-event reason
+      responses:
+        '200':
+          description: Event recorded as having no packet available
+          schema:
+            type: object
+            properties:
+              data:
+                type: object
+                properties:
+                  event_id:
+                    type: integer
+                  status:
+                    type: string
+                  marked_date:
+                    type: string
+        '400':
+          description: Reason missing or unrecognized, or a required follow-up answer
+            missing or invalid
+        '403':
+          description: Non-admin acting on an event outside their site
+        '404':
+          description: Event not found
+        '409':
+          description: Event is past packet collection and cannot be marked
   /api/events/assign_many:
     post:
       parameters:
