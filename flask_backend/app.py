@@ -3,6 +3,7 @@ from flask_cors import CORS
 import os
 from typing import Optional
 import datetime
+import glob
 from docx import Document
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
@@ -1101,47 +1102,144 @@ def events_export():
         return jsonify({'error': 'Failed to export events'}), 500
 
 
+# --- Event packet lookup ----------------------------------------------------
+#
+# Two upload endpoints write packets into DOWNLOADS_DIR, under two different
+# names, and only one of them was ever findable here:
+#
+#   `upload_scrubbed` -> "<event_id><ext>"                    (the scrubbed packet)
+#   `upload_raw`      -> "orig_<event_id>_<file_number><ext>" (the packet as submitted)
+#
+# `file_number` is a random integer minted per raw upload and stored on the
+# event row, so a re-upload leaves the previous `orig_` file behind. The row is
+# therefore the only authority on *which* raw file is current; the glob below
+# is a fallback for rows whose `file_number` was never recorded (legacy data)
+# or whose file was restored under a different number.
+
+
+def _existing_packet(names):
+    """First of `names` that exists under DOWNLOADS_DIR or FILES_DIR."""
+    for base_dir in (DOWNLOADS_DIR, FILES_DIR):
+        for name in names:
+            path = os.path.join(base_dir, name)
+            if os.path.exists(path):
+                return path
+    return None
+
+
+def _find_scrubbed_packet(event_id: int) -> Optional[str]:
+    """Path to the de-identified packet for `event_id`, or None."""
+    names = [f"{event_id}{ext}" for ext in ALLOWED_PACKET_EXTENSIONS]
+    # Legacy convention, predating the per-event naming above.
+    names.append(f"event_{event_id}.zip")
+    return _existing_packet(names)
+
+
+def _find_raw_packet(event_id: int, file_number) -> Optional[str]:
+    """Path to the packet as submitted for `event_id`, or None.
+
+    Prefers the name built from the event's recorded `file_number`; falls
+    back to the newest `orig_<event_id>_*` file on disk when that name is
+    absent. The glob is anchored on the trailing underscore so event 471
+    can never match event 4711's packets.
+    """
+    if file_number is not None:
+        hit = _existing_packet(
+            [f"orig_{event_id}_{file_number}{ext}" for ext in ALLOWED_PACKET_EXTENSIONS]
+        )
+        if hit:
+            return hit
+
+    matches = []
+    for base_dir in (DOWNLOADS_DIR, FILES_DIR):
+        for path in glob.glob(os.path.join(base_dir, f"orig_{event_id}_*")):
+            if os.path.splitext(path)[1].lower() in ALLOWED_PACKET_EXTENSIONS:
+                matches.append(path)
+    if not matches:
+        return None
+    # Newest wins: with no `file_number` to go on, the most recent upload is
+    # the best guess at the current packet.
+    return max(matches, key=os.path.getmtime)
+
+
+def _event_file_number(event_id: int):
+    """The event's recorded `file_number`, or None if unavailable.
+
+    A database fault must not turn a present file into a 404, so this
+    degrades to None and lets the caller fall back to the glob.
+    """
+    try:
+        session = models.get_session()
+    except Exception:
+        app.logger.exception("Could not open a session to read file_number for event %s", event_id)
+        return None
+    try:
+        event = session.query(models.Events).get(event_id)
+        return getattr(event, "file_number", None) if event is not None else None
+    except Exception:
+        app.logger.exception("Could not read file_number for event %s", event_id)
+        return None
+    finally:
+        session.close()
+
+
+def _may_receive_raw_packet(auth_user) -> bool:
+    """Whether this caller may be handed the packet as submitted.
+
+    Where scrubbing is part of the workflow, the raw packet still carries the
+    identifiers the scrubber removes, so it is not the file a reviewer or
+    screener is meant to open — they get the scrubbed one or nothing. Where
+    the deployment has scrubbing switched off (the `scans` profile), no
+    scrubbed file is ever produced and the raw packet *is* the packet, so it
+    is served to everyone who can reach the endpoint.
+
+    Uploaders and admins are the roles that upload and scrub, so they are the
+    ones entitled to the unscrubbed file in either configuration.
+    """
+    if not get_workflow_config().scrubbing:
+        return True
+    auth_user = auth_user or {}
+    return bool(auth_user.get("admin")) or bool(auth_user.get("uploader"))
+
+
 @app.route('/api/events/download/<int:event_id>')
 @requires_auth
 def events_download(event_id: int):
-    """Stream a downloadable artifact for an event (e.g., charts zip).
+    """Stream this event's chart packet as an attachment.
 
-    Looks for a file under DOWNLOADS_DIR named "<event_id>.zip" or
-    "event_<event_id>.zip" and streams it as an attachment.
+    Serves the scrubbed packet when one exists; otherwise the packet as
+    submitted, for callers entitled to it (see `_may_receive_raw_packet`).
     """
-    # Try conventional names across allowed extensions and legacy patterns
-    candidates = []
-    # Current convention: <event_id><ext>
-    for ext in ALLOWED_PACKET_EXTENSIONS:
-        candidates.append(f"{event_id}{ext}")
-    # Legacy convention: event_<event_id>.zip
-    candidates.append(f"event_{event_id}.zip")
+    path = _find_scrubbed_packet(event_id)
+    if path is None:
+        raw = _find_raw_packet(event_id, _event_file_number(event_id))
+        if raw is not None and _may_receive_raw_packet(getattr(g, 'auth_user', None)):
+            path = raw
 
-    for base_dir in (DOWNLOADS_DIR, FILES_DIR):
-        for name in candidates:
-            path = os.path.join(base_dir, name)
-            if os.path.exists(path):
-                from flask import send_file
-                # Determine MIME type based on file extension
-                _, ext = os.path.splitext(name)
-                mime_type = MIME_TYPE_MAP.get(ext.lower(), 'application/octet-stream')
-                
-                # Set appropriate headers for file download
-                response = send_file(
-                    path, 
-                    as_attachment=True, 
-                    download_name=name,
-                    mimetype=mime_type
-                )
-                
-                # Add additional headers for better browser handling
-                response.headers['Content-Disposition'] = f'attachment; filename="{name}"'
-                response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-                response.headers['Pragma'] = 'no-cache'
-                response.headers['Expires'] = '0'
-                
-                return response
-    abort(404)
+    if path is None:
+        app.logger.info("No downloadable packet found for event %s", event_id)
+        abort(404)
+
+    from flask import send_file
+    name = os.path.basename(path)
+    _, ext = os.path.splitext(name)
+    mime_type = MIME_TYPE_MAP.get(ext.lower(), 'application/octet-stream')
+
+    response = send_file(
+        path,
+        as_attachment=True,
+        download_name=name,
+        mimetype=mime_type,
+    )
+
+    # Explicit headers for better browser handling: a stale cached packet is
+    # worse than a re-fetch, since a rescrub replaces the file in place.
+    response.headers['Content-Disposition'] = f'attachment; filename="{name}"'
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+
+    return response
 
 
 # --- Write endpoints needed by the frontend ---------------------------------
