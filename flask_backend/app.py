@@ -17,6 +17,7 @@ from . import table_service
 from . import models
 from . import study_config
 from .study_config import get_workflow_config
+from .models.studies import ReviewValidationError, get_study_module
 try:
     from flask_authorize import Authorize
 except Exception:
@@ -169,16 +170,6 @@ def get_offset(default: int = 0) -> int:
         return int(request.args.get("offset", default))
     except (TypeError, ValueError):
         return default
-
-
-def _coerce_flag(value) -> int:
-    """Coerce a truthy/falsy review-form value to a 0/1 TINYINT."""
-    if isinstance(value, bool):
-        return 1 if value else 0
-    if isinstance(value, (int, float)):
-        return 1 if value else 0
-    token = str(value or "").strip().lower()
-    return 1 if token in {"1", "true", "yes", "on"} else 0
 
 
 def ensure_pdf(doc_path: str, pdf_path: str) -> None:
@@ -760,6 +751,11 @@ def get_config():
     a hard-coded study-name check (FR-021), and brand the banner and tab title
     by config.
 
+    `review_form` names the review form the frontend renders. It comes from
+    the study module the backend actually uses (spec 012, research D6), so a
+    dormant or unknown study reports `mci` and the frontend renders the form
+    the backend will accept.
+
     `study_label` is the upper-cased study identity, empty when STUDY_TYPE is
     unset. It is deliberately *not* derivable from `study_type`, which has
     already been defaulted to `mci` by the time it is serialized here; the
@@ -781,6 +777,9 @@ def get_config():
                   type: string
                 study_title:
                   type: string
+                review_form:
+                  type: string
+                  description: review form id from the study module (mci, scans)
                 workflow:
                   type: object
                   properties:
@@ -798,6 +797,7 @@ def get_config():
         'study_type': cfg.study_type,
         'study_label': cfg.study_label,
         'study_title': cfg.study_title,
+        'review_form': get_study_module().REVIEW_FORM,
         'workflow': {
             'scrubbing': cfg.scrubbing,
             'screening': cfg.screening,
@@ -1030,76 +1030,36 @@ def reviewer_awaiting():
 def events_export():
     """Export events as CSV with detailed fields.
 
-    Query param format=csv defaults to CSV. Response is text/csv.
+    Query param format=csv defaults to CSV. Response is text/csv. The
+    columns are this study's (spec 012): `mci` writes the MI export
+    unchanged; `scans` writes one row per review region. Returns 503 if the
+    study's review tables are not migrated.
     """
-    try:
-        rows = table_service.get_events_export_rows()
-        # Build CSV
-        import csv
-        import io
+    # The export's columns are study-specific (the review columns come from
+    # the study's own `reviews` schema), so the study module writes the
+    # headings and rows (spec 012, research D9).
+    import csv
+    import io
 
+    study = get_study_module()
+    session = None
+    try:
+        session = models.get_session()
+        schema_error = _study_schema_error(study, session)
+        if schema_error:
+            return jsonify({'error': schema_error}), 503
         output = io.StringIO()
         writer = csv.writer(output)
-        # Headings (reduced example; expand as needed)
-        headings = [
-            'Event ID', 'Patient ID', 'Patient Site', 'Site Patient ID', 'Event Date', 'Status', 'Creator',
-            'Criteria: MI Dx', 'Criteria: CKMB_Q', 'Criteria: CKMB_M', 'Criteria: CKMB', 'Criteria: Troponin', 'Criteria: Other',
-            'Add Date', 'Uploader', 'Upload Date', 'Marker (no packet)', 'No Packet Reason', 'Two Attempts?',
-            'Prior Event Date', 'Prior Event Onsite?', 'Other Cause', 'Mark No Packet Date', 'Scrubber', 'Scrub Date',
-            'Screener', 'Screen Date', 'Rescrub Message', 'Reject Message', 'Assigner', 'Assign Date', 'Sender', 'Send Date',
-            'Reviewer 1', 'Review 1 MI', 'Review 1 Abnormal CE Values?', 'Review 1 CE Criteria', 'Review 1 Chest Pain?',
-            'Review 1 ECG Changes?', 'Review 1 LVM by Imaging?', 'Review 1 Clinical Intervention?', 'Review 1 Type',
-            'Review 1 Secondary Cause', 'Review 1 Other Cause', 'Review 1 False Positive?', 'Review 1 False Positive Reason',
-            'Review 1 False Positive Other Cause', 'Review 1 Current Tobacco Use?', 'Review 1 Past Tobacco Use?',
-            'Review 1 Cocaine Use?', 'Review 1 Family History?', 'Review 1 Date',
-            'Reviewer 2', 'Review 2 MI', 'Review 2 Abnormal CE Values?', 'Review 2 CE Criteria', 'Review 2 Chest Pain?',
-            'Review 2 ECG Changes?', 'Review 2 LVM by Imaging?', 'Review 2 Clinical Intervention?', 'Review 2 Type',
-            'Review 2 Secondary Cause', 'Review 2 Other Cause', 'Review 2 False Positive?', 'Review 2 False Positive Reason',
-            'Review 2 False Positive Other Cause', 'Review 2 Current Tobacco Use?', 'Review 2 Past Tobacco Use?',
-            'Review 2 Cocaine Use?', 'Review 2 Family History?', 'Review 2 Date',
-            '3rd Review Assigner', '3rd Review Assign Date', 'Reviewer 3', 'Review 3 MI', 'Review 3 Abnormal CE Values?',
-            'Review 3 CE Criteria', 'Review 3 Chest Pain?', 'Review 3 ECG Changes?', 'Review 3 LVM by Imaging?',
-            'Review 3 Clinical Intervention?', 'Review 3 Type', 'Review 3 Secondary Cause', 'Review 3 Other Cause',
-            'Review 3 False Positive?', 'Review 3 False Positive Reason', 'Review 3 False Positive Other Cause',
-            'Review 3 Current Tobacco Use?', 'Review 3 Past Tobacco Use?', 'Review 3 Cocaine Use?', 'Review 3 Family History?', 'Review 3 Date',
-            'Overall Outcome', 'Overall Primary vs. Secondary', 'Overall False Positive Event?', 'Overall Secondary Cause',
-            'Overall Secondary Cause Other', 'Overall False Positive Cause', 'Overall Cardiac Intervention?'
-        ]
-        writer.writerow(headings)
-        for r in rows:
-            writer.writerow([
-                r['id'] if r.get('id') is not None else '',
-                r.get('patient_id',''),
-                r.get('site',''),
-                r.get('site_patient_id',''),
-                r.get('event_date',''),
-                r.get('status',''),
-                r.get('creator',''),
-                r.get('mi_dx',''), r.get('ckmb_q',''), r.get('ckmb_m',''), r.get('ckmb',''), r.get('troponin',''), r.get('other',''),
-                r.get('add_date',''), r.get('uploader',''), r.get('upload_date',''), r.get('marker',''), r.get('no_packet_reason',''),
-                'Yes' if r.get('two_attempts_flag') else 'No' if r.get('two_attempts_flag') is not None else '',
-                r.get('prior_event_date',''), 'Yes' if r.get('prior_event_onsite_flag') else 'No' if r.get('prior_event_onsite_flag') is not None else '',
-                r.get('other_cause',''), r.get('markNoPacket_date',''), r.get('scrubber',''), r.get('scrub_date',''), r.get('screener',''), r.get('screen_date',''),
-                r.get('rescrub_message',''), r.get('reject_message',''), r.get('assigner',''), r.get('assign_date',''), r.get('sender',''), r.get('send_date',''),
-                r.get('reviewer1',''), r.get('review1_mci',''), r.get('review1_abnormal_ce',''), r.get('review1_ce_criteria',''), r.get('review1_chest_pain',''),
-                r.get('review1_ecg_changes',''), r.get('review1_lvm',''), r.get('review1_ci',''), r.get('review1_type',''),
-                r.get('review1_secondary_cause',''), r.get('review1_other_cause',''), r.get('review1_false_positive',''), r.get('review1_false_positive_reason',''),
-                r.get('review1_false_positive_other_cause',''), r.get('review1_current_tobacco',''), r.get('review1_past_tobacco',''), r.get('review1_cocaine',''), r.get('review1_family_history',''), r.get('review1_date',''),
-                r.get('reviewer2',''), r.get('review2_mci',''), r.get('review2_abnormal_ce',''), r.get('review2_ce_criteria',''), r.get('review2_chest_pain',''),
-                r.get('review2_ecg_changes',''), r.get('review2_lvm',''), r.get('review2_ci',''), r.get('review2_type',''),
-                r.get('review2_secondary_cause',''), r.get('review2_other_cause',''), r.get('review2_false_positive',''), r.get('review2_false_positive_reason',''),
-                r.get('review2_false_positive_other_cause',''), r.get('review2_current_tobacco',''), r.get('review2_past_tobacco',''), r.get('review2_cocaine',''), r.get('review2_family_history',''), r.get('review2_date',''),
-                r.get('assigner3rd',''), r.get('assign3rd_date',''), r.get('reviewer3',''), r.get('review3_mci',''), r.get('review3_abnormal_ce',''),
-                r.get('review3_ce_criteria',''), r.get('review3_chest_pain',''), r.get('review3_ecg_changes',''), r.get('review3_lvm',''), r.get('review3_ci',''), r.get('review3_type',''), r.get('review3_secondary_cause',''), r.get('review3_other_cause',''),
-                r.get('review3_false_positive',''), r.get('review3_false_positive_reason',''), r.get('review3_false_positive_other_cause',''), r.get('review3_current_tobacco',''), r.get('review3_past_tobacco',''), r.get('review3_cocaine',''), r.get('review3_family_history',''), r.get('review3_date',''),
-                r.get('overall_outcome',''), r.get('overall_primary_secondary',''), 'Yes' if r.get('overall_false_positive_event') else 'No' if r.get('overall_false_positive_event') is not None else '', r.get('overall_secondary_cause',''), r.get('overall_secondary_cause_other',''), r.get('overall_false_positive_reason',''), 'Yes' if r.get('overall_ci') else 'No' if r.get('overall_ci') is not None else ''
-            ])
+        study.export_csv(session, writer)
         output.seek(0)
         from flask import Response
         return Response(output.getvalue(), mimetype='text/csv', headers={'Content-Disposition': 'attachment; filename=event.csv'})
     except Exception:
         app.logger.exception("Failed to export events")
         return jsonify({'error': 'Failed to export events'}), 500
+    finally:
+        if session is not None:
+            session.close()
 
 
 # --- Event packet lookup ----------------------------------------------------
@@ -2037,7 +1997,8 @@ NO_PACKET_OTHER_CAUSE_MAX = 100
 def _no_packet_answer(value):
     """Coerce a yes/no answer to 1/0, or None when it was not answered.
 
-    Deliberately not `_coerce_flag`, which folds "unanswered" into 0. Here
+    Deliberately not the MI review form's `_coerce_flag`
+    (`models/studies/mci.py`), which folds "unanswered" into 0. Here
     the two must stay apart: `two_attempts_flag = 0` is a real recorded
     answer observed in production (research D5), so reading falsiness as
     absence would record "No" for a coordinator who answered nothing.
@@ -2400,21 +2361,30 @@ def events_send_many():
         return jsonify({'error': 'Failed to send events'}), 500
 
 
-# Review-row fields accepted from a review-submission body. The review form
-# and the `reviews` table are the existing shared artifact — `scans` carries
-# no study-specific review fields (spec Assumption). `mci` is required and
-# handled explicitly below; `cardiac_cath` is a NOT NULL flag also handled
-# explicitly. The rest are optional and copied through when present.
-_REVIEW_FLAG_FIELDS = {
-    'abnormal_ce_values_flag', 'chest_pain_flag', 'ecg_changes_flag',
-    'lvm_by_imaging_flag', 'ci', 'false_positive_flag',
-    'current_tobacco_use_flag', 'past_tobacco_use_flag', 'cocaine_use_flag',
-    'family_history_flag',
-}
-_REVIEW_TEXT_FIELDS = {
-    'ce_criteria', 'type', 'secondary_cause', 'other_cause',
-    'false_positive_reason', 'false_positive_other_cause', 'ci_type', 'ecg_type',
-}
+# Study-schema check results, by study module name. Cached once known: the
+# schema doesn't change under a running process, and the migration that fixes
+# it is followed by a restart (quickstart.md).
+_schema_errors: dict = {}
+
+
+def _study_schema_error(study, session):
+    """Operator-facing message if this study's tables are not migrated, else None.
+
+    Lets an un-migrated `scans` database fail with a clear 503 that names
+    init/migrations/012-scans-reviews.sh, not an obscure 500 (spec 012,
+    task T020). A failure of the check itself is logged and treated as
+    "no error", so the check can never block a working deployment.
+    """
+    name = study.__name__
+    if name not in _schema_errors:
+        try:
+            _schema_errors[name] = study.check_schema(session)
+        except Exception:
+            app.logger.warning("Could not check the %s review tables", name, exc_info=True)
+            return None
+        if _schema_errors[name]:
+            app.logger.error("%s", _schema_errors[name])
+    return _schema_errors[name]
 
 
 @app.route('/api/events/<int:event_id>/review', methods=['POST'])
@@ -2423,9 +2393,10 @@ _REVIEW_TEXT_FIELDS = {
 def events_review(event_id: int):
     """Submit a reviewer's adjudication for an event and advance the lifecycle.
 
-    Records one row in the shared `reviews` table for the submitting
-    reviewer, stamps the reviewer's `reviewN_date`, and advances
-    `events.status`. The submitter's slot is derived from the event's
+    The body is validated and stored by this deployment's study module
+    (`flask_backend/models/studies/<study>.py`; spec 012), since each study
+    has its own `reviews` schema. The endpoint itself stamps the reviewer's
+    `reviewN_date` and advances `events.status`. The submitter's slot is derived from the event's
     `reviewer1_id`/`reviewer2_id` assignment columns — never from the study
     name (FR-003). When reviewer count is 1, submitting the single review
     advances the event straight to `done` (FR-010, FR-014).
@@ -2455,19 +2426,32 @@ def events_review(event_id: int):
         description: Submitter is not an assigned reviewer for this event
       404:
         description: Event not found
+      409:
+        description: The submitter has already reviewed this event (FR-024)
+      503:
+        description: This study's review tables are not migrated
     """
     data = request.get_json(silent=True)
     if not isinstance(data, dict) or not data:
         return jsonify({'error': 'A review body is required'}), 400
-    mci = str(data.get('mci') or '').strip()
-    if not mci:
-        return jsonify({'error': 'mci is required'}), 400
+    study = get_study_module()
+    try:
+        parsed = study.parse_review(data)
+    except ReviewValidationError as err:
+        body = {'error': err.message}
+        if err.fields:
+            body['fields'] = err.fields
+        return jsonify(body), 400
 
     auth_user = getattr(g, 'auth_user', None) or {}
     user_id = int(auth_user.get('id') or 0)
     cfg = get_workflow_config()
     session = models.get_session()
     try:
+        schema_error = _study_schema_error(study, session)
+        if schema_error:
+            return jsonify({'error': schema_error}), 503
+
         e = session.query(models.Events).get(event_id)
         if e is None:
             return jsonify({'error': 'Event not found'}), 404
@@ -2484,21 +2468,16 @@ def events_review(event_id: int):
                 'error': 'Submitter is not an assigned reviewer for this event'
             }), 403
 
-        # Build and insert one row in the shared `reviews` table.
-        review_kwargs = {
-            'event_id': event_id,
-            'reviewer_id': user_id,
-            'mci': mci,
-            'cardiac_cath': _coerce_flag(data.get('cardiac_cath')),
-        }
-        for field in _REVIEW_FLAG_FIELDS:
-            if data.get(field) is not None:
-                review_kwargs[field] = _coerce_flag(data.get(field))
-        for field in _REVIEW_TEXT_FIELDS:
-            value = data.get(field)
-            if value is not None and str(value).strip() != '':
-                review_kwargs[field] = str(value).strip()
-        session.add(models.Reviews(**review_kwargs))
+        # A reviewer reviews an event once (FR-024). Before spec 012 a second
+        # POST stored a second review and re-stamped the status; a submitted
+        # review is final, so refuse it and write nothing (research D5).
+        if (slot == 1 and e.review1_date) or (slot == 2 and e.review2_date):
+            return jsonify({
+                'error': 'This event has already been reviewed by you'
+            }), 409
+
+        # Store the review in this study's own review tables.
+        study.add_review(session, event_id, user_id, parsed)
 
         # Advance the lifecycle.
         today = datetime.date.today()
@@ -2520,6 +2499,69 @@ def events_review(event_id: int):
         session.rollback()
         app.logger.exception('Failed to submit review for event %d', event_id)
         return jsonify({'error': 'Failed to submit review'}), 500
+    finally:
+        session.close()
+
+
+@app.route('/api/events/<int:event_id>/review', methods=['GET'])
+@requires_auth
+@requires_any_role('reviewer', 'admin')
+def events_review_get(event_id: int):
+    """Return the stored review(s) of an event (spec 012, FR-016).
+
+    The shape is this study's: for `scans`, each review carries its ordered
+    body-region entries, with scores as decimal strings and `null` for "not
+    provided". Admins may read any event; a reviewer only an event they are
+    assigned to.
+    ---
+    parameters:
+      - name: event_id
+        in: path
+        type: integer
+        required: true
+        description: ID of the event
+    responses:
+      200:
+        description: The event's stored reviews (study-specific shape)
+        schema:
+          type: object
+          properties:
+            data:
+              type: object
+              properties:
+                event_id:
+                  type: integer
+                reviews:
+                  type: array
+                  items:
+                    type: object
+      403:
+        description: Caller is neither an admin nor an assigned reviewer
+      404:
+        description: Event not found
+      503:
+        description: This study's review tables are not migrated
+    """
+    auth_user = getattr(g, 'auth_user', None) or {}
+    user_id = int(auth_user.get('id') or 0)
+    study = get_study_module()
+    session = models.get_session()
+    try:
+        schema_error = _study_schema_error(study, session)
+        if schema_error:
+            return jsonify({'error': schema_error}), 503
+        e = session.query(models.Events).get(event_id)
+        if e is None:
+            return jsonify({'error': 'Event not found'}), 404
+        if not auth_user.get('admin') and user_id not in (e.reviewer1_id, e.reviewer2_id):
+            return jsonify({'error': 'Not an assigned reviewer for this event'}), 403
+        return jsonify({'data': {
+            'event_id': event_id,
+            'reviews': study.get_reviews(session, event_id),
+        }})
+    except Exception:
+        app.logger.exception('Failed to read reviews for event %d', event_id)
+        return jsonify({'error': 'Failed to read reviews'}), 500
     finally:
         session.close()
 

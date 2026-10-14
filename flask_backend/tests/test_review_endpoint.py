@@ -180,3 +180,62 @@ def test_review_requires_reviewer_or_admin_role(mock_get_session):
     )
 
     assert res.status_code == 403
+
+
+# --- Duplicate submissions (spec 012, FR-024) -------------------------------
+
+
+class _RecordingSession(FakeSession):
+    def __init__(self, event):
+        super().__init__(event)
+        self.added = []
+
+    def add(self, obj):
+        self.added.append(obj)
+
+
+@patch("flask_backend.models.get_session")
+def test_second_submission_by_reviewer1_conflicts(mock_get_session, admin_client, monkeypatch):
+    """Reviewer 1 re-submitting after their review is stamped gets 409; nothing is stored."""
+    monkeypatch.delenv("STUDY_TYPE", raising=False)
+    event = FakeEvent(reviewer1_id=1, status="done")
+    event.review1_date = "2026-10-01"
+    session = _RecordingSession(event)
+    mock_get_session.return_value = session
+
+    res = admin_client.post("/api/events/5/review", json={"mci": "Definite", "cardiac_cath": "0"})
+
+    assert res.status_code == 409
+    assert res.get_json()["error"] == "This event has already been reviewed by you"
+    assert session.added == []
+    assert event.status == "done"
+
+
+@patch("flask_backend.models.get_session")
+def test_second_submission_by_reviewer2_conflicts(mock_get_session, admin_client, monkeypatch):
+    """The same guard applies to the second reviewer's slot."""
+    monkeypatch.delenv("STUDY_TYPE", raising=False)
+    event = FakeEvent(reviewer1_id=99, reviewer2_id=1, status="reviewer2_done")
+    event.review2_date = "2026-10-01"
+    session = _RecordingSession(event)
+    mock_get_session.return_value = session
+
+    res = admin_client.post("/api/events/5/review", json={"mci": "No", "cardiac_cath": "0"})
+
+    assert res.status_code == 409
+    assert session.added == []
+
+
+@patch("flask_backend.models.get_session")
+def test_other_slot_reviewed_does_not_block(mock_get_session, admin_client, monkeypatch):
+    """Reviewer 2 may still submit after reviewer 1 has reviewed."""
+    monkeypatch.delenv("STUDY_TYPE", raising=False)
+    monkeypatch.delenv("REVIEWER_COUNT", raising=False)
+    event = FakeEvent(reviewer1_id=99, reviewer2_id=1, status="reviewer1_done")
+    event.review1_date = "2026-10-01"
+    mock_get_session.return_value = _RecordingSession(event)
+
+    res = admin_client.post("/api/events/5/review", json={"mci": "No", "cardiac_cath": "0"})
+
+    assert res.status_code == 200
+    assert event.status == "reviewer2_done"

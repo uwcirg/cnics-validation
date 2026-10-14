@@ -36,7 +36,7 @@ After examining the old CakePHP repositories (VTE, Heart Failure, and AFIB), I'v
 **Our Current Plan Status:** ✅ **CORRECT** - We already included prescrub workflow in our VTE schema
 
 **Required Updates:**
-- ✅ Already included in `init/02-schema-vte.sql`
+- ✅ Already included in `init/studies/vte.sql` (dormant; moved from `init/02-schema-vte.sql` by spec 012)
 - ✅ Already included in `flask_backend/models/studies/vte.py`
 - ✅ Already included in environment configs
 
@@ -50,7 +50,7 @@ After examining the old CakePHP repositories (VTE, Heart Failure, and AFIB), I'v
 **Our Current Plan Status:** ✅ **CORRECT** - We already excluded prescrub from HF
 
 **Required Updates:**
-- ✅ Already correct in `init/02-schema-hf.sql`
+- ✅ Already correct in `init/studies/hf.sql` (dormant; moved from `init/02-schema-hf.sql` by spec 012)
 - ✅ Already correct in `flask_backend/models/studies/hf.py`
 
 ### 3. VTE Review Form Complexity

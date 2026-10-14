@@ -8,6 +8,8 @@ its auth/role decorators, and exposes no secrets.
 import importlib
 from unittest.mock import patch
 
+import pytest
+
 _CONTROL_VARS = (
     "STUDY_TYPE",
     "STUDY_TITLE",
@@ -98,6 +100,7 @@ def test_config_endpoint_exposes_only_workflow_keys(admin_client, monkeypatch):
         "study_type",
         "study_label",
         "study_title",
+        "review_form",
         "workflow",
     }
     assert set(data["workflow"].keys()) == {
@@ -220,3 +223,26 @@ def test_config_endpoint_label_does_not_disturb_title_or_workflow(admin_client, 
         "sending": True,
         "reviewer_count": 2,
     }
+
+
+# --- review_form (spec 012, research D6) -------------------------------------
+
+
+def test_config_review_form_defaults_to_mci(admin_client, monkeypatch):
+    _clear_controls(monkeypatch)
+    data = admin_client.get("/api/config").get_json()["data"]
+    assert data["review_form"] == "mci"
+
+
+def test_config_review_form_dormant_study_falls_back_to_mci(admin_client, monkeypatch):
+    _clear_controls(monkeypatch)
+    monkeypatch.setenv("STUDY_TYPE", "vte")
+    data = admin_client.get("/api/config").get_json()["data"]
+    assert data["review_form"] == "mci"
+
+
+def test_config_review_form_scans(admin_client, monkeypatch):
+    _clear_controls(monkeypatch)
+    monkeypatch.setenv("STUDY_TYPE", "scans")
+    data = admin_client.get("/api/config").get_json()["data"]
+    assert data["review_form"] == "scans"

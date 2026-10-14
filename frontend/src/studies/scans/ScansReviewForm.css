@@ -1,0 +1,61 @@
+/* Scans (DEXA) review form (spec 012). One single-column table per region
+   entry, so 8+ entries stack vertically without horizontal scroll (SC-003). */
+
+.scans-review-form {
+  max-width: 40rem;
+}
+
+.scans-region-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 14px;
+  table-layout: fixed;
+}
+
+.scans-region-table caption {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  text-align: left;
+  font-weight: bold;
+  padding: 4px 0;
+}
+
+.scans-region-table th,
+.scans-region-table td {
+  border: 1px solid #ccc;
+  padding: 6px 8px;
+  vertical-align: top;
+  text-align: left;
+}
+
+.scans-region-table th {
+  width: 40%;
+  background: #333;
+  color: #fff;
+  font-weight: normal;
+}
+
+.scans-region-table input[type="text"] {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.scans-region-table input[aria-invalid="true"] {
+  border-color: #b3261e;
+  outline-color: #b3261e;
+}
+
+.scans-field-error {
+  color: #b3261e;
+  font-size: 0.9em;
+  margin-top: 4px;
+}
+
+.scans-remove {
+  font-weight: normal;
+}
+
+.scans-submit {
+  margin: 8px 0 16px;
+}

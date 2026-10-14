@@ -83,6 +83,10 @@ function App() {
   // string (e.g. "DEXA Scans Validation") shown verbatim in the banner and
   // used to build the browser tab title. Empty when not configured.
   const [studyTitle, setStudyTitle] = useState('')
+  // Review form id from GET /api/config (`review_form`), chosen by the
+  // backend's study module (spec 012). Keys components/review/reviewForms.js.
+  // Empty until the config resolves; EventReview waits for configResolved.
+  const [reviewForm, setReviewForm] = useState('')
   // Whether GET /api/config has resolved. The home page gates its study-aware
   // review boxes on this so it never paints fallback content before the real
   // study type is known (spec 007, FR-010 — no content flash).
@@ -120,6 +124,8 @@ function App() {
           if (sl) setStudyLabel(sl)
           const stt = json && json.data && json.data.study_title
           if (stt) setStudyTitle(stt)
+          const rf = json && json.data && json.data.review_form
+          if (rf) setReviewForm(rf)
         }
       } catch {
         // Keep the conservative full-workflow default on any failure.
@@ -303,7 +309,7 @@ function App() {
           {/* Reviewer routes (reviewer or admin) */}
           <Route path="/events/review" element={
             <ProtectedRoute requiredRoles={['reviewer', 'admin']} auth={auth}>
-              <EventReview studyLabel={studyLabel} studyType={studyType} configResolved={configResolved} />
+              <EventReview studyLabel={studyLabel} studyType={studyType} reviewForm={reviewForm} configResolved={configResolved} />
             </ProtectedRoute>
           } />
           <Route path="/vte/review" element={

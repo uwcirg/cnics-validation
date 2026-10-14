@@ -1,0 +1,81 @@
+<!doctype html>
+<!--
+  Reviewer instructions for STUDY_TYPE=scans (DEXA scan review).
+
+  Served by the backend's GET /files/instructions/scans.html from the
+  read-only FILES_DIR, and opened in a new tab from the "Review
+  Instructions:" boxes on the home page and the review page
+  (frontend/src/components/reviewGuidance.js). Spec 012, FR-017 – FR-023.
+
+  Source: the "DEXA CHART REVIEW INSTRUCTIONS" section of
+  docs/DEXA CHART REVIEW INSTRUCTIONS and PROGRAMMING INSTRUCTIONS.20260922.docx.
+  To change the wording, edit this file; no rebuild is needed. Keep it
+  self-contained, with no scripts and no external resources.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DEXA Chart Review Instructions</title>
+  <style>
+    :root { color-scheme: light; }
+    body {
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 1.05rem;
+      line-height: 1.5;
+      color: #111;
+      background: #fff;
+      max-width: 48rem;
+      margin: 2rem auto;
+      padding: 0 1rem;
+    }
+    h1 { font-size: 1.5rem; margin-bottom: 1rem; }
+    h2 { font-size: 1.15rem; margin: 1.5rem 0 0.5rem; }
+    ol { padding-left: 1.75rem; }
+    ol ol { list-style-type: lower-alpha; margin: 0.25rem 0; }
+    li { margin: 0.35rem 0; }
+
+    @media print {
+      body {
+        max-width: none;
+        margin: 0;
+        padding: 0;
+        font-size: 11pt;
+        color: #000;
+      }
+      a { color: inherit; text-decoration: none; }
+      li { page-break-inside: avoid; break-inside: avoid; }
+      h1, h2 { page-break-after: avoid; break-after: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <h1>DEXA Chart Review Instructions</h1>
+
+  <p>Please review each DEXA scan in its entirety and document all regions with corresponding T and Z scores when available.</p>
+
+  <ol>
+    <li>Please select an event and download the PDF.</li>
+    <li>Please review the entire PDF as sometimes the regions are specified in the intro paragraph and sometimes in the summary with the T and Z scores.</li>
+    <li>Please document for each body region:
+      <ol type="a">
+        <li>body region (e.g., lumbar spine)</li>
+        <li>laterality if relevant (L vs R), leave blank if not relevant (e.g. spine)</li>
+        <li>T scores</li>
+        <li>Z scores</li>
+      </ol>
+    </li>
+  </ol>
+
+  <h2>Notes:</h2>
+
+  <ol>
+    <li>Please use spine when it is an overall spine value or when location of spine is not specified. Please note that sometimes the location in the spine (e.g. lumbar) is in the paragraph descriptor even if it is not listed with the T and Z scores themselves. Please also note some include both an overall spine and a specific spine region (e.g., lumbar). When that occurs, please include both.</li>
+    <li>Please note that there were brief periods where only T scores and not Z scores were provided. However for the majority of individuals, there will be both for each region.</li>
+    <li>When noted (e.g., for most hip values), please include laterality (e.g. L and R). This is important for people who have multiple scans over time of the same region.</li>
+    <li>Please use hip when more specific information is not provided.</li>
+    <li>Please include all variations of lumbar (e.g. L1-L2; L4) as lumbar. We are not trying to parse to the level of the specific vertebrate as that is often not given or includes multiple.</li>
+    <li>If body regions are included that are not on the dropdown list, please include them using Other and typing in the region. Any that are found frequently will be added to the dropdown list for the future.</li>
+  </ol>
+</body>
+</html>

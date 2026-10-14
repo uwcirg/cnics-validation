@@ -127,6 +127,9 @@ paths:
                     type: string
                   study_title:
                     type: string
+                  review_form:
+                    type: string
+                    description: review form id from the study module (mci, scans)
                   workflow:
                     type: object
                     properties:
@@ -532,6 +535,38 @@ paths:
           description: Submitter is not an assigned reviewer for this event
         '404':
           description: Event not found
+        '409':
+          description: The submitter has already reviewed this event (FR-024)
+        '503':
+          description: This study's review tables are not migrated
+    get:
+      parameters:
+      - name: event_id
+        in: path
+        type: integer
+        required: true
+        description: ID of the event
+      responses:
+        '200':
+          description: The event's stored reviews (study-specific shape)
+          schema:
+            type: object
+            properties:
+              data:
+                type: object
+                properties:
+                  event_id:
+                    type: integer
+                  reviews:
+                    type: array
+                    items:
+                      type: object
+        '403':
+          description: Caller is neither an admin nor an assigned reviewer
+        '404':
+          description: Event not found
+        '503':
+          description: This study's review tables are not migrated
   /files/{path:filename}: {}
   /: {}
 info:

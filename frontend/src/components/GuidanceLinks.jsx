@@ -6,8 +6,8 @@ const API_BASE = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || ''
 
 // Render one guidance box's optional file links. Returns null when the box
 // defines no links, so no orphaned "Full instructions:" / "View as:" label is
-// shown (spec 007, FR-004). A `.doc`-style link downloads; a `.pdf`-style link
-// opens in a new tab — matching the original MI behavior.
+// shown (spec 007, FR-004). A `.doc`-style link downloads; any other link
+// (a `.pdf`, or an on-site instructions page, spec 012) opens in a new tab.
 //
 // Moved here from Home.jsx (spec 010) so the scrubbing and review pages render
 // their document links from the same per-study source as the home page rather
@@ -25,7 +25,7 @@ function GuidanceLinks({ box }) {
           {link.download ? (
             <a href={`${API_BASE}${link.href}`} download>{link.label}</a>
           ) : (
-            <a href={`${API_BASE}${link.href}`} target="_blank">{link.label}</a>
+            <a href={`${API_BASE}${link.href}`} target="_blank" rel="noopener">{link.label}</a>
           )}
         </span>
       ))}
