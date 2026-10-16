@@ -17,6 +17,10 @@ paths:
                 type: array
                 items:
                   type: object
+        '403':
+          description: Caller has no role, or is not an admin reading a review table
+        '404':
+          description: Not a valid table name
   /api/events:
     get:
       responses:
@@ -105,6 +109,9 @@ paths:
                           type: string
                         value:
                           type: string
+        '403':
+          description: Caller is neither admin nor uploader, and is not one of this
+            event's reviewers
         '404':
           description: No such event
   /api/sites: {}
@@ -150,7 +157,11 @@ paths:
   /api/events/download/{int:event_id}: {}
   /api/criteria: {}
   /api/solicitations: {}
-  /api/events/{int:event_id}/screen: {}
+  /api/events/{int:event_id}/screen:
+    post:
+      responses:
+        '403':
+          description: admin only (spec 012 FR-033)
   /api/events/bulk:
     post:
       summary: Bulk-create events from an uploaded CSV, archiving the submission
@@ -387,7 +398,11 @@ paths:
             `refused` submission).
 
             '
-  /api/events/{int:event_id}/upload_scrubbed: {}
+  /api/events/{int:event_id}/upload_scrubbed:
+    post:
+      responses:
+        '403':
+          description: admin only (spec 012 FR-033)
   /api/events/{int:event_id}/upload_raw: {}
   /api/events/{int:event_id}/mark_no_packet:
     post:
@@ -559,8 +574,20 @@ paths:
                     type: integer
                   reviews:
                     type: array
+                    description: Admins only; empty for other callers
                     items:
                       type: object
+                      properties:
+                        slot:
+                          type: integer
+                  mine:
+                    type: object
+                    description: The caller's own review status, or null
+                    properties:
+                      slot:
+                        type: integer
+                      review_date:
+                        type: string
         '403':
           description: Caller is neither an admin nor an assigned reviewer
         '404':

@@ -356,3 +356,280 @@ Unchanged from rev. 1.
 The shared Step 1 label becomes `Download charts for <heading identifier>`
 for all studies, matching the legacy MCI screen (FR-002). Only the shell
 changes, so the MI decision form itself is unchanged (SC-004).
+
+---
+
+# Revision 4 (2026-10-16): post-deployment feedback
+
+**Inputs**: spec Clarifications, Session 2026-10-16 (FR-025 – FR-032), from
+the user's dev-deployment review (`Review.Screenshot.2026-10-16.113230.jpg`,
+`Review.Instructions.Screenshot.2026-10-16.113334.jpg`) and the legacy MCI
+screenshots (`mci.review.Screenshot.1.2026-10-14.111240.jpg`,
+`mci.event.edit.Screenshot.1/2.2026-10-14.jpg`). Each decision records what
+the code does today first (Principle VI).
+
+## D12 — Why `/files/instructions/scans.html` renders blank
+
+**Observed**: The `web` service runs the Vite dev server
+(`docker-compose.yaml`: `target: development_build`).
+`frontend/vite.config.js` proxies only `/api`. Any other path falls through
+to Vite's SPA history fallback, which returns `index.html`. React Router has
+no `/files/*` route, so it renders the shell with an empty body. The
+screenshot shows exactly that: a menu bar and a "Home page" link. The
+backend's `/files/<path>` route (`flask_backend/app.py:2569`) and the file
+`app/webroot/files/instructions/scans.html` are both correct. The same fault
+already breaks every `/files/*.doc`/`.pdf` link (the MCI packet-assembly
+instructions and the scrubbing protocol) on dev-server deployments.
+
+**Decision**: Add a `/files` entry to `server.proxy` in `vite.config.js`. It
+uses the same `apiProxyTarget` as `/api`, with default timeouts.
+
+**Rationale**: It is a one-line change that fixes every `/files` link at
+once, and the URL stays the same, so `reviewGuidance.js` is unchanged.
+
+**Alternatives rejected**:
+- Moving the route to `/api/files/...`: it changes every existing link, and
+  `.doc` links that someone saved would break.
+- Copying the HTML into `frontend/public/`: it would split `FILES_DIR`
+  content across two places, against FR-023's single source.
+
+**Residual**: The `serve` production stage of `frontend/Dockerfile`
+(`serve -s dist --single`) has no proxy either. Compose doesn't use it today.
+It is noted in quickstart as a deployment caveat and is not changed.
+
+## D13 — Review page with no `event_id` (FR-025)
+
+**Observed**: `MenuBar.jsx` links "Review Events" to `/events/review`.
+`EventReview.jsx` reads a null `event_id` and renders the heading
+`headingSuffix(label, null)`, which gives "SCANS null". It also renders the
+whole form, a download link to `/api/events/download/null`, and fetches
+`/api/events/null`.
+
+**Decision**: When `event_id` is absent, `EventReview.jsx` returns a new
+`ReviewQueue` component (`frontend/src/components/review/ReviewQueue.jsx`)
+instead of the shell. `ReviewQueue` renders "Events to Review" with the same
+endpoint (`/api/events/for_review`), columns, and actions as the home page.
+To make that possible, `Home.jsx`'s `TableWrapper` and its "Events to Review"
+section are extracted into that shared component, and `Home.jsx` uses it
+too. That keeps one source and avoids drift. The empty state reads "No
+events are awaiting review." The wording is neutral because admins see every
+event (analyze U3).
+
+**Also observed**: `TableWrapper.handleClick` sends **every** home-page
+table's row click to `/events/upload?...`, including "Events to Review" rows.
+Only the "review" button reaches the review page. `ReviewQueue`'s row click
+and its button both open `/events/review?event_id=N` (FR-025). The other
+home tables keep their current row behavior.
+
+**Rationale**: The legacy MCI menu item listed the reviewer's queue, and the
+user chose this (Q1). Sharing the component satisfies "same rows, from the
+same source".
+
+**Alternative rejected**: A redirect to `/` loses the "Review Events" menu
+meaning.
+
+## D14 — Scoping "Events to Review" to the signed-in reviewer
+
+**Observed**: `/api/events/for_review` → `table_service.get_events_for_review`
+returns **every** event with status `sent`/`assigned`, no matter who is
+signed in. A reviewer therefore sees, and can open, events assigned to other
+reviewers. The POST then refuses them with 403 ("not an assigned reviewer").
+The home page has always behaved this way.
+
+**Decision**: Non-admin callers get only events where they are
+`reviewer1_id` and `review1_date IS NULL`, or `reviewer2_id` and
+`review2_date IS NULL`. This is the same slot rule as the 409 guard, so an
+event leaves the list the moment the server would refuse a resubmission.
+Admin callers keep today's unscoped list. The filter is an optional
+`reviewer_id` argument threaded into the existing status query. It contains
+no study name.
+
+**Rationale**: FR-025 says "the signed-in reviewer's events". Both list
+locations share this endpoint, so both become correct together.
+
+**Behavior change (all studies)**: the home page table narrows for
+non-admin reviewers. This is recorded for the PR description.
+
+## D15 — Already-reviewed state on the review page (FR-029)
+
+**Observed**: The page always renders the form. Duplicates are refused only
+on POST: `app.py` checks `review1_date`/`review2_date` for the caller's slot
+and returns 409.
+
+**Decision**: Extend `GET /api/events/{id}/review` with `mine`, the caller's
+own status, computed in the shared endpoint from the event's slot columns.
+This is the same rule as the 409 guard, so the two cannot disagree:
+`mine = {slot, review_date}` if the caller's slot has a date; `null` if the
+caller is assigned but hasn't reviewed. `EventReview.jsx` fetches it and
+renders one of three states:
+- Loading: no form yet.
+- `mine` set: "You have already reviewed this event (submitted
+  &lt;date&gt;)". No form and no Submit. Step 1's download link stays, since
+  the packet is still the reviewer's to consult.
+- Otherwise: the form, as today.
+
+This applies to every study, because the shell owns it, not the form.
+
+**Alternative rejected**: Inferring the state from `GET /api/events/{id}`'s
+`review1_date`/`review2_date`. That response has no reviewer ids, so the
+frontend can't tell which slot is the caller's.
+
+## D16 — Review content on `/events/edit` (FR-027) and who receives it (FR-028)
+
+**Observed**:
+- `EventEdit.jsx` shows "Review N Date" rows only.
+- `GET /api/events/{id}/review` returns all reviews, with content, to any
+  admin or assigned reviewer. In a two-reviewer study, reviewer 1 could read
+  reviewer 2's answers.
+- Route `/events/edit` allows `reviewer`.
+- `GET /api/events/{id}` (event details, including PHI `site_patient_id`)
+  checks only that the caller is signed in.
+- `GET /api/tables/<name>` runs `SELECT * FROM {name}` for any signed-in user,
+  with the name interpolated straight into the SQL. Any user can read
+  `reviews`/`review_regions` (and `users`), and the name is injectable.
+
+**Decisions**:
+1. `GET /api/events/{id}/review`: admins get `reviews` with full content,
+   each item gaining `slot` (1/2/3, matched from `reviewer{1,2,3}_id`; `null`
+   if unmatched). Non-admin assigned reviewers get `reviews: []` plus `mine`
+   (D15). They never receive answers, their own included. Everyone else gets
+   403, as today.
+2. `EventEdit.jsx` fetches it **only when `auth.admin`**. Under each "Review N
+   Date" row it adds a "Review N" row, rendered by the study's summary
+   component from the frontend registry (D17). Non-admins (e.g. uploaders)
+   see dates and reviewer names only.
+3. Route `/events/edit`: `requiredRoles={['uploader', 'admin']}`. The
+   `Home.jsx` "edit" buttons are already restricted to uploader/admin.
+   `EventViewAll.jsx` shows "edit" buttons to everyone, but under D19 that
+   page becomes admin-only, so no per-button gate is needed.
+4. `GET /api/events/{id}`: callers with neither `admin` nor `uploader` must be
+   one of the event's `reviewer{1,2,3}_id`, or they get 403. The review page
+   still loads the event date for an assigned reviewer.
+5. `GET /api/tables/<name>`: the name must match `^[A-Za-z_][A-Za-z0-9_]*$`
+   (else 404), which closes the injection. The study module's review tables
+   (a new module constant, `REVIEW_TABLES`: `mci` →
+   `('reviews', 'event_derived_datas')`, `scans` →
+   `('reviews', 'review_regions')`) return 403 to non-admins. A full
+   allowlist with per-table roles is a **follow-up** (Principle VI): the
+   frontend reads `users`, `criterias`, `solicitations`, and `patients_view`
+   through it today, and tightening those needs its own discovery.
+
+**Rationale**: The backend is the boundary. The frontend changes only remove
+dead ends.
+
+## D17 — Study review summaries in the frontend registry
+
+**Decision**: `components/review/reviewForms.js` gains a second map and a
+`resolveReviewSummary(reviewForm)` beside `resolveReviewForm`, with the same
+key normalization and the same mci fallback.
+`studies/scans/ScansReviewSummary.jsx` renders one line per region, in
+position order: `Region[: other] — Laterality, T: x, Z: y`. Omitted parts are
+"not provided" and never 0.
+`studies/mci/MciReviewSummary.jsx` renders the legacy labels for non-null MI
+columns, as in `mci.event.edit.Screenshot.1` ("MI: Probable", "Criteria:
+…", "Primary/Secondary: …", "Cardiac Cath: No"). The label text comes from
+`MciReviewForm.jsx`'s questions so the two stay together. An unknown id falls
+back to mci, matching the form fallback.
+
+**Rationale**: The labels already live with each study's form component
+(Principle IV, mechanism 3). Backend-formatted text would duplicate them in
+Python.
+
+## D18 — Instructions box placement and H1 size (FR-030, FR-031)
+
+**Observed**:
+- `EventReview.jsx` gives the box `className="boxright"`, but no stylesheet
+  defines `.boxright`, so it renders as plain flow content above the H1.
+- `index.css` sets `h1 { font-size: 3.2em }`, which is the Vite scaffold
+  default.
+- `Home.css`'s `.infobox` already has the legacy tan style (`#f2e8c2` fill,
+  `#f1d676` border, 12px radius).
+
+**Decision**:
+- Define `.boxright` in `index.css`: float right, `width: 300px`, the same
+  colors, border, and radius as `.infobox`, `margin: 0 0 1em 1.5em`. Under
+  `@media (max-width: 640px)`, `float: none; width: auto;`, so there is no
+  horizontal scroll.
+- Drop the inline `width`/`fontSize` from `EventReview.jsx`, keeping its
+  `h3`.
+- Change `h1` to `font-size: 1.6em; line-height: 1.2` site-wide.
+  `Admin.css`'s `.admin-container h1` override stays.
+
+**Rationale**: It reuses existing tokens and adds no new palette, which
+matches the legacy screenshot.
+
+## D19 — Scrub, screen, and all-events pages become admin-only (FR-033)
+
+**Trigger**: `/speckit.analyze` finding U1. D16.4 restricts
+`GET /api/events/{id}` for callers who are neither admin nor uploader to
+events they are assigned to review. Three reviewer-reachable pages call that
+endpoint for events the caller isn't assigned to:
+- `EventScreen.jsx`;
+- `EventScrub.jsx`;
+- the "Not Yet Reviewed" table in `EventViewAll.jsx` (`augmentRows`, ~L320).
+
+**Observed roles today**:
+
+| Surface | Roles |
+|---|---|
+| Route `/events/screen` (`App.jsx` ~L322) | reviewer, admin |
+| Route `/events/scrub` (~L346) | reviewer, uploader, admin |
+| Route `/events/viewAll` (~L367) | reviewer, uploader, admin |
+| MenuBar "View All Events" | reviewer, uploader, admin |
+| `POST /api/events/<id>/screen` | `@requires_any_role('reviewer', 'admin')` |
+| `POST /api/events/<id>/upload_scrubbed` | `@requires_any_role('reviewer', 'uploader', 'admin')` |
+
+The pages' only entry points are buttons on `/events/viewAll`. Nothing on
+the home page or menu links to scrub or screen.
+
+**Decision (user, 2026-10-16)**: All of the above become admin-only, for
+every study:
+- routes: `requiredRoles={['admin']}`;
+- MenuBar link: `admin &&`;
+- endpoints: `@requires_roles('admin')`.
+
+This makes D16.4 safe. The remaining callers of `GET /api/events/{id}` are:
+- `EventUpload.jsx` (uploader/admin);
+- `EventEdit.jsx` (uploader/admin);
+- `EventSendMany.jsx` (admin);
+- `EventReview.jsx` (an assigned reviewer).
+
+Studies with scrubbing and screening disabled (`scans`) never reach these
+stages, but the rule is the same for every study, so there is no study
+branching (Principle IV).
+
+**Constitution**: Principle V forbids redefining, removing, or renaming
+roles or states. This changes neither; it changes which existing roles may
+perform two stages, uniformly across studies. Principle III is unaffected,
+since no data changes.
+
+**Not changed (follow-ups, Principle VI)**:
+- `GET /api/events/by_status/<status>` stays open to reviewer, uploader,
+  and admin. `EventAssignThird.jsx` (route allows reviewer) reads
+  `by_status/third_review_needed`.
+- `/events/assignThird` itself still allows reviewers.
+- `GET /api/events/download/<id>` (packet download) has only
+  `@requires_auth`.
+- `GET /api/events/need_packets` and `need_reupload` allow reviewers.
+
+**Behavior change (all studies)**: non-admin reviewers and uploaders on
+`mci` (scrubbing and screening on) can no longer scrub or screen. The PR
+description must say so.
+
+## D20 — `/speckit.analyze` follow-ups (C1, I1, I2, U3)
+
+- **C1 (constitution, "Authorization")**: Endpoints must carry explicit role
+  decorators. `GET /api/events/{id}` and `GET /api/tables/{name}` had only
+  `@requires_auth`. Both get
+  `@requires_any_role('admin', 'uploader', 'reviewer', 'third_reviewer')`,
+  the set `/api/config` uses. No current frontend caller lacks one of these
+  roles, so nothing changes for real users. A signed-in user with no role
+  now gets 403.
+- **I1**: `_reviewer_slot()` can return 3, but POST review keeps accepting
+  only slots 1 and 2 and returns the existing 403 for anything else. Third
+  review submission is not part of this feature.
+- **I2**: `mine` reports slots 1 and 2 only, matching POST and the GET's
+  unchanged non-admin access check (reviewer1/2). Admin `reviews` items
+  still label slot 3 when one exists, e.g. `mci` third reviews on
+  `/events/edit`.
+- **U3**: The empty-queue text is "No events are awaiting review."

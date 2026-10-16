@@ -3,10 +3,11 @@ from unittest.mock import patch
 import io
 
 @patch('flask_backend.table_service.get_table_data')
-def test_get_table_route(mock_service):
+def test_get_table_route(mock_service, admin_client):
+    # The route now declares role requirements (spec 012, analyze C1), so it
+    # is called as a signed-in user rather than anonymously.
     mock_service.return_value = [{'id': 1}]
-    client = app.test_client()
-    res = client.get('/api/tables/events?limit=5&offset=10')
+    res = admin_client.get('/api/tables/events?limit=5&offset=10')
     assert res.status_code == 200
     assert res.get_json() == {'data': [{'id': 1}]}
     mock_service.assert_called_with('events', 5, 10)

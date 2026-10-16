@@ -17,8 +17,10 @@ class FakeEvent:
     def __init__(self, reviewer1_id=None, reviewer2_id=None, status="assigned"):
         self.reviewer1_id = reviewer1_id
         self.reviewer2_id = reviewer2_id
+        self.reviewer3_id = None
         self.review1_date = None
         self.review2_date = None
+        self.review3_date = None
         self.status = status
 
 

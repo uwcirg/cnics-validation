@@ -21,8 +21,10 @@ class FakeEvent:
         self.id = 5
         self.reviewer1_id = reviewer1_id
         self.reviewer2_id = reviewer2_id
+        self.reviewer3_id = None
         self.review1_date = review1_date
         self.review2_date = review2_date
+        self.review3_date = None
         self.status = status
 
 
@@ -311,11 +313,20 @@ def _get(client, event):
 def test_get_review_admin(admin_client):
     res = _get(admin_client, FakeEvent(reviewer1_id=7))
     assert res.status_code == 200
-    assert res.get_json()["data"] == {"event_id": 5, "reviews": STORED}
+    # Admins get the answers, each labelled with its reviewer slot (spec 012
+    # rev. 4, FR-027; research D16.1).
+    assert res.get_json()["data"] == {
+        "event_id": 5,
+        "reviews": [{**STORED[0], "slot": 1}],
+        "mine": None,
+    }
 
 
 def test_get_review_assigned_reviewer(reviewer_client):
-    assert _get(reviewer_client, FakeEvent(reviewer1_id=7)).status_code == 200
+    # A reviewer never receives answers, their own included (FR-028, FR-029).
+    res = _get(reviewer_client, FakeEvent(reviewer1_id=7))
+    assert res.status_code == 200
+    assert res.get_json()["data"]["reviews"] == []
 
 
 def test_get_review_other_reviewer_forbidden(reviewer_client):

@@ -9,6 +9,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from dotenv import load_dotenv
 import random
+import re
 import time
 import uuid
 from .logging_config import configure_logging
@@ -394,10 +395,20 @@ def requires_any_role(*allowed_roles: str):
 
     return decorator
 
+# A table name must be a plain SQL identifier: `get_table_data` interpolates
+# it into the query (spec 012 research D16.5).
+_TABLE_NAME_RE = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
+
+
 @app.route('/api/tables/<name>')
 @requires_auth
+@requires_any_role('admin', 'uploader', 'reviewer', 'third_reviewer')
 def get_table(name):
     """Return rows from a database table.
+
+    The name must be a plain identifier, or the response is 404. This
+    study's review-answer tables (the study module's `REVIEW_TABLES`) are
+    refused to non-admins (spec 012 FR-028).
     ---
     parameters:
       - name: name
@@ -415,7 +426,19 @@ def get_table(name):
               type: array
               items:
                 type: object
+      403:
+        description: Caller has no role, or is not an admin reading a review table
+      404:
+        description: Not a valid table name
     """
+    if not _TABLE_NAME_RE.fullmatch(name):
+        return jsonify({'error': 'Not found'}), 404
+    # TODO(follow-up, spec 012 research D16.5): replace this with a full
+    # allowlist of readable tables, each with its own roles.
+    auth_user = getattr(g, 'auth_user', None) or {}
+    review_tables = getattr(get_study_module(), 'REVIEW_TABLES', ())
+    if not auth_user.get('admin') and name.lower() in review_tables:
+        return jsonify({'error': 'Not authorized'}), 403
     limit = get_limit()
     offset = get_offset()
     try:
@@ -520,6 +543,10 @@ def events_need_packets():
 @requires_any_role('reviewer', 'admin')
 def events_for_review():
     """Events with packets awaiting review.
+
+    Admins see every review-eligible event. Other callers see only events
+    awaiting their own review: they hold reviewer slot 1 or 2 and have not
+    yet reviewed it (spec 012 FR-025, research D14).
     ---
     responses:
       200:
@@ -534,8 +561,14 @@ def events_for_review():
     """
     limit = get_limit()
     offset = get_offset()
+    auth_user = getattr(g, 'auth_user', None) or {}
     try:
-        rows = table_service.get_events_for_review(limit, offset)
+        if auth_user.get('admin'):
+            rows = table_service.get_events_for_review(limit, offset)
+        else:
+            rows = table_service.get_events_for_review(
+                limit, offset, reviewer_id=int(auth_user.get('id') or 0)
+            )
         return jsonify({'data': rows})
     except Exception:
         app.logger.exception("Failed to fetch table data")
@@ -640,6 +673,7 @@ def events_by_status(status: str):
 
 @app.route('/api/events/<int:event_id>')
 @requires_auth
+@requires_any_role('admin', 'uploader', 'reviewer', 'third_reviewer')
 def get_event_details(event_id: int):
     """Return one event with its patient identifiers and ascertainment criteria.
 
@@ -683,9 +717,26 @@ def get_event_details(event_id: int):
                         type: string
                       value:
                         type: string
+      403:
+        description: Caller is neither admin nor uploader, and is not one of this event's reviewers
       404:
         description: No such event
     """
+    # Reviewer-only callers may read only events they review (spec 012
+    # FR-028, research D16.4). The pages that needed other events' details
+    # (scrub, screen, view-all) are admin-only (FR-033, research D19).
+    auth_user = getattr(g, 'auth_user', None) or {}
+    if not (auth_user.get('admin') or auth_user.get('uploader')):
+        user_id = int(auth_user.get('id') or 0)
+        session = models.get_session()
+        try:
+            e = session.query(models.Events).get(event_id)
+            if e is None:
+                abort(404)
+            if user_id not in (e.reviewer1_id, e.reviewer2_id, e.reviewer3_id):
+                return jsonify({'error': 'Not authorized for this event'}), 403
+        finally:
+            session.close()
     try:
         details = table_service.get_event_details(event_id)
         if not details:
@@ -1312,8 +1363,16 @@ def events_update(event_id: int):
 
 @app.route('/api/events/<int:event_id>/screen', methods=['POST'])
 @requires_auth
-@requires_any_role('reviewer', 'admin')
+@requires_roles('admin')
 def events_screen(event_id: int):
+    """Record a screening decision for an event.
+
+    Admin only (spec 012 FR-033, research D19).
+    ---
+    responses:
+      403:
+        description: admin only (spec 012 FR-033)
+    """
     data = request.get_json() or {}
     decision = (data.get('decision') or '').strip()
     message = (data.get('message') or '').strip()
@@ -1837,13 +1896,19 @@ def events_import_file(import_id: str):
 
 @app.route('/api/events/<int:event_id>/upload_scrubbed', methods=['POST'])
 @requires_auth
-@requires_any_role('reviewer', 'uploader', 'admin')
+@requires_roles('admin')
 def events_upload_scrubbed(event_id: int):
     """Accept a scrubbed charts upload and mark the event as scrubbed.
+
+    Admin only (spec 012 FR-033, research D19).
 
     Expects multipart/form-data with field name 'scrubbed_file'. Saves the
     uploaded file to DOWNLOADS_DIR using a conventional filename and updates
     the event's scrubber, scrub_date, and status.
+    ---
+    responses:
+      403:
+        description: admin only (spec 012 FR-033)
     """
     try:
         file = request.files.get('scrubbed_file')
@@ -2459,11 +2524,9 @@ def events_review(event_id: int):
         # Determine the submitter's reviewer slot from the event's
         # assignment columns (FR-003). A caller — even an admin — who is
         # not an assigned reviewer for this event cannot submit a review.
-        if e.reviewer1_id == user_id:
-            slot = 1
-        elif e.reviewer2_id == user_id:
-            slot = 2
-        else:
+        # Third review (slot 3) is not submitted here (spec 012 analyze I1).
+        slot = _reviewer_slot(e, user_id)
+        if slot not in (1, 2):
             return jsonify({
                 'error': 'Submitter is not an assigned reviewer for this event'
             }), 403
@@ -2503,16 +2566,34 @@ def events_review(event_id: int):
         session.close()
 
 
+def _reviewer_slot(e, user_id) -> Optional[int]:
+    """Return the reviewer slot (1, 2 or 3) `user_id` holds on event `e`,
+    or None. Shared by review submission and retrieval (spec 012)."""
+    for slot in (1, 2, 3):
+        if user_id is not None and getattr(e, f'reviewer{slot}_id') == user_id:
+            return slot
+    return None
+
+
 @app.route('/api/events/<int:event_id>/review', methods=['GET'])
 @requires_auth
 @requires_any_role('reviewer', 'admin')
 def events_review_get(event_id: int):
-    """Return the stored review(s) of an event (spec 012, FR-016).
+    """Return an event's stored reviews and the caller's own review status.
 
-    The shape is this study's: for `scans`, each review carries its ordered
-    body-region entries, with scores as decimal strings and `null` for "not
-    provided". Admins may read any event; a reviewer only an event they are
-    assigned to.
+    `reviews` (spec 012, FR-016, FR-027) holds the answers in this study's
+    shape. For `scans`, each review carries its ordered body-region entries,
+    with scores as decimal strings and `null` for "not provided". Each item
+    also has `slot`, the reviewer slot its author holds, or null. Answers go
+    to admins only; for any other caller `reviews` is empty (FR-028).
+
+    `mine` is `{slot, review_date}` once the caller has reviewed this event in
+    slot 1 or 2, else null. This is the same rule as the POST 409 guard, and
+    the review page uses it to show "already reviewed" instead of the form
+    (FR-029).
+
+    Admins may read any event; a reviewer only an event they are assigned to
+    in slot 1 or 2.
     ---
     parameters:
       - name: event_id
@@ -2533,8 +2614,20 @@ def events_review_get(event_id: int):
                   type: integer
                 reviews:
                   type: array
+                  description: Admins only; empty for other callers
                   items:
                     type: object
+                    properties:
+                      slot:
+                        type: integer
+                mine:
+                  type: object
+                  description: The caller's own review status, or null
+                  properties:
+                    slot:
+                      type: integer
+                    review_date:
+                      type: string
       403:
         description: Caller is neither an admin nor an assigned reviewer
       404:
@@ -2553,11 +2646,26 @@ def events_review_get(event_id: int):
         e = session.query(models.Events).get(event_id)
         if e is None:
             return jsonify({'error': 'Event not found'}), 404
-        if not auth_user.get('admin') and user_id not in (e.reviewer1_id, e.reviewer2_id):
+        is_admin = bool(auth_user.get('admin'))
+        if not is_admin and user_id not in (e.reviewer1_id, e.reviewer2_id):
             return jsonify({'error': 'Not an assigned reviewer for this event'}), 403
+
+        mine = None
+        my_slot = _reviewer_slot(e, user_id)
+        if my_slot in (1, 2):
+            my_date = getattr(e, f'review{my_slot}_date')
+            if my_date is not None:
+                mine = {'slot': my_slot, 'review_date': my_date.isoformat()}
+
+        reviews = []
+        if is_admin:
+            reviews = study.get_reviews(session, event_id)
+            for review in reviews:
+                review['slot'] = _reviewer_slot(e, review.get('reviewer_id'))
         return jsonify({'data': {
             'event_id': event_id,
-            'reviews': study.get_reviews(session, event_id),
+            'reviews': reviews,
+            'mine': mine,
         }})
     except Exception:
         app.logger.exception('Failed to read reviews for event %d', event_id)

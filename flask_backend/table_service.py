@@ -104,12 +104,15 @@ def get_events_by_status_with_total(
     site: Optional[str] = None,
     sort_by: Optional[str] = None,
     sort_dir: Optional[str] = None,
+    reviewer_id: Optional[int] = None,
 ):
     """Return (rows, total) for events filtered by status, with friendly columns.
 
     Friendly columns: ID, Date, Created, Uploaded, Scrubbed, Criteria, Site.
     Supports text search (q) across id, event_date, site_patient_id, and criteria name/value,
-    and site filtering.
+    and site filtering. When ``reviewer_id`` is given, only events where that
+    user holds reviewer slot 1 or 2 and has not yet reviewed are returned
+    (spec 012 FR-025, research D14).
     """
     logger.debug(
         "Fetching %sevents with status %s starting at %d",
@@ -125,6 +128,15 @@ def get_events_by_status_with_total(
     if site:
         where.append("p.site = :site")
         params["site"] = site
+    if reviewer_id is not None:
+        # Same slot rule as the POST review 409 guard (app.py events_review),
+        # so an event leaves the reviewer's queue exactly when a resubmission
+        # would be refused.
+        where.append(
+            "((e.reviewer1_id = :reviewer_id AND e.review1_date IS NULL) "
+            "OR (e.reviewer2_id = :reviewer_id AND e.review2_date IS NULL))"
+        )
+        params["reviewer_id"] = reviewer_id
     if q:
         where.append(
             "(CAST(e.id AS CHAR) LIKE :like "
@@ -192,8 +204,15 @@ def get_events_by_status_with_total(
     return [dict(r) for r in rows], int(total)
 
 
-def get_events_by_status(status: str, limit: Optional[int] = None, offset: int = 0):
-    rows, _total = get_events_by_status_with_total(status, limit, offset)
+def get_events_by_status(
+    status: str,
+    limit: Optional[int] = None,
+    offset: int = 0,
+    reviewer_id: Optional[int] = None,
+):
+    rows, _total = get_events_by_status_with_total(
+        status, limit, offset, reviewer_id=reviewer_id
+    )
     return rows
 
 
@@ -237,8 +256,17 @@ def get_events_need_packets(limit: Optional[int] = None, offset: int = 0, site: 
     return rows
 
 
-def get_events_for_review(limit: Optional[int] = None, offset: int = 0):
+def get_events_for_review(
+    limit: Optional[int] = None,
+    offset: int = 0,
+    reviewer_id: Optional[int] = None,
+):
     """Return events with packets ready for reviewer action.
+
+    When ``reviewer_id`` is given (non-admin callers), only events awaiting
+    that reviewer's own review are returned: they hold slot 1 or 2 and have
+    not reviewed it yet (spec 012 FR-025, research D14). Admins pass None and
+    see every review-eligible event.
 
     The gating status is flag-aware (FR-009, FR-011): when sending is enabled
     an event is ready for review once it has been sent (`status = 'sent'`);
@@ -247,7 +275,7 @@ def get_events_for_review(limit: Optional[int] = None, offset: int = 0):
     """
     cfg = study_config.get_workflow_config()
     status = "sent" if cfg.sending else "assigned"
-    return get_events_by_status(status, limit, offset)
+    return get_events_by_status(status, limit, offset, reviewer_id=reviewer_id)
 
 
 def get_events_for_reupload(limit: Optional[int] = None, offset: int = 0, site: Optional[str] = None):

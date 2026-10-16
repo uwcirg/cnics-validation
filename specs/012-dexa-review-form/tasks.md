@@ -1,7 +1,7 @@
 # Tasks: DEXA scan review form and on-site reviewer instructions
 
 **Input**: Design documents from `/specs/012-dexa-review-form/`
-**Prerequisites**: plan.md (rev. 3), spec.md, research.md (D1–D11), data-model.md, contracts/review-api.md, contracts/review-ui.md, quickstart.md
+**Prerequisites**: plan.md (rev. 4), spec.md (incl. Session 2026-10-16), research.md (D1–D19), data-model.md, contracts/review-api.md, contracts/review-ui.md, quickstart.md
 **Constitution**: v1.5.1, already amended on this branch. Principle IV now covers:
 - study DDL lives in `init/studies/<study>.sql`;
 - a database holds only its own study's tables;
@@ -332,6 +332,386 @@ After this phase an `mci` deployment must behave exactly as before. **No user-st
 
 ---
 
+## Rev. 4 (2026-10-16): post-deployment feedback
+
+These phases implement FR-025 – FR-033 (spec Clarifications, Session
+2026-10-16), following plan.md rev. 4 and research D12–D18. There is **no
+schema change and no migration**. Everything here is study-agnostic, except
+the two summary components. Contracts: review-api.md and review-ui.md, the
+"Rev. 4" sections.
+
+---
+
+## Phase 7: Foundational (rev. 4): backend access and scoping
+
+**Purpose**: Make the backend the access boundary before any UI relies on it
+(FR-025, FR-027, FR-028, FR-029). This phase blocks Phases 9 and 10.
+
+### Tests (write first; they must fail before T044–T050)
+
+- [X] T042 Create `flask_backend/tests/test_review_access.py`.
+  - Reuse the `FakeEvent` and `FakeSession` patterns and the
+    `reviewer_client` fixture from `flask_backend/tests/test_scans_review.py`.
+    Add `uploader_client` (an uploader, not admin, not reviewer, id 9) and
+    `admin_client` (from conftest).
+  - Give `FakeEvent` `reviewer3_id`, `review1_date`, `review2_date`, and
+    `review3_date` (default `None`).
+  - Cover each of the following:
+    1. **for_review scoping (D14)**: with
+       `flask_backend.table_service.get_events_for_review` patched,
+       - an admin GET `/api/events/for_review?limit=3&offset=0` calls it as
+         `(3, 0)` (unchanged);
+       - reviewer id 7 calls it with `reviewer_id=7`.
+    2. **Table-service slot filter**: unit-test
+       `table_service.get_events_for_review(…, reviewer_id=7)` with a
+       capturing fake session, as in `test_table_service.py`. The executed SQL
+       must contain both slot conditions,
+       `(e.reviewer1_id = :reviewer_id AND e.review1_date IS NULL)` and the
+       `reviewer2_id`/`review2_date` equivalent. With `reviewer_id=None`,
+       neither condition appears.
+    3. **GET …/review (D15, D16.1)**, via `GET /api/events/5/review` with
+       `scans.get_reviews` patched to return two reviews (reviewer_id 7 and
+       8):
+       - admin gets both reviews, each with `slot`. The slot is 1 for
+         `reviewer1_id=7`, 2 for `reviewer2_id=8`, and `None` for a reviewer
+         id in no slot.
+       - reviewer 7 assigned in slot 1 with `review1_date=None` gets
+         `reviews == []` and `mine is None`.
+       - with `review1_date=date(2026,10,16)`, reviewer 7 gets
+         `mine == {"slot": 1, "review_date": "2026-10-16"}` and
+         `reviews == []`.
+       - the uploader gets 403.
+    4. **GET `/api/events/5` (D16.4)**, with
+       `table_service.get_event_details` patched to return `{"id": 5}` and the
+       event looked up through the patched session:
+       - admin → 200; uploader → 200;
+       - reviewer 7 assigned (any of the three slots) → 200;
+       - reviewer 7 not assigned → 403;
+       - unknown event → 404.
+    5. **`/api/tables/<name>` (D16.5)**:
+       - a reviewer requesting `reviews` or `review_regions` with
+         `STUDY_TYPE=scans` (monkeypatch as other tests do) → 403;
+       - an admin requesting `review_regions` → 200 (patch
+         `table_service.get_table_data`);
+       - any user requesting `events;drop` or `1abc` → 404, and
+         `get_table_data` is never called;
+       - a reviewer requesting `criterias` → 200 (unchanged).
+    6. **Role decorators (analyze C1)**: a signed-in user with no roles
+       (all four flags false, id 11) gets 403 from `GET /api/events/5` and
+       `GET /api/tables/criterias`.
+    7. **POST slot 3 refused (analyze I1)**: with `reviewer3_id=7` and
+       slots 1 and 2 held by others, reviewer 7's
+       `POST /api/events/5/review` gets 403, and nothing is added to the
+       session.
+    8. **`mine` slot 3 not exposed (analyze I2)**: an admin whose id is
+       `reviewer3_id` with `review3_date` set gets `mine is None`.
+    9. **Admin-only stages (FR-033)**:
+       - `POST /api/events/5/screen` as reviewer → 403;
+       - `POST /api/events/5/upload_scrubbed` as reviewer → 403, and as the
+         uploader → 403;
+       - as admin, neither returns 403. Patch the session/handler internals
+         as needed; assert only that the decorator lets the request through.
+- [X] T043 Update the existing GET tests in
+  `flask_backend/tests/test_scans_review.py`:
+  - `test_get_review_admin` now expects each stored review to also carry
+    `slot` (1 for `reviewer1_id=7`), plus a `mine` key.
+  - `test_get_review_assigned_reviewer` now asserts `reviews == []`.
+  - Leave `test_get_reviews_serialization` and `test_get_reviews_none`
+    unchanged: `get_reviews` itself does not change.
+
+### Implementation
+
+- [X] T044 [P] Add the `REVIEW_TABLES` module constant to both study modules.
+  - In `flask_backend/models/studies/mci.py`:
+    `REVIEW_TABLES = ("reviews", "event_derived_datas")`.
+  - In `flask_backend/models/studies/scans.py`:
+    `REVIEW_TABLES = ("reviews", "review_regions")`.
+  - Add a one-line comment to each: "tables `/api/tables/<name>` refuses to
+    non-admins (spec 012 FR-028)".
+  - Add `REVIEW_TABLES` to the module interface docstring in
+    `flask_backend/models/studies/__init__.py`.
+- [X] T045 Add the slot filter in `flask_backend/table_service.py`.
+  - Give `get_events_by_status_with_total` an optional keyword
+    `reviewer_id: Optional[int] = None`. When it is set, append to `where`:
+    `"((e.reviewer1_id = :reviewer_id AND e.review1_date IS NULL) OR (e.reviewer2_id = :reviewer_id AND e.review2_date IS NULL))"`,
+    and set `params["reviewer_id"]`.
+  - Thread the same keyword through `get_events_by_status` and
+    `get_events_for_review(limit=None, offset=0, reviewer_id=None)`.
+  - Update `get_events_for_review`'s docstring: non-admin callers are scoped
+    to their unreviewed slots (spec 012 FR-025, research D14). The rule
+    matches the POST 409 guard.
+- [X] T046 In `flask_backend/app.py` `events_for_review`:
+  - read `g.auth_user`;
+  - admins call `table_service.get_events_for_review(limit, offset)`, exactly
+    as now;
+  - everyone else calls
+    `table_service.get_events_for_review(limit, offset, reviewer_id=int(auth_user['id']))`;
+  - update the docstring's description.
+- [X] T047 In `flask_backend/app.py` `events_review_get` (GET
+  `/api/events/<id>/review`):
+  - Add a small shared helper beside it, `_reviewer_slot(e, user_id)`. It
+    returns 1, 2 or 3 by matching `e.reviewer1_id`, `e.reviewer2_id` and
+    `e.reviewer3_id`, or `None`.
+  - Use the helper in POST `events_review` too, replacing the inline slot
+    `if`/`elif`, **without changing POST behavior**. POST must still refuse
+    slot 3 and `None` with the existing 403 ("Submitter is not an assigned
+    reviewer for this event"): `if slot not in (1, 2): return … 403`. Third
+    review submission is not part of this feature (analyze I1).
+  - Compute `mine` for **slots 1 and 2 only** (analyze I2). The GET's
+    existing non-admin access check admits only `reviewer1_id` and
+    `reviewer2_id`, and that check is unchanged. If the caller's slot `N` is 1
+    or 2 and `getattr(e, f'review{N}_date')` is set, `mine` is
+    `{'slot': N, 'review_date': <date>.isoformat()}`; otherwise `None`. That
+    includes an admin who holds no slot, or holds slot 3.
+  - Admins: `reviews` is `study.get_reviews(...)` with
+    `review['slot'] = _reviewer_slot(e, review['reviewer_id'])` added to each
+    item.
+  - Non-admin assigned reviewers: `reviews` is `[]`. Do not call
+    `get_reviews`.
+  - The response is `{'data': {'event_id', 'reviews', 'mine'}}`.
+  - Keep the existing 403, 404 and 503 paths.
+  - Update the docstring and `responses` to match
+    `contracts/review-api.md` rev. 4.
+- [X] T048 In `flask_backend/app.py` `get_event_details` (GET
+  `/api/events/<int:event_id>`):
+  - Add `@requires_any_role('admin', 'uploader', 'reviewer', 'third_reviewer')`
+    under `@requires_auth`. The constitution's "Authorization" gate requires
+    an explicit role decorator; this is the set `/api/config` uses (analyze
+    C1).
+  - If `g.auth_user` has neither `admin` nor `uploader`:
+    - open a session;
+    - `session.query(models.Events).get(event_id)` → 404 if missing;
+    - 403 `{'error': 'Not authorized for this event'}` unless the caller's
+      id equals one of `reviewer1_id`, `reviewer2_id`, `reviewer3_id`;
+    - close the session in `finally`.
+  - Then continue as now. Add `403` to the docstring responses.
+- [X] T049 In `flask_backend/app.py` `get_table` (`/api/tables/<name>`):
+  - Add `@requires_any_role('admin', 'uploader', 'reviewer', 'third_reviewer')`
+    under `@requires_auth` (analyze C1). The existing `test_app.py`
+    `/api/tables/events` tests use `admin_client`, so they stay green.
+  - Before querying, return 404 `{'error': 'Not found'}` unless
+    `re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', name)`.
+  - Return 403 `{'error': 'Not authorized'}` when the caller isn't admin and
+    `name.lower()` is in `get_study_module().REVIEW_TABLES` (use
+    `getattr(..., 'REVIEW_TABLES', ())` for safety).
+  - Add a `# TODO(follow-up, spec 012 research D16.5)` comment: a full
+    allowlist with per-table roles is still to come.
+  - Add 403 and 404 to the docstring.
+- [X] T050 In `flask_backend/app.py`, change two decorators to
+  `@requires_roles('admin')` (FR-033, research D19):
+  - `events_screen` (POST `/api/events/<id>/screen`), currently
+    `@requires_any_role('reviewer', 'admin')`;
+  - `events_upload_scrubbed` (POST `/api/events/<id>/upload_scrubbed`),
+    currently `@requires_any_role('reviewer', 'uploader', 'admin')`.
+  Update each docstring's description, and add a 403 response noting
+  "admin only (spec 012 FR-033)". Change no body logic.
+- [X] T051 Run `pytest flask_backend/tests`. `test_review_access.py`, the
+  updated `test_scans_review.py`, `test_review_endpoint.py`, `test_app.py`,
+  and `test_auth_header_and_roles.py` must all pass.
+
+**Checkpoint**: The backend enforces FR-025 scoping, FR-028, FR-029's
+`mine`, and FR-033. No UI has changed yet.
+
+---
+
+## Phase 8: User Story 3 (rev. 4): instructions reachable
+
+**Goal**: `/files/instructions/scans.html` shows the instructions, not the
+SPA shell (FR-032, research D12).
+
+**Independent test**: quickstart §D step 1.
+
+- [X] T052 [P] [US3] Proxy `/files` in `frontend/vite.config.js`.
+  - In `server.proxy`, add
+    `'/files': { target: apiProxyTarget, changeOrigin: false }` beside
+    `'/api'`.
+  - Extend the comment above `apiProxyTarget`: `/files` (reviewer
+    instructions, packet-assembly and scrubbing documents) needs the same
+    proxy, or it falls through to the SPA fallback and renders a blank page
+    (spec 012 FR-032).
+
+---
+
+## Phase 9: User Story 1 (rev. 4): review page, queue, and already-reviewed state
+
+**Goal**:
+- The "Review Events" menu link shows the reviewer's queue (FR-025).
+- A reviewed event shows a notice instead of the form (FR-029).
+- The instructions box sits top right in legacy style, and H1 is smaller
+  (FR-030, FR-031).
+
+**Independent test**: quickstart §D steps 2–4.
+
+- [X] T053 [P] [US1] Make the style changes in `frontend/src/index.css`
+  (research D18).
+  - Change `h1` to `font-size: 1.6em; line-height: 1.2;`.
+  - Add `.boxright`:
+    - `float: right; width: 300px; margin: 0 0 1em 1.5em;`
+    - `background-color: #f2e8c2; border: 1px solid #f1d676; border-radius: 12px; padding: 5px 10px;`
+      (the same values as `.infobox` in `frontend/src/pages/Home.css`; add a
+      comment saying so).
+    - `.boxright h3 { margin: 0.4em 0; }`
+  - Add `@media (max-width: 640px) { .boxright { float: none; width: auto; margin: 0 0 1em 0; } }`.
+- [X] T054 [US1] In `frontend/src/pages/EventReview.jsx`:
+  - remove the inline `style={{ width: '300px', fontSize: '.95em' }}` from
+    the `boxright` div;
+  - drop the inner `<div style={{ marginTop: '8px' }}>` wrapper if it is no
+    longer needed for spacing.
+- [X] T055 [US1] Create `frontend/src/components/review/ReviewQueue.jsx` by
+  moving `TableWrapper` out of `frontend/src/pages/Home.jsx`.
+  - Export `TableWrapper` (named) unchanged, except for a new optional
+    `onRowClick(row)` prop. When it is given, it replaces the built-in
+    `/events/upload?...` navigation in `handleClick`.
+  - The default export, `ReviewQueue`, renders:
+    - `<h3>Events to Review</h3>`;
+    - `<p>Events with packets ready for review.</p>`;
+    - `TableWrapper` with endpoint `/api/events/for_review`, columns
+      `['ID', 'Patient ID', 'Date', 'Criteria', 'Site']`, the existing
+      "review" button action, and
+      `onRowClick={(row) => navigate(`/events/review?event_id=${row['ID']}`)}`.
+  - When the first page loads with zero rows, show "No events are awaiting
+    review." This is neutral wording, since admins see every event
+    (analyze U3). in place of the table. Add a `onLoaded(rows, totalCount)`
+    callback prop to `TableWrapper`, or an equivalent minimal hook.
+  - Move the `API_BASE`/`PAGE_SIZE` constants and the `DataTable` import
+    along with it.
+  - The comment cites spec 012 FR-025 and research D13.
+- [X] T056 [US1] In `frontend/src/pages/Home.jsx`:
+  - import `{ TableWrapper }` and `ReviewQueue` from
+    `../components/review/ReviewQueue`;
+  - delete the local `TableWrapper`;
+  - replace the "Events to Review" `<section>` body with `<ReviewQueue />`,
+    keeping the `auth.reviewer || auth.admin` gate and the `<section>`
+    wrapper.
+  - The other home tables keep using `TableWrapper` with no `onRowClick`, so
+    their behavior is unchanged.
+  - Run `npm run lint`.
+- [X] T057 [US1] In `frontend/src/pages/EventReview.jsx`, when there is no
+  `event_id`:
+  - If `eventId` is falsy, return `<ReviewQueue />` (wrapped in the page's
+    outer `<div>`) before any heading, instructions box, Step 1, or form
+    renders.
+  - Keep hooks unconditional: place the early return after all `useState` and
+    `useEffect` calls. The existing effect already skips its fetch without an
+    id.
+- [X] T058 [US1] In `frontend/src/pages/EventReview.jsx`, add the
+  already-reviewed state (FR-029, contract review-ui rev. 4).
+  - Add state `reviewStatus`, one of `'loading' | 'open' | 'reviewed' | 'error'`,
+    and `mine`.
+  - In a `useEffect` keyed on `eventId`, fetch
+    `${apiUrl}/api/events/${eventId}/review` with `credentials: 'include'`:
+    - 200 with `data.mine` → `'reviewed'`;
+    - 200 without → `'open'`;
+    - otherwise → `'error'`.
+  - Below Step 1, render by state:
+    - `'loading'`: nothing.
+    - `'reviewed'`: `<p>You have already reviewed this event (submitted {mine.review_date}).</p>`
+      and no `ReviewForm`.
+    - `'open'`: `<ReviewForm …/>` as now.
+    - `'error'`: `<p>This review could not be loaded.</p>`.
+  - The heading, date, instructions box, and Step 1 download stay in every
+    state.
+  - Run `npm run lint && npm run build`.
+
+**Checkpoint**: The review flow matches the user's feedback for all studies.
+
+---
+
+## Phase 10: Event page — review content and access (FR-026 – FR-028; cross-cutting)
+
+**Purpose**:
+- Admins see each review's answers on `/events/edit`.
+- Uploaders don't see the answers.
+- Reviewer-only users can't reach the page.
+- Nothing edits a review.
+
+Depends on Phase 7 (T047).
+
+- [X] T059 Add `resolveReviewSummary(reviewForm)` to
+  `frontend/src/components/review/reviewForms.js`.
+  - It uses a `REVIEW_SUMMARIES = { mci: MciReviewSummary, scans: ScansReviewSummary }`
+    map, the same key normalization as `resolveReviewForm`, and falls back to
+    `MciReviewSummary`.
+  - Update the file's header comment.
+- [X] T060 [P] Create `frontend/src/studies/scans/ScansReviewSummary.jsx`.
+  - Props: `{ review }`, a `get_reviews` item with `regions`.
+  - Render one `<div>` per region, sorted by `position`:
+    `{region}{region_other ? `: ${region_other}` : ''}`, then ` — ` followed
+    by the non-null parts joined by `, `: the laterality, `T: {t_score}`,
+    and `Z: {z_score}`. Omit the ` — ` when every part is null.
+  - Never render `null` or `0` for a missing score.
+  - Zero regions renders "No regions recorded".
+  - Header comment: spec 012 FR-027, research D17.
+- [X] T061 [P] Create `frontend/src/studies/mci/MciReviewSummary.jsx`.
+  - Props: `{ review }`, a column dict from `mci.get_reviews`.
+  - Render one `<div>` per non-null, non-empty answer as `Label: value`, in
+    the order the questions appear in
+    `frontend/src/studies/mci/MciReviewForm.jsx`.
+  - Take labels and option text from that form. Export the label map from
+    `MciReviewForm.jsx` if needed, rather than duplicating strings.
+  - Render flag columns (0/1) as "No"/"Yes".
+  - Skip `id`, `event_id`, `reviewer_id`, `slot`, and `review_date`.
+  - Reference: `mci.event.edit.Screenshot.1.2026-10-14.jpg` (e.g. "MI: No",
+    "Cardiac intervention: No", "Cardiac Cath: No").
+- [X] T062 Add the review content rows to `frontend/src/pages/EventEdit.jsx`
+  (FR-027).
+  - Accept a `reviewForm` prop and an `auth` prop; pass both from
+    `frontend/src/App.jsx`'s `/events/edit` route, as `EventReview` gets
+    `reviewForm`.
+  - Only when `auth?.admin`: fetch `${apiUrl}/api/events/${eventId}/review`
+    and keep `data.reviews`.
+  - After each `Review N Date` row (N = 1, 2, 3), when a review with
+    `slot === N` exists, add
+    `<tr><th>Review N:</th><td><Summary review={r} /></td></tr>`, using
+    `resolveReviewSummary(reviewForm)`.
+  - Non-admins: no fetch and no content rows.
+  - Add no edit control for reviews (FR-026).
+- [X] T063 In `frontend/src/App.jsx`:
+  - change the `/events/edit` route to
+    `requiredRoles={['uploader', 'admin']}` (FR-028);
+  - change the `/events/scrub`, `/events/screen` and `/events/viewAll` routes
+    to `requiredRoles={['admin']}` (FR-033, research D19). Leave the `/vte/*`
+    routes untouched (legacy fork, not linked);
+  - pass `reviewForm` and `auth` to `<EventEdit />` (T062).
+- [X] T064 [P] In `frontend/src/components/MenuBar.jsx`, show "View All
+  Events" only when `admin` (FR-033, research D19).
+  - Update its comment ("for admin users only; spec 012 FR-033").
+  - Run `npm run lint && npm run build`.
+
+**Checkpoint**: Quickstart §D steps 5–8 pass on the server.
+
+---
+
+## Phase 11: Polish (rev. 4)
+
+- [X] T065 Regenerate `openapi.json` with
+  `python -m flask_backend.generate_openapi`. The diff should show `slot` and
+  `mine` on GET `…/review`, and 403 on `/api/events/{id}` and
+  `/api/tables/{name}` (404 too).
+- [X] T066 [P] Update `specs/012-dexa-review-form/pr-description.md` with a
+  rev. 4 section. Cover:
+  - the all-study behavior changes:
+    - the home "Events to Review" table narrows to the reviewer's own
+      unreviewed events (admins unchanged);
+    - reviewer-only users lose `/events/edit` and other events' details;
+    - scrub, screen and `/events/viewAll` are admin-only (FR-033), so
+      non-admin `mci` scrubbers and screeners lose access;
+    - review answers are admin-only;
+  - the `/api/tables` SQL-injection fix and the remaining allowlist
+    follow-up, plus the D19 follow-ups (`by_status`, `assignThird`,
+    `events/download`, `need_*`);
+  - the `/files` dev-proxy fix and its deployment caveat (quickstart §D);
+  - the H1/`.boxright` restyle;
+  - "no migration".
+- [X] T067 Run `pytest flask_backend/tests` and
+  `cd frontend && npm run lint && npm run build`. Expect no regressions
+  against `specs/012-dexa-review-form/baseline-tests.txt` plus the new tests.
+  Install no packages.
+- [X] T068 Hand the operator quickstart.md §D, steps 1–8, to run on the dev
+  server after a rebuild. No migration is needed.
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
@@ -345,6 +725,15 @@ After this phase an `mci` deployment must behave exactly as before. **No user-st
 - **US2 (Phase 4)**: depends on T026, because it extends the same component.
 - **US3 (Phase 5)**: depends only on Phase 2 (T015 for the review-page box), so it can run in parallel with US1 and US2.
 - **Polish (Phase 6)**: depends on everything above.
+- **Rev. 4** (Phases 7–11):
+  - Phase 7 (backend access) comes first: T042 and T043 (failing tests) →
+    T044 [P] → T045 → T046 → T047 → T048 → T049 → T050 → T051.
+  - Phase 8 (T052) is independent and can run at any time.
+  - Phase 9: T053 [P] at any time. T054 → T055 → T056 → T057 → T058, and
+    T058 needs T047.
+  - Phase 10 needs T047: T059 → T060 [P] and T061 [P] → T062 → T063.
+    T064 [P] can run at any time.
+  - Phase 11 comes last.
 
 ### Within User Story 1
 
@@ -391,6 +780,13 @@ Task: "T032 Add rel=noopener in frontend/src/components/GuidanceLinks.jsx"
 3. Add US3: on-site instructions, with the MCI `.doc`/`.pdf` links removed. This can come before US2.
 4. Add US2: correction controls.
 5. Polish: docs, openapi, and the PR.
+6. Rev. 4:
+   - backend access (Phase 7);
+   - then the quick wins: `/files` proxy and CSS (T052, T053);
+   - then the queue and already-reviewed state (Phase 9);
+   - then the `/events/edit` review content (Phase 10);
+   - then openapi and the PR (Phase 11).
+   Stop after Phase 9 to have the user re-check the review page on dev.
 
 ## Notes
 

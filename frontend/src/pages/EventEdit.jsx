@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { resolveReviewSummary } from '../components/review/reviewForms'
 
-function EventEdit() {
+function EventEdit({ auth, reviewForm }) {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const apiUrl = import.meta.env.VITE_API_URL || ''
@@ -17,6 +18,27 @@ function EventEdit() {
   const [solicitations, setSolicitations] = useState([])
   const [solicitationForm, setSolicitationForm] = useState({ date: '', contact: '' })
   const [solicitationStatus, setSolicitationStatus] = useState(null)
+  // Submitted reviews' answers, for admins only (spec 012 FR-027). Other
+  // roles that can open this page see review dates and reviewers, but the
+  // backend does not serve them the answers (FR-028). Nothing here edits a
+  // review (FR-026).
+  const [reviews, setReviews] = useState([])
+  const isAdmin = Boolean(auth && auth.admin)
+
+  useEffect(() => {
+    if (!eventId || !isAdmin) return
+    fetch(`${apiUrl}/api/events/${eventId}/review`, { credentials: 'include' })
+      .then((res) => res.ok ? res.json() : Promise.reject(res))
+      .then((json) => setReviews((json.data && json.data.reviews) || []))
+      .catch(() => setReviews([]))
+  }, [apiUrl, eventId, isAdmin])
+
+  const ReviewSummary = resolveReviewSummary(reviewForm)
+  const reviewRow = (slot) => {
+    const r = reviews.find((rv) => rv.slot === slot)
+    if (!r) return null
+    return <tr><th>Review {slot}:</th><td><ReviewSummary review={r} /></td></tr>
+  }
 
   useEffect(() => {
     if (!eventId) return
@@ -255,9 +277,11 @@ function EventEdit() {
                   </>)}
                   {details.review1_date && (<>
                     <tr><th>Review 1 Date:</th><td>{details.review1_date}</td></tr>
+                    {reviewRow(1)}
                   </>)}
                   {details.review2_date && (<>
                     <tr><th>Review 2 Date:</th><td>{details.review2_date}</td></tr>
+                    {reviewRow(2)}
                   </>)}
                   {details.assign3rd_date && (<>
                     <tr><th>Third Review Assign Date:</th><td>{details.assign3rd_date}</td></tr>
@@ -266,6 +290,7 @@ function EventEdit() {
                   </>)}
                   {details.review3_date && (<>
                     <tr><th>Review 3 Date:</th><td>{details.review3_date}</td></tr>
+                    {reviewRow(3)}
                   </>)}
                 </>
               )}

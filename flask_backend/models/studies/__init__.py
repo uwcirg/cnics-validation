@@ -21,6 +21,10 @@ Study-module interface (duck-typed)
     Short id of the review form the frontend renders. It is reported on
     ``GET /api/config`` as ``review_form``, and keys
     ``frontend/src/components/review/reviewForms.js``.
+``REVIEW_TABLES``
+    Tuple of this study's tables that hold review answers. Generic table
+    reads (``GET /api/tables/<name>``) refuse them to non-admins (spec 012
+    FR-028).
 ``parse_review(data) -> dict``
     Validates a ``POST /api/events/<id>/review`` body. Raises
     :class:`ReviewValidationError` when the body is invalid.

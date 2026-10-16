@@ -1,6 +1,6 @@
 # cnics-validation Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-10-14
+Auto-generated from all feature plans. Last updated: 2026-10-16
 
 ## Active Technologies
 - N/A — documentation, Markdown, and inline comments + None added. `python-keycloak` is retained (already (002-constitution-sync)

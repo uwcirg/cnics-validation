@@ -25,6 +25,12 @@ export default defineConfig(({ mode }) => {
   // completed import once reported as a failure (research D10/D11). The
   // timeouts are deliberately long: a bulk import costs one federated patient
   // lookup per CSV row and can run past a minute (research D12).
+  //
+  // `/files` needs the same proxy. It serves the reviewer instructions
+  // (`/files/instructions/<study>.html`) and the packet-assembly and
+  // scrubbing documents from the backend's FILES_DIR. Without the proxy it
+  // falls through to the SPA fallback and renders a blank page (spec 012
+  // FR-032).
   const apiProxyTarget = process.env.VITE_API_PROXY_TARGET || 'http://backend:3000';
   const apiProxyTimeout = Number(process.env.VITE_API_PROXY_TIMEOUT_MS || 600000);
 
@@ -41,6 +47,10 @@ export default defineConfig(({ mode }) => {
           // giving up. Vite's defaults would cut a long import short.
           timeout: apiProxyTimeout,
           proxyTimeout: apiProxyTimeout,
+        },
+        '/files': {
+          target: apiProxyTarget,
+          changeOrigin: false,
         },
       },
       host: '0.0.0.0',

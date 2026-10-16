@@ -4,6 +4,7 @@ import { headingSuffix } from '../components/studyHeading'
 import GuidanceLinks from '../components/GuidanceLinks'
 import { resolveStudyDocuments } from '../components/reviewGuidance'
 import { resolveReviewForm } from '../components/review/reviewForms'
+import ReviewQueue from '../components/review/ReviewQueue'
 
 function EventReview({ studyLabel, studyType, reviewForm, configResolved = true }) {
   const apiUrl = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || '')
@@ -35,7 +36,37 @@ function EventReview({ studyLabel, studyType, reviewForm, configResolved = true 
       .catch(() => setEventDetails(null))
   }, [apiUrl, eventId])
 
+  // Whether the signed-in reviewer has already reviewed this event. `mine`
+  // from GET …/review uses the same rule as the server's duplicate refusal
+  // (FR-024), so a reviewed event shows a notice instead of a form that
+  // could only be refused (spec 012 FR-029, research D15).
+  const [reviewStatus, setReviewStatus] = useState('loading')
+  const [mine, setMine] = useState(null)
+
+  useEffect(() => {
+    if (!eventId) return
+    setReviewStatus('loading')
+    fetch(`${apiUrl}/api/events/${eventId}/review`, { credentials: 'include' })
+      .then((r) => r.ok ? r.json() : Promise.reject(r))
+      .then((j) => {
+        const m = (j && j.data && j.data.mine) || null
+        setMine(m)
+        setReviewStatus(m ? 'reviewed' : 'open')
+      })
+      .catch(() => setReviewStatus('error'))
+  }, [apiUrl, eventId])
+
   const ReviewForm = resolveReviewForm(reviewForm)
+
+  // Without an event, this page is the reviewer's queue: the "Review
+  // Events" menu link lands here (spec 012 FR-025, research D13).
+  if (!eventId) {
+    return (
+      <div>
+        <ReviewQueue />
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -43,11 +74,9 @@ function EventReview({ studyLabel, studyType, reviewForm, configResolved = true 
           reviewer instructions, so no orphaned "Review Instructions:" header
           is left behind (spec 010, FR-015). */}
       {showInstructionDocs && (
-        <div className="boxright" style={{ width: '300px', fontSize: '.95em' }}>
+        <div className="boxright">
           <h3>Review Instructions:</h3>
-          <div style={{ marginTop: '8px' }}>
-            <GuidanceLinks box={documents.instructions} />
-          </div>
+          <GuidanceLinks box={documents.instructions} />
         </div>
       )}
 
@@ -83,7 +112,15 @@ function EventReview({ studyLabel, studyType, reviewForm, configResolved = true 
             backend-reported `review_form` (spec 012, research D6). Withheld
             until GET /api/config resolves, so a scans reviewer never sees
             the MI form flash first. */}
-        {configResolved && <ReviewForm eventId={eventId} apiUrl={apiUrl} />}
+        {configResolved && reviewStatus === 'open' && (
+          <ReviewForm eventId={eventId} apiUrl={apiUrl} />
+        )}
+        {reviewStatus === 'reviewed' && (
+          <p>You have already reviewed this event (submitted {mine.review_date}).</p>
+        )}
+        {reviewStatus === 'error' && (
+          <p>This review could not be loaded.</p>
+        )}
       </div>
     </div>
   )

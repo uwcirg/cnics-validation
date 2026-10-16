@@ -1,7 +1,7 @@
 # Implementation Plan: DEXA scan review form and on-site reviewer instructions
 
-**Branch**: `012-dexa-review-form` | **Date**: 2026-10-14 (rev. 3) | **Spec**: [spec.md](./spec.md)
-**Input**: Feature specification from `/specs/012-dexa-review-form/spec.md`, plus rev. 2 direction from the user: each study gets its own `reviews` schema (in `flask_backend/models/studies/`), and the instructions are written in HTML.
+**Branch**: `012-dexa-review-form` | **Date**: 2026-10-16 (rev. 4) | **Spec**: [spec.md](./spec.md)
+**Input**: Feature specification from `/specs/012-dexa-review-form/spec.md`, plus rev. 2 direction from the user: each study gets its own `reviews` schema (in `flask_backend/models/studies/`), and the instructions are written in HTML. Rev. 4: the 2026-10-16 dev-deployment feedback (spec Clarifications, Session 2026-10-16; FR-025 – FR-032).
 
 ## Summary
 
@@ -36,6 +36,33 @@ linked in a new tab. `scans.html` is converted from the DEXA Word document.
 
 **Also:** a shared 409 guard against duplicate review submissions.
 
+**Rev. 4: post-deployment fixes (research D12–D18).**
+
+- *Blank instructions page.* The Vite dev server proxied only `/api`, so
+  `/files/*` fell through to the SPA. The fix adds a `/files` proxy.
+- *"Review Events" link.* `/events/review` without `event_id` renders a
+  shared `ReviewQueue`, the same component as the home page's "Events to
+  Review". `/api/events/for_review` is scoped to the caller's unreviewed
+  slots for non-admins.
+- *Already-reviewed events.* The review page asks
+  `GET /api/events/{id}/review` for `mine`, which uses the 409 guard's slot
+  rule. If `mine` is set, the page shows "You have already reviewed this
+  event (submitted …)" instead of the form, in every study.
+- *Review content.* Answers go only to admins. `/events/edit` shows a
+  "Review N" content row per review, through a per-study `Summary` component
+  registered beside each form.
+- *Reviewer-only users.* They lose `/events/edit`, other reviewers' event
+  details (`GET /api/events/{id}`), and the study's review tables through
+  `/api/tables` (whose table name is now validated, closing a SQL
+  injection).
+- *Styling.* `.boxright` gets the legacy tan floated-box style, and the H1
+  drops from 3.2em to 1.6em site-wide.
+- *Admin-only stages (FR-033, research D19).* `/events/scrub`,
+  `/events/screen`, `/events/viewAll`, and the "View All Events" link become
+  admin-only. So do `POST …/screen` and `POST …/upload_scrubbed`. This is
+  what makes the event-details restriction safe (analyze U1).
+- No schema change.
+
 ## Technical Context
 
 **Language/Version**: Python 3.11 (Flask backend); JavaScript / JSX, React 19 (frontend)
@@ -67,6 +94,10 @@ Checked against constitution **v1.5.1**, amended 2026-10-14 for this feature (Pr
 | Quality: schema changes | Migration plan is in quickstart.md. The script is idempotent and non-destructive | ✅ PASS |
 | Quality: API contracts | `openapi.json` is regenerated (adds `review_form`, the new GET, and 409) | ✅ PASS (task) |
 | Quality: testing | Covers resolver and fallback tests, the scans validation matrix, role tests on the new GET, the 409 guard, and MI export unchanged (golden comparison) | ✅ PASS (task) |
+| Security (rev. 4) | `GET /api/events/{id}` and `GET /api/tables/{name}` gain explicit `@requires_any_role` decorators (constitution "Authorization"; D20). Review answers are served only to admins. Reviewer-only callers are confined to their assigned events. `/api/tables/<name>` validates the identifier and refuses review tables to non-admins. `/events/edit` excludes reviewer-only users. The broader `/api/tables` allowlist is a recorded follow-up (research D16.5) | ✅ PASS |
+| VI. Pre-release discovery (rev. 4) | Observed before changing: the `/api` proxy, the `boxright` with no CSS, the unscoped `for_review`, row clicks going to `/events/upload`, the open event-details and tables endpoints, and the reviewer-readable review content (D12–D18) | ✅ PASS |
+| V. Workflow & role parity (rev. 4) | No role or state is renamed or removed. Scrub and screen become admin-only uniformly across studies, through decorators and route roles, with no study branching (D19) | ✅ PASS |
+| Change review: studies affected (rev. 4) | **All studies**: scrub/screen/viewAll admin-only (non-admin `mci` scrubbers and screeners lose access), queue page, scoped `for_review` (home table narrows for non-admin reviewers), already-reviewed state, `/events/edit` content and roles, endpoint access checks, `/files` proxy, `.boxright`, and H1. **No migration** | ✅ noted for PR |
 | Change review: studies affected | **All studies**: models package move, export and review endpoint delegation, 409 guard, Step 1 label, instructions links, and the new mariadb `STUDY_TYPE` env. **`scans` only**: scans schema and form. **Existing `scans` deployments need the migration** | ✅ noted for PR |
 
 **Post-design re-check**: passes. The design adds no state, no fork, and no
@@ -130,6 +161,28 @@ frontend/src/
     └── scans/ScansReviewForm.jsx         # NEW
                                           # (no page copies, no parallel routes, no isVtePage-style branching)
 
+# --- rev. 4 (research D12–D18) ---
+frontend/vite.config.js                   # server.proxy += '/files' → apiProxyTarget
+frontend/src/index.css                    # h1 3.2em → 1.6em; + .boxright (float right, 300px, tan; stacks ≤640px)
+frontend/src/App.jsx                      # /events/edit → ['uploader','admin']; /events/{scrub,screen,viewAll} → ['admin'] (D19)
+frontend/src/pages/EventReview.jsx        # no event_id → <ReviewQueue/>; GET …/review → `mine` → notice | form; drop inline box style
+frontend/src/pages/Home.jsx               # "Events to Review" section → <ReviewQueue/>; TableWrapper moves out
+frontend/src/pages/EventEdit.jsx          # admin only: GET …/review → "Review N" rows via resolveReviewSummary
+frontend/src/components/MenuBar.jsx       # "View All Events" → admin only (D19)
+frontend/src/components/review/
+│   ├── ReviewQueue.jsx                   # NEW — shared "Events to Review" table (+ TableWrapper), rows → /events/review
+│   └── reviewForms.js                    # + resolveReviewSummary (mci fallback)
+frontend/src/studies/scans/ScansReviewSummary.jsx  # NEW
+frontend/src/studies/mci/MciReviewSummary.jsx      # NEW — legacy MI labels
+flask_backend/app.py                      # GET …/review: admin-only content, + slot, + mine;
+│                                         #   GET /api/events/<id>: reviewer-only → assigned only;
+│                                         #   for_review passes reviewer_id for non-admins;
+│                                         #   /api/tables/<name>: identifier check, REVIEW_TABLES → 403 non-admin;
+│                                         #   POST …/screen, …/upload_scrubbed → @requires_roles('admin') (D19)
+flask_backend/table_service.py            # get_events_for_review(…, reviewer_id=None) slot filter
+flask_backend/models/studies/{mci,scans}.py  # + REVIEW_TABLES
+flask_backend/tests/test_review_access.py # NEW — for_review scoping, mine/slot, content admin-only, event-details 403, tables 403/404
+# --- end rev. 4 ---
 docs/template-setup-guide.md              # update "Study-Specific Components" + per-study schema sections to init/studies, dormancy marker
 docs/legacy-repository-analysis.md        # update 02-schema-<study>.sql paths
 .specify/memory/constitution.md           # DONE — amended to v1.5.0 (Principle IV: init/studies, study-specific tables, reviews invariant, dormancy), then v1.5.1 (only `reviews` mandatory)
@@ -173,6 +226,15 @@ frontend uses a registry, not a study directory.
 6. Order: refactor (note 1) → schema, migration, and scans module with tests
    → Scans form (User Story 1) → edit/remove (User Story 2) → instructions
    HTML and links (User Story 3) → GET and export → docs and openapi.
+
+7. **Rev. 4 order** (all study-agnostic, no schema): backend access and
+   scoping with `test_review_access.py` first (D14, D16), then `mine` and
+   `slot` (D15). Next the `/files` proxy and CSS (D12, D18), which are
+   independent and quick. Then `ReviewQueue` extraction (D13), the review-page
+   states (D15), and the `/events/edit` summaries (D16, D17). Finish with
+   openapi regeneration and PR-description updates (home table narrowing,
+   `/events/edit` role change, deployment caveat for `/files`). Frontend
+   verification is lint + build + quickstart §D. Install no packages.
 
 ## Complexity Tracking
 

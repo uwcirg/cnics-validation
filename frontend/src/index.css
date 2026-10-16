@@ -32,8 +32,31 @@ body {
 }
 
 h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+  font-size: 1.6em;
+  line-height: 1.2;
+}
+
+/* Floated guidance box at the top right of a page, e.g. the review page's
+   "Review Instructions:" (spec 012 FR-030). The fill, border and radius are
+   the same values as `.infobox` in pages/Home.css, the legacy tan box. */
+.boxright {
+  float: right;
+  width: 300px;
+  margin: 0 0 1em 1.5em;
+  padding: 5px 10px;
+  background-color: #f2e8c2;
+  border: 1px solid #f1d676;
+  border-radius: 12px;
+}
+.boxright h3 {
+  margin: 0.4em 0;
+}
+@media (max-width: 640px) {
+  .boxright {
+    float: none;
+    width: auto;
+    margin: 0 0 1em 0;
+  }
 }
 
 /* The single button rule for the whole application — 90 buttons across 42

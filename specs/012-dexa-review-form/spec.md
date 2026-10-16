@@ -13,6 +13,15 @@
 - Q: How is DEXA review data stored, given the existing `reviews` table is MI-shaped? → A: As in the legacy system, every study has a table named `reviews` whose schema is specific to that study (each deployment has its own database). `scans` defines its own `reviews` schema; the MI schema stays as `mci`'s.
 - Q: What format are the on-site instructions kept in? → A: HTML (converted once from the source document); Markdown is not kept.
 
+### Session 2026-10-16
+
+- Q: What should `/events/review` (the "Review Events" menu link, no `event_id`) show? → A: A list of the signed-in reviewer's events awaiting review — the same rows as the home page's "Events to Review" table; clicking a row opens `/events/review?event_id=N`. The review form is never shown without an event.
+- Ground rules (stated by user): a submitted review is never editable via the UI; a DB admin adjusts records. `/events/edit?event_id=N` displays the submitted reviews' content plus event-level data (as in the legacy MCI page); users with only the reviewer role have no access to that page.
+- Q: When a reviewer reopens the review page for an event they already reviewed, what is shown? → A: For every study, only the notice "You have already reviewed this event (submitted <date>)" — no form, no Submit; the answers appear only on `/events/edit`.
+- Q: Who sees review content on `/events/edit`? → A: Admins only. Non-admin users who can open the page (e.g. uploaders) see event-level data, review dates, and reviewer names, but no review content; the backend withholds it from them.
+- Q (from /speckit.analyze U1): Restricting event details to assigned reviewers breaks reviewer-role use of `/events/scrub`, `/events/screen`, and `/events/viewAll`. How should this be resolved? → A: Those three pages, and their actions, require the admin role (all studies); this is accepted as a large corrective change.
+- Recorded from user feedback (no question needed): the review page's "Review Instructions:" box moves to the top right in the legacy tan-box style; H1 is downsized site-wide; `/files/instructions/scans.html` renders blank because the Vite dev server proxies only `/api`, so `/files/*` falls through to the SPA. It must reach the backend.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Reviewer records the body regions and scores from a DEXA packet (Priority: P1)
@@ -159,12 +168,23 @@ instructions content.
   stored.
 - **Double submission**: a second click on Submit while the first is in flight
   must not create a second copy of the review.
-- **Event already reviewed by this reviewer**: refused with "This event has
-  already been reviewed by you" (FR-024); nothing is stored. Previously the
-  system accepted duplicates, so this changes behaviour for every study.
+- **Event already reviewed by this reviewer**: the review page shows "You have
+  already reviewed this event (submitted <date>)" and no form (FR-029). A
+  submission that still reaches the server (e.g. from a stale tab) is refused
+  with "This event has already been reviewed by you" (FR-024); nothing is
+  stored. Previously the system accepted duplicates, so this changes behaviour
+  for every study.
 - **Event not assigned to this reviewer**: refused, as today; this feature does
   not change who may review.
+- **Review page without an event**: `/events/review` with no `event_id` shows
+  the reviewer's awaiting-review list (FR-025), never a form headed with "null".
+- **Non-admin opens scrub, screen, or all-events page**: the standard
+  Access Denied page (FR-033). A direct API call to screen an event or
+  upload a scrubbed packet gets 403.
 - **Non-`scans` deployments**: the MI review form is unchanged.
+- **Instructions URL opened directly**: `/files/instructions/scans.html`
+  typed or followed from any page shows the instructions content, never the
+  app shell (FR-032).
 - **Instructions page with no defined content for a study**: no instructions
   link is shown for that study (no dead link, no empty box).
 
@@ -225,6 +245,64 @@ instructions content.
 - **FR-024**: A reviewer MUST NOT be able to submit a second review for an
   event they have already reviewed; the second submission is refused with a
   clear message and nothing is stored. This applies to every study type.
+- **FR-025**: `/events/review` with no `event_id` (the target of the "Review
+  Events" menu link) MUST NOT show the review form or an event heading. It
+  MUST instead list the signed-in reviewer's events awaiting review — the same
+  rows as the home page's "Events to Review" table, from the same source — and
+  selecting a row MUST open `/events/review?event_id=N`. When there are none,
+  it MUST say so. This applies to every study type.
+- **FR-026**: A submitted review MUST NOT be editable through any part of the
+  UI, by any role. Corrections are made by a database administrator directly in
+  the database.
+- **FR-027**: The event page `/events/edit?event_id=N` MUST display, alongside
+  the event-level data it shows today, the content of each submitted review —
+  under each "Review N Date" row, a "Review N" row listing that review's
+  answers as read-only text (as in the legacy MCI page; see
+  `mci.event.edit.Screenshot.1/2.2026-10-14.jpg`). For `scans`, a review's
+  content is its region entries in entry order, each with region (or "Other"
+  text), laterality, T score, and Z score, with "not provided" values shown as
+  blank or omitted, never as 0. Each study type formats its own review content.
+  Only admins see the "Review N" content rows; a user who can open the page but
+  is not an admin (e.g. an uploader) sees the event-level data, review dates,
+  and reviewer names, but no review content, and the backend MUST NOT serve
+  review content to them.
+- **FR-028**: A user whose only role is reviewer MUST NOT have access to
+  `/events/edit`: the page MUST NOT render for them, and the data it shows
+  (including other reviewers' reviews) MUST NOT be served to them by the
+  backend.
+- **FR-029**: When a reviewer opens `/events/review?event_id=N` for an event
+  they have already reviewed, the page MUST NOT show the review form or a
+  Submit button, for any study type. It MUST instead show "You have already
+  reviewed this event (submitted <date>)", where <date> is that reviewer's
+  own submission date. The review's answers are not shown on this page; they
+  appear only on `/events/edit` (FR-027). FR-024's server-side refusal still
+  applies.
+
+**Post-deployment corrections (2026-10-16 dev deployment feedback)**
+
+- **FR-033**: The scrub page (`/events/scrub`), the screen page
+  (`/events/screen`), and the all-events page (`/events/viewAll`) MUST
+  require the admin role, for every study type. Their actions MUST also be
+  admin-only on the backend: scrubbed-packet upload and screening. The "View
+  All Events" menu link MUST be shown only to admins. Uploaders and reviewers
+  who are not admins lose access to these pages. Role names are unchanged
+  (constitution Principle V); only which roles may use these stages
+  changes.
+
+- **FR-030**: On the event review page, the "Review Instructions:" box MUST
+  float at the top right, beside the heading, in the legacy style (as in
+  `mci.review.Screenshot.1.2026-10-14.jpg`): a tan, rounded-border box about
+  300px wide with a bold "Review Instructions:" title and its link beneath. It
+  MUST NOT sit as a separate full-width block above the heading. At narrow
+  widths it MAY stack above the heading, but MUST NOT cause horizontal scroll.
+- **FR-031**: The site-wide H1 MUST be reduced to roughly the legacy size
+  (comparable to "Review event: MI6445" in the legacy screenshot, about 1.6em
+  of body text), for every page, not just the review page.
+- **FR-032**: `/files/...` URLs, including `/files/instructions/scans.html`,
+  MUST be served from the backend's `FILES_DIR` in every supported deployment
+  mode, including the `web` Vite dev server that study deployments use. They
+  MUST NOT fall through to the single-page app, which today renders a blank
+  page with only a "Home page" link.
 
 **On-site reviewer instructions (Part B)**
 
@@ -306,9 +384,9 @@ instructions content.
 - **Plausible score range**: T and Z scores of real DEXA reports fall well within
   -10 to +10; values outside are treated as typos. Scores are stored to at least
   one decimal place of precision.
-- **No editing after submit**: as with the existing review flow, a submitted
-  review is final from the reviewer's side; corrections after submission are an
-  admin matter and are out of scope.
+- **No editing after submit**: a submitted review is final in the UI for every
+  role (FR-026); corrections are made by a database administrator directly in
+  the database, and no UI for them is in scope.
 - **Instructions source**: the DEXA instructions content is that of
   `DEXA.scans.review.instructions.md` (matching the "DEXA CHART REVIEW
   INSTRUCTIONS" part of the 2026-09-22 Word document). The "PROGRAMMING

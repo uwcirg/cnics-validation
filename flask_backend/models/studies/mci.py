@@ -24,6 +24,9 @@ from . import ReviewValidationError
 
 REVIEW_FORM = "mci"
 
+# Tables `/api/tables/<name>` refuses to non-admins (spec 012 FR-028).
+REVIEW_TABLES = ("reviews", "event_derived_datas")
+
 
 class MciBase(DeclarativeBase):
     """Declarative base for MI study tables (own metadata; see package docs)."""

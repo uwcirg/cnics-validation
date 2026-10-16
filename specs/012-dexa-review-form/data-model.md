@@ -94,6 +94,7 @@ REVIEW_FORM = "scans"
 | `add_review(session, event_id, reviewer_id, parsed)` | one `Reviews` row | one `Reviews` row + N `ReviewRegions` |
 | `get_reviews(session, event_id)` | list of MI review dicts | list of `{reviewer_id, review_date, regions:[…]}` |
 | `export_csv(session, writer)` | existing MI export (moved; byte-identical output; SQL in `_EXPORT_SQL`, executed by `_export_rows`) | one row per region (research D9) |
+| `REVIEW_TABLES` (rev. 4) | `("reviews", "event_derived_datas")` | `("reviews", "review_regions")`. These are the tables `GET /api/tables/<name>` refuses to non-admins (research D16.5) |
 | `check_schema(session)` | `None` | error string if `reviews` is still MI-shaped (has `mci`, or lacks `created`); the endpoints then return 503 naming the migration script |
 
 Resolver: `flask_backend/models/studies/__init__.py::get_study_module()` reads
@@ -154,3 +155,22 @@ agree on which form is shown (research D6).
 |---|---|---|
 | `scans` | `app/webroot/files/instructions/scans.html` (new) | `items: []`, `links: [{label: 'View review instructions', href: '/files/instructions/scans.html', download: false}]` |
 | `mci` | (none yet) | `items: []`, `links: []` (reviewer `.doc`/`.pdf` removed) |
+
+## Rev. 4 (2026-10-16): no schema change
+
+FR-025 – FR-032 add **no tables, columns, or migrations**. The derived values
+they rely on:
+
+- **Reviewer's slot** on an event: `N` where `events.reviewer{N}_id =
+  caller`, with N in 1–3. It is computed in the shared endpoint and never
+  stored.
+- **Already reviewed by caller**: the caller's slot N is 1 or 2, and
+  `events.review{N}_date IS NOT NULL`. This is the rule both the POST 409
+  guard (FR-024) and `mine` (FR-029) use. Slot 3 (third review) is not
+  submittable or reported through these endpoints in this feature.
+- **Awaiting the caller's review** (FR-025): the event is in the
+  review-eligible status (`sent`, or `assigned` when sending is disabled),
+  and the caller holds slot 1 or 2 with that slot's `review{N}_date IS NULL`.
+- **Review N content row** (FR-027): the `get_reviews` item whose `slot = N`,
+  formatted by the study's frontend summary component. For `scans`, a
+  region's parts that are `null` are omitted, never rendered as 0.

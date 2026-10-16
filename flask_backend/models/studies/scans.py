@@ -29,6 +29,9 @@ from . import ReviewValidationError
 
 REVIEW_FORM = "scans"
 
+# Tables `/api/tables/<name>` refuses to non-admins (spec 012 FR-028).
+REVIEW_TABLES = ("reviews", "review_regions")
+
 
 class ScansBase(DeclarativeBase):
     """Declarative base for scans study tables (own metadata; see package docs)."""

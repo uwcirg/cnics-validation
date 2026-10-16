@@ -109,3 +109,45 @@ Setup: a `scans` deployment with one event assigned to reviewer **R**, and an
    409.
 4. `/events/export` produces the same CSV as before this feature, with the
    same headings and columns.
+
+### D. Post-deployment fixes (rev. 4; spec FR-025 – FR-032)
+
+Setup: as above. Add user **A** (admin), **U** (uploader only), and a second
+reviewer **R2** assigned to a different event. Step 7 also needs an `mci`
+deployment with an `uploaded` event.
+
+1. **Instructions reachable (FR-032)**: open `/files/instructions/scans.html`
+   directly. Expect the DEXA instructions, not the app shell. A `/files/*.pdf`
+   link on the `mci` home page now downloads too.
+2. **Layout (FR-030, FR-031)**: on the review page, the tan "Review
+   Instructions:" box floats top right beside a smaller H1, as in
+   `mci.review.Screenshot.1`. Narrow the window below 640px: the box stacks,
+   with no horizontal scroll. H1s on other pages are smaller too.
+3. **Queue (FR-025)**: as R, click "Review Events". Expect the "Events to
+   Review" list with only R's unreviewed events (not R2's), no "SCANS null",
+   and no form. Clicking a row opens `/events/review?event_id=N`. The home
+   page table shows the same rows. As A, both lists show every
+   review-eligible event.
+4. **Already reviewed (FR-029)**: as R, submit a review, then reopen
+   `/events/review?event_id=N`. Expect "You have already reviewed this event
+   (submitted &lt;date&gt;)", no form and no Submit, and the event gone from
+   R's queue. `GET /api/events/N/review` as R returns `reviews: []` and
+   `mine` set.
+5. **Edit page (FR-027, FR-028)**: as A, `/events/edit?event_id=N` shows a
+   "Review 1" row listing the regions and scores entered, with blanks
+   omitted, not 0. As U, the same page shows "Review 1 Date" but no content
+   row. As R, `/events/edit` shows Access Denied, and
+   `GET /api/events/<R2's event>` returns 403.
+6. **Tables endpoint (FR-028)**: as R, `GET /api/tables/review_regions` →
+   403, and `GET /api/tables/events;x` → 404.
+7. **Admin-only stages (FR-033)**: as R and as U, the menu has no "View All
+   Events" link, and `/events/viewAll`, `/events/scrub` and `/events/screen`
+   show Access Denied. As A on `mci`, scrubbing and screening work as
+   before.
+8. **mci**: as A on an `mci` deployment, `/events/edit` for a reviewed event
+   shows the legacy-style MI summary lines.
+
+**Deployment caveat (research D12)**: `/files` reaches the backend through the
+Vite dev-server proxy. A deployment using `frontend/Dockerfile`'s `serve`
+stage, or another front proxy, must route `/files` to the backend the same
+way it routes `/api`.

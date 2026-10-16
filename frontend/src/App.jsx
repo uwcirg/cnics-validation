@@ -317,10 +317,11 @@ function App() {
               <VTEEventReview />
             </ProtectedRoute>
           } />
-          {/* Screening is a bypassable stage (FR-018, FR-021). */}
+          {/* Screening is a bypassable stage (FR-018, FR-021). Admin only
+              (spec 012 FR-033, research D19). */}
           {workflow.screening && (
             <Route path="/events/screen" element={
-              <ProtectedRoute requiredRoles={['reviewer', 'admin']} auth={auth}>
+              <ProtectedRoute requiredRoles={['admin']} auth={auth}>
                 <EventScreen studyLabel={studyLabel} configResolved={configResolved} />
               </ProtectedRoute>
             } />
@@ -341,10 +342,11 @@ function App() {
           )}
 
           {/* Multi-role routes (reviewer, uploader, or admin) */}
-          {/* Scrubbing is a bypassable stage (FR-018, FR-021). */}
+          {/* Scrubbing is a bypassable stage (FR-018, FR-021). Admin only
+              (spec 012 FR-033, research D19). */}
           {workflow.scrubbing && (
             <Route path="/events/scrub" element={
-              <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
+              <ProtectedRoute requiredRoles={['admin']} auth={auth}>
                 <EventScrub studyLabel={studyLabel} studyType={studyType} configResolved={configResolved} />
               </ProtectedRoute>
             } />
@@ -354,9 +356,11 @@ function App() {
               <VTEEventScrub />
             </ProtectedRoute>
           } />
+          {/* Reviewer-only users have no access to the event page (spec 012
+              FR-028); admins see submitted reviews' answers there (FR-027). */}
           <Route path="/events/edit" element={
-            <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
-              <EventEdit />
+            <ProtectedRoute requiredRoles={['uploader', 'admin']} auth={auth}>
+              <EventEdit auth={auth} reviewForm={reviewForm} />
             </ProtectedRoute>
           } />
           <Route path="/vte/edit" element={
@@ -364,8 +368,9 @@ function App() {
               <VTEEventEdit />
             </ProtectedRoute>
           } />
+          {/* Admin only (spec 012 FR-033, research D19). */}
           <Route path="/events/viewAll" element={
-            <ProtectedRoute requiredRoles={['reviewer', 'uploader', 'admin']} auth={auth}>
+            <ProtectedRoute requiredRoles={['admin']} auth={auth}>
               <EventViewAll workflow={workflow} />
             </ProtectedRoute>
           } />

@@ -41,7 +41,7 @@ See `specs/012-dexa-review-form/quickstart.md`. In short:
    docker compose restart backend
    ```
    The script renames the MI-shaped `reviews` and `event_derived_datas` to `*_mi_pre012`. It never drops them, and it is idempotent.
-3. Run quickstart manual script §§ A–C.
+3. Run quickstart manual script §§ A–D.
 
 ## Observed behavior recorded before changing it (Principle VI)
 
@@ -58,10 +58,85 @@ See `specs/012-dexa-review-form/quickstart.md`. In short:
 - The untracked repo-root `DEXA.scans.review.instructions.md` is superseded by `instructions/scans.html`. Delete it or keep it as you prefer.
 - The DEXA instructions are copied verbatim from the source document, including "specific vertebrate" in note 5 (presumably "vertebra").
 
+## Rev. 4: dev-deployment feedback (spec FR-025 – FR-033)
+
+After the first dev deployment, the reviewer flow, the event page, and role
+access were corrected. **No schema change and no migration.**
+
+- **Instructions page was blank.** The Vite dev server proxied only `/api`, so
+  `/files/*` fell through to the SPA. `/files` is now proxied too, which also
+  fixes the MCI `.doc`/`.pdf` links on dev-server deployments (FR-032, D12).
+  **Deployment caveat:** anything serving the frontend without the Vite dev
+  server (the Dockerfile's `serve` stage, or another proxy) must route
+  `/files` to the backend, as it does `/api`.
+- **"Review Events" menu link** (`/events/review` with no `event_id`) showed
+  "SCANS null" and a form. It now shows the reviewer's queue, the same
+  component as the home page's "Events to Review" (FR-025, D13). Row clicks
+  in that table now open the review page; they used to go to the upload page.
+- **Already-reviewed events** show "You have already reviewed this event
+  (submitted <date>)" instead of a form that could only be refused, for
+  every study (FR-029, D15).
+- **`/events/edit`** shows admins each submitted review's answers in a
+  "Review N" row, rendered by a per-study summary component (FR-027, D17).
+- **Styling.** The review page's "Review Instructions:" box is the legacy tan
+  box, floated top right. H1 is 1.6em site-wide (was 3.2em) (FR-030, FR-031).
+
+### Behavior changes (all studies)
+
+- The home page's **"Events to Review" now lists only the signed-in reviewer's
+  own unreviewed events**. Before, it listed every review-eligible event.
+  Admins are unchanged (D14).
+- **Review answers are served to admins only.** Reviewers no longer receive
+  any review content, including other reviewers' answers on two-reviewer
+  studies, which they could fetch before (D16.1).
+- **Reviewer-only users lose `/events/edit`**, and can read event details
+  only for events they are assigned to review (FR-028, D16).
+- **Scrub, screen and `/events/viewAll` are admin-only**, including the
+  "View All Events" menu link and the screen and scrubbed-upload APIs. On
+  `mci`, **non-admin scrubbers and screeners lose access** (FR-033, D19).
+- **`/api/tables/<name>`** had a SQL injection: the table name was
+  interpolated into the query unchecked, for any signed-in user. Names must
+  now be plain identifiers (else 404), and this study's review tables are
+  refused to non-admins (D16.5).
+- **Explicit role decorators**: `/api/tables/<name>` and `/api/events/<id>`
+  now declare their roles, as the constitution requires. A signed-in user
+  with no role gets 403 (D20).
+
+**Will this break any other study's deployment?** On `mci`, non-admin users
+lose scrubbing, screening, `/events/viewAll`, and (reviewer-only) the event
+page. That is intended (FR-033, FR-028). MI review submission, the MI form,
+and the export are unchanged.
+
+### Follow-ups (not changed here)
+
+- `/api/tables/<name>` still serves `users`, `criterias`, `solicitations`,
+  and `patients_view` to any role. It needs a full allowlist with per-table
+  roles (D16.5).
+- `GET /api/events/by_status/<status>` remains open to reviewers and
+  uploaders, because `/events/assignThird` (which still allows reviewers)
+  reads it (D19).
+- `GET /api/events/download/<id>` (packet download) checks sign-in only.
+- `need_packets` and `need_reupload` allow reviewers.
+
+### Observed behavior recorded before changing it (Principle VI)
+
+Research D12 – D20: the `/api`-only proxy; `.boxright` with no CSS; the
+unscoped `for_review`; row clicks going to `/events/upload`; open event-details
+and tables endpoints; review content readable by any assigned reviewer; and
+reviewer use of scrub, screen and view-all.
+
 ## Verification
 
-- `pytest flask_backend/tests`: 276 passed. The 209-test baseline captured before the refactor still passes in full.
-- `cd frontend && npm run build`: OK. `npm run lint`: no problems in files touched by this PR. The 31 pre-existing problems are in untouched files.
-- Frontend behavior has **not** been exercised. It is covered by quickstart § A–C, run on a deployment.
+- `pytest flask_backend/tests`: 309 passed (rev. 4 adds
+  `test_review_access.py`; two existing GET-review tests and one anonymous
+  `/api/tables` test were updated for the new access rules). The 209-test
+  baseline captured before the refactor still passes in full.
+- `cd frontend && npm run build`: OK. `npm run lint`: 31 problems, the same
+  count as before this PR. None was introduced; a few pre-existing ones sit
+  in touched files (`Home.jsx`'s `statusSummary` and hook warning, which
+  moved with `TableWrapper` into `ReviewQueue.jsx`; `MenuBar.jsx`'s
+  `third_reviewer`; `EventEdit.jsx`'s `status`).
+- Frontend behavior has **not** been exercised. It is covered by quickstart
+  §§ A–D, run on a deployment.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
