@@ -1,6 +1,71 @@
 <!--
 SYNC IMPACT REPORT
 ==================
+Version change: 1.5.0 → 1.5.1
+Rationale: PATCH. A clarification inside Principle IV's "Study-specific
+tables" paragraph. The v1.5.0 text ("Each study MUST define these tables")
+could be read as requiring every study to define `event_derived_datas`,
+which is not intended. Only `reviews` is mandatory. A study MAY omit
+another study-specific table it has no use for; for example, single-reviewer
+`scans` has no `event_derived_datas`. Any such table that a study does use
+must still live in that study's own `init/studies/<study>.sql`. This was
+raised by /speckit.analyze on 012-dexa-review-form (finding C1).
+Modified principles: IV (wording of one paragraph only). All others unchanged.
+Templates / docs requiring updates: none beyond those already listed for
+v1.5.0 below.
+
+==================
+Prior report (v1.4.0 → v1.5.0) follows.
+==================
+Version change: 1.4.0 → 1.5.0
+Rationale: MINOR bump. Principle IV gains normative rules on
+study-specific tables. Per-study DDL moves from the example location
+`init/02-schema-<study>.sql` to `init/studies/<study>.sql`, which a
+`STUDY_TYPE`-keyed dispatcher applies. The old top-level location was
+unsafe: the MariaDB image runs every top-level init file in every
+deployment, so uncommenting any study's file would have created its
+tables, and a colliding `reviews`, in every study's database. The
+amendment also adds:
+  - the rule that a deployment's database contains only its own study's
+    study-specific tables;
+  - the shared `reviews(id, event_id, reviewer_id)` invariant;
+  - an explicit dormancy convention (`-- DORMANT` / no `REVIEW_FORM`)
+    with an `mci` fallback;
+  - the model path `flask_backend/models/studies/<study>.py`, matching
+    the directory that exists in the repo.
+Nothing is rescinded, so this is not MAJOR. Driven by feature
+012-dexa-review-form; the user directed both the per-study `reviews`
+model and the move of the dormant files into `init/studies/`.
+
+---- v1.4.0 → v1.5.0 (this amendment) ----
+
+Modified principles:
+  - IV. Configuration Over Code Forks:
+    - mechanism 2 is reworded (`init/studies/<study>.sql` plus the
+      dispatcher);
+    - mechanism 3's model path becomes
+      `flask_backend/models/studies/<study>.py`;
+    - new "Study-specific tables" paragraph, `reviews` invariant
+      paragraph, and dormancy paragraph.
+  - I, II, III, V, VI: unchanged.
+Modified sections:
+  - Development Workflow & Quality Gates, "Schema changes": the path
+    is updated to `init/studies/<study>.sql`.
+Templates / docs requiring updates:
+  - ✅ .specify/templates/*: no references to the changed paths.
+  - ✅ docs/template-setup-guide.md ("Study-Specific Components",
+    per-study schema sections, walkthrough steps 2–5, scans example):
+    updated in 012-dexa-review-form.
+  - ✅ docs/legacy-repository-analysis.md (paths to `02-schema-vte.sql`
+    and `02-schema-hf.sql`): updated in 012-dexa-review-form.
+  - ✅ The implementation (dispatcher `init/04-study-schema.sh`,
+    `init/studies/` moves, models package, `models/studies/` resolver)
+    lands in the same PR, 012-dexa-review-form.
+Deferred items: none.
+
+==================
+Prior report (v1.3.0 → v1.4.0) follows.
+==================
 Version change: 1.3.0 → 1.4.0
 Rationale: MINOR bump. Materially expands Principle V (Workflow and
 Role Parity Across Studies) to permit configuration-driven *selective
@@ -404,10 +469,36 @@ mechanisms, in order of preference:
 1. Environment variables (e.g., `STUDY_TYPE`, `ENABLE_PRE_SCRUB`,
    `ENABLE_SCRUBBING`, `ENABLE_SCREENING`, `ENABLE_SENDING`,
    `REVIEWER_COUNT`, `ENABLE_QUESTIONNAIRES`) consumed by shared code.
-2. Study-specific schema files under `init/` (e.g., `02-schema-<study>.sql`).
+2. Study-specific schema files at `init/studies/<study>.sql`, applied at
+   database initialization by the dispatcher `init/04-study-schema.sh` to
+   the deployment whose `STUDY_TYPE` matches, and to no other.
 3. Study-specific component directories under `frontend/src/studies/<study>/`
-   and model files under `flask_backend/models/<study>.py`, loaded by a
-   factory keyed on `STUDY_TYPE`.
+   and model files under `flask_backend/models/studies/<study>.py`, loaded
+   by a factory keyed on `STUDY_TYPE`.
+
+**Study-specific tables.** Some tables take their shape from one study's
+data needs. Today these are `reviews` and `event_derived_datas`, following
+the legacy CakePHP model in which every study has a table of the same name
+with its own schema. Every study MUST define `reviews`. A study MAY omit
+any other study-specific table it has no use for (e.g. a single-reviewer
+study has nothing to put in `event_derived_datas`). Any study-specific table
+a study does use MUST be defined in its own `init/studies/<study>.sql`.
+A deployment's database MUST contain only its own
+study's study-specific tables, never another study's. Study-specific DDL
+MUST NOT be placed at the top level of `init/`, because the database image
+runs every top-level init file in every deployment regardless of
+`STUDY_TYPE`. Shared tables (`users`, `events`, `logs`, `criterias`, and
+similar) stay in the shared top-level schema.
+
+Every study's `reviews` table MUST include `id`, `event_id`, and
+`reviewer_id`, with one row per reviewer per event. Shared code MAY rely on
+those three columns and on nothing else in `reviews`. Any other read or
+write of review data MUST go through the study's model module.
+
+A per-study file that exists but is not yet usable ("dormant") MUST say so
+explicitly: a schema file's first line is `-- DORMANT`, and a model module
+does not export `REVIEW_FORM`. A deployment whose study has no usable
+schema or model module falls back to `mci`'s, and a warning is logged.
 
 Adding a study-specific `if/elif` chain inside a shared module is a code smell
 and MUST be refactored into a factory, a config flag, or a study-scoped file.
@@ -589,7 +680,7 @@ obligation to document what was there first.
   one specific study, or all studies). PRs that touch shared code MUST be
   reviewed with the "will this break any other study's deployment?" question
   answered explicitly.
-- **Schema changes**: Changes to `init/02-schema-<study>.sql` or to shared
+- **Schema changes**: Changes to `init/studies/<study>.sql` or to shared
   tables (`users`, `events`, `logs`) MUST ship with a migration plan for
   existing deployments and MUST preserve Principle III (legacy compatibility)
   or document the break.
@@ -651,4 +742,4 @@ obligation to document what was there first.
   operational reference for deploying new studies. This constitution governs
   *what* is allowed; that guide documents *how* to do it within those rules.
 
-**Version**: 1.4.0 | **Ratified**: 2026-04-14 | **Last Amended**: 2026-05-20
+**Version**: 1.5.1 | **Ratified**: 2026-04-14 | **Last Amended**: 2026-10-14

@@ -1,3 +1,5 @@
+-- DORMANT
+-- Not applied: 04-study-schema.sh falls back to mci.sql while this marker is present. Remove this marker and the /* */ wrapping to activate.
 -- VTE (Venothromboembolic) Study Schema
 -- This schema is commented out until VTE study migration is needed
 -- Uncomment and modify as needed for VTE study deployment

@@ -2,12 +2,11 @@
 
 > **Current implementation status (2026-05-08)**
 >
-> - **Only MCI is implemented.** Worked examples for VTE, CVA, Heart
->   Failure, and AFIB describe how those studies *would* be wired up
->   when each is brought online; their per-study schema files, models,
->   and frontend component directories are scaffolding-only or absent.
->   See `### 2. Study-Specific Components` below for the per-layer
->   reachability/wiring gaps.
+> - **MCI and `scans` are implemented** (spec 012 wired the per-study
+>   schema, model, and review-form layers). Worked examples for VTE,
+>   CVA, Heart Failure, and AFIB describe how those studies *would* be
+>   wired up when each is brought online; their per-study files are
+>   dormant scaffolding. See `### 2. Study-Specific Components` below.
 > - **One `.env`, one `docker-compose.yaml`** (Constitution Principle
 >   IV, v1.2.0). To target a specific study, edit the `.env` in your
 >   deployment directory: set `STUDY_TYPE`, study identity, and any
@@ -126,41 +125,54 @@ ENABLE_CARDIAC_INTERVENTIONS=true  # MCI-specific feature
 ### 2. Study-Specific Components
 
 The three sub-sections below describe the **actual current state** of
-per-study artifacts in the repo. As of the first release, only the
-default (MCI) layer is loaded by the running stack; the per-study
-files for VTE, CVA, HF, and AFIB exist as scaffolding in varying
-degrees of completeness but are not yet wired into the runtime.
-Bringing any of them online requires the runtime selection work
-flagged in the implementation-status banner at the top of this guide,
-plus removing the per-file "commented out until needed" gates noted
-below.
+per-study artifacts in the repo. Since spec 012, each layer selects the
+deployment's study by `STUDY_TYPE`. `mci` and `scans` are live. VTE, CVA,
+HF, and AFIB files exist as **dormant** scaffolding, and a deployment of a
+dormant (or unknown) study falls back to `mci` at every layer, with a
+warning (constitution Principle IV, v1.5.1).
+
+**Study-specific tables** (constitution Principle IV) are tables whose
+shape depends on one study's data needs, following the legacy CakePHP
+model: today `reviews` and `event_derived_datas`. A deployment's database
+holds **only its own study's** study-specific tables. Every study must
+define `reviews`, which always has `id`, `event_id`, `reviewer_id`, with
+one row per reviewer per event. Shared code relies on those three columns
+only. Other study-specific tables are defined only by the studies that use
+them (e.g. `scans` has no `event_derived_datas`).
 
 #### Database Schemas (`init/` directory)
 ```
 init/
 ├── 01-create-db.sql               # Shared: creates the database.
-├── 02-schema.sql                  # Default schema (MCI). The only
-│                                  #   schema actually applied today.
-├── 02-schema-<study>.sql          # Scaffolding for vte, cva, hf, afib.
-│                                  #   Each is entirely wrapped in a
-│                                  #   /* ... */ block comment, so it
-│                                  #   is inert when MariaDB processes
-│                                  #   it at first start.
+├── 02-schema.sql                  # Shared tables only (users, events,
+│                                  #   logs, criterias, ...).
 ├── 03-data.sql                    # Seed data.
+├── 04-study-schema.sh             # Applies studies/<STUDY_TYPE>.sql —
+│                                  #   and nothing else — on first start.
 ├── 05-add-indexes.sql             # Index creation.
-└── 06-create-patients-view.sh     # Creates the FEDERATED proxy for
-                                   #   cnics_data.Patient and the
-                                   #   patients_view UNION view.
+├── 06-create-patients-view.sh     # Creates the FEDERATED proxy for
+│                                  #   cnics_data.Patient and the
+│                                  #   patients_view UNION view.
+├── studies/                       # Study-specific DDL. NOT auto-run.
+│   ├── mci.sql                    #   MI reviews + event_derived_datas.
+│   ├── scans.sql                  #   scans reviews + review_regions.
+│   └── vte.sql cva.sql hf.sql afib.sql
+│                                  #   Dormant: first line `-- DORMANT`,
+│                                  #   body wrapped in /* ... */.
+└── migrations/                    # One-off upgrades for existing DBs
+    └── 012-scans-reviews.sh       #   (existing scans deployments).
 ```
 
-> **Wiring gap.** MariaDB processes everything in
-> `/docker-entrypoint-initdb.d/` (which `init/` is bind-mounted to)
-> at first start. The per-study files are inert today only because
-> they're wrapped in SQL block comments. Bringing per-study schemas
-> online requires (a) uncommenting the relevant file *and* (b)
-> ensuring only the right `02-schema-<STUDY_TYPE>.sql` runs — e.g.,
-> an entrypoint that picks the right file at startup. Uncommenting
-> all of them would collide on the `reviews` table definition.
+> **Why `studies/` is a subdirectory.** MariaDB runs every *top-level*
+> file in `/docker-entrypoint-initdb.d/` (which `init/` is bind-mounted
+> to) at first start, in every deployment, regardless of `STUDY_TYPE`.
+> It does not descend into subdirectories. Study-specific DDL therefore
+> lives in `init/studies/`, and `04-study-schema.sh` (which receives
+> `STUDY_TYPE` via the mariadb service's environment) applies exactly one
+> file. If the file is missing or begins with `-- DORMANT`, it applies
+> `mci.sql` and prints a warning. `init/` runs only when a volume is first
+> created, so existing databases are upgraded with scripts in
+> `init/migrations/`.
 
 #### Backend Models
 
@@ -168,40 +180,38 @@ Current layout in the repo:
 
 ```
 flask_backend/
-├── models.py                      # Active: contains the MCI models
-│                                  #   loaded by the running stack
-│                                  #   (~15 KB, single file).
-├── models2.py                     # Alternative SQLAlchemy variant
-│                                  #   (back_populates removed). Not
-│                                  #   currently imported — see the
-│                                  #   README "Alternative SQLAlchemy
-│                                  #   models" section.
-└── models/
-    └── studies/                   # Per-study scaffolding files
-                                   #   (afib.py, cva.py, hf.py,
-                                   #   vte.py). Each file's class
-                                   #   definitions are wrapped in a
-                                   #   triple-quoted string, so the
-                                   #   file would import as a no-op
-                                   #   even if it were reachable.
+├── models/
+│   ├── __init__.py                # Shared models + session handling
+│   │                              #   (was models.py until spec 012).
+│   └── studies/
+│       ├── __init__.py            # get_study_module(): picks the
+│       │                          #   module for STUDY_TYPE at call
+│       │                          #   time; documents the interface.
+│       ├── mci.py                 # MI reviews/event_derived_datas
+│       │                          #   models + review form + export.
+│       ├── scans.py               # scans reviews/review_regions
+│       │                          #   models + review form + export.
+│       └── vte.py cva.py hf.py afib.py
+│                                  # Dormant: class definitions are
+│                                  #   wrapped in a triple-quoted
+│                                  #   string; no REVIEW_FORM export.
+└── models2.py                     # Alternative SQLAlchemy variant
+                                   #   (back_populates removed). Not
+                                   #   currently imported — see the
+                                   #   README "Alternative SQLAlchemy
+                                   #   models" section.
 ```
 
-> **Reachability gap.** `flask_backend/models/studies/*.py` files
-> exist on disk but are **not currently importable** as Python
-> modules. The file `flask_backend/models.py` is found before the
-> directory `flask_backend/models/` during import resolution, so
-> `from flask_backend.models.studies import vte` raises
-> `ModuleNotFoundError: 'flask_backend.models' is not a package`.
-> Bringing per-study models online (Step 3 of the deployment
-> walkthrough) therefore requires:
->
-> 1. Consolidating `models.py` into the `models/` package — e.g.,
->    move its contents into `models/__init__.py` (or split into
->    `models/base.py`, `models/mci.py`, etc.) and delete the
->    standalone `models.py`. Constitution Principle IV item 3
->    prescribes the package layout (`flask_backend/models/<study>.py`).
-> 2. Removing the triple-quoted-string gates inside each per-study
->    file so the class definitions actually execute.
+A **study module** exports `Reviews`, `REVIEW_FORM` (the form id the
+frontend renders, reported as `review_form` on `GET /api/config`),
+`parse_review`, `add_review`, `get_reviews`, `export_csv`, and
+`check_schema`. The shared review endpoints and the events export delegate
+to it, so they contain no study names. Each study module declares its
+**own** SQLAlchemy `DeclarativeBase`, because several studies define a
+`reviews` table. Study models therefore have no ORM relationships to the
+shared `Events`/`Users`, and joins are written explicitly. A module with
+no `REVIEW_FORM` is dormant, and `get_study_module()` falls back to `mci`
+with a warning.
 
 #### Frontend Components
 
@@ -210,10 +220,10 @@ Current layout under `frontend/src/`:
 ```
 frontend/src/
 ├── components/                    # Study-agnostic shared components.
-├── pages/                         # Currently holds the MCI flow.
-│                                  #   No `studies/mci/` subdirectory
-│                                  #   exists; MCI is the default.
+├── pages/                         # Shared pages for every study.
 └── studies/
+    ├── mci/MciReviewForm.jsx      # Live: MI review form (spec 012).
+    ├── scans/ScansReviewForm.jsx  # Live: scans review form (spec 012).
     ├── cva/                       # CVA scaffolding (1 file:
     │                              #   EventReview.jsx, wrapped in a
     │                              #   /* ... */ gate).
@@ -226,8 +236,17 @@ frontend/src/
                                    #   shells).
 ```
 
-> **Routing gap.** Nothing under `frontend/src/` outside of
-> `studies/` imports from `studies/`. The study-specific components
+> **Study components (spec 012).** `studies/mci/MciReviewForm.jsx` and
+> `studies/scans/ScansReviewForm.jsx` are live. They hold only the part
+> of the review page that differs by study (Step 2 onwards) and are
+> selected by `components/review/reviewForms.js`, keyed on `review_form`
+> from `GET /api/config`. There is one page and one route. This is the
+> pattern for new study-specific UI: a component chosen by a registry,
+> not a copied page with parallel routes.
+
+> **Routing gap (legacy VTE/CVA trees).** Apart from the review-form
+> registry above, nothing under `frontend/src/` outside of `studies/`
+> imports from `studies/`. The study-specific components
 > are not loaded by the frontend router. Bringing them online
 > requires extending the router to dispatch on a study selector
 > (e.g., a `VITE_STUDY_TYPE` env var, mirroring the backend's
@@ -305,11 +324,11 @@ study-specific files in the repo) and the per-host deployment
 
 ### Step 2: Database Schema Creation
 
-1. **Create** the study-specific schema file:
-   ```bash
-   cp init/02-schema.sql init/02-schema-vte.sql
-   ```
-2. **Modify** the schema for the study's requirements:
+1. **Create or activate** the study's schema file,
+   `init/studies/<study>.sql` (for VTE: `init/studies/vte.sql`, currently
+   dormant). Define the study's `reviews` table, which must have `id`,
+   `event_id`, `reviewer_id` with one row per reviewer per event, and any
+   other study-specific table the study uses:
    ```sql
    -- Example for VTE study:
    `outcome` enum('Definite','Probable','No')
@@ -318,53 +337,49 @@ study-specific files in the repo) and the per-host deployment
    `pe_severity` enum('Massive','Submassive','Low_risk')
    `imaging_evidence` tinyint(1)
    ```
-3. **Wire schema selection into runtime** — since per-study compose
-   overlays are not permitted (Constitution Principle IV), the
-   running container must pick the correct `02-schema-<study>.sql`
-   based on `STUDY_TYPE` at startup (e.g., an entrypoint that copies
-   the right file into the MariaDB init directory before mariadb
-   starts). *Currently scaffolding-only.*
+2. **Remove** the `-- DORMANT` first line and the `/* ... */` wrapping.
+   `init/04-study-schema.sh` then applies this file, and only this
+   file, for `STUDY_TYPE=<study>` on a new volume.
+3. **For existing databases**, add a one-off script under
+   `init/migrations/` (see `012-scans-reviews.sh`), since `init/` only
+   runs when a volume is first created.
 
 ### Step 3: Backend Model Configuration
 
-1. **Create** the study-specific model file:
-   `flask_backend/models/studies/vte.py`
-2. **Implement** study-specific models extending base classes:
-   ```python
-   from .base import BaseReview, BaseEventDerivedData
-
-   class VTEReview(BaseReview):
-       vte_type = Column(Enum('DVT','PE','Both','Other'))
-       imaging_evidence = Column(Boolean)
-   ```
-3. **Update the model factory** (currently
-   `flask_backend/study_config.py` — scaffolding-only, not imported
-   by any runtime code) to load the correct module based on
-   `STUDY_TYPE`.
+1. **Implement** the study module, `flask_backend/models/studies/<study>.py`
+   (for VTE: `vte.py`, currently dormant), following `scans.py`. It needs
+   its own `DeclarativeBase`, a `Reviews` model, and the interface
+   documented in `flask_backend/models/studies/__init__.py` (`REVIEW_FORM`,
+   `parse_review`, `add_review`, `get_reviews`, `export_csv`,
+   `check_schema`).
+2. **Export `REVIEW_FORM`.** Its presence is what makes the module live:
+   `get_study_module()` then returns it for `STUDY_TYPE=<study>` instead of
+   falling back to `mci`.
 
 ### Step 4: Frontend Component Configuration
 
-1. **Create** the study-specific component directory:
-   `frontend/src/studies/vte/`
-2. **Copy** and customize study-specific components:
-   - `EventReview.jsx` — study-specific review form
-   - `Home.jsx` — study-specific home page and instructions
-3. **Update** component routing to load the correct study's
-   components based on the study selector. *Selection mechanism
-   not yet implemented.*
+1. **Create** the study's review form component,
+   `frontend/src/studies/<study>/<Study>ReviewForm.jsx`, taking
+   `{ eventId, apiUrl }` and rendering Step 2 onwards of the review page.
+2. **Register** it in `frontend/src/components/review/reviewForms.js`
+   under the study module's `REVIEW_FORM` value.
+3. Do **not** copy whole pages or add parallel routes (the legacy
+   `studies/vte/` pattern). Per-study differences go in components
+   chosen by a registry.
 
 ### Step 5: Study-Specific Assets
 
-1. **Create** the study-specific instruction directory:
-   `studies/vte/instructions/`
-2. **Add** study-specific documentation:
-   - Review packet assembly instructions
-   - Reviewer guidelines
-   - Study-specific forms and templates
-3. **Wire asset selection into runtime** — like the schema in
-   Step 2, the running container must pick the correct per-study
-   assets based on `STUDY_TYPE`. Compose-time bind-mount selection
-   is not permitted. *Currently scaffolding-only.*
+1. **Reviewer instructions** are an on-site, print-friendly HTML page
+   (spec 012), not `.doc`/`.pdf` downloads. Add a self-contained
+   `app/webroot/files/instructions/<study>.html` (see `scans.html`). It
+   is served from the read-only `FILES_DIR` by `GET /files/...`.
+2. **Link it** from the study's `instructions` entry in
+   `frontend/src/components/reviewGuidance.js` with
+   `{ label: 'View review instructions', href: '/files/instructions/<study>.html', download: false }`.
+   Both the home page and the review page read that entry. A study with
+   no entry shows no link.
+3. Other per-study documents (packet assembly, scrubbing protocol) are
+   linked from the same file's `packets` and `scrubbing` entries.
 
 ### Step 6: Deployment Configuration
 
@@ -428,7 +443,7 @@ ENABLE_PRE_SCRUB=true            # VTE has prescrub step
 ENABLE_PRESCRUB_REJECTION=true   # VTE has PSREJECTED state
 ```
 
-#### Database Schema (`init/02-schema-vte.sql`)
+#### Database Schema (`init/studies/vte.sql`)
 ```sql
 -- VTE-specific review criteria
 CREATE TABLE `reviews` (
@@ -460,7 +475,7 @@ ENABLE_QUESTIONNAIRES=true       # CVA has questionnaire functionality
 ENABLE_SURVEY_MODULE=true
 ```
 
-#### Database Schema (`init/02-schema-cva.sql`)
+#### Database Schema (`init/studies/cva.sql`)
 ```sql
 -- CVA-specific review criteria
 CREATE TABLE `reviews` (
@@ -499,7 +514,7 @@ ENABLE_PRE_SCRUB=false
 ENABLE_EF_MEASUREMENT=true
 ```
 
-#### Database Schema (`init/02-schema-hf.sql`)
+#### Database Schema (`init/studies/hf.sql`)
 ```sql
 -- Heart Failure-specific review criteria
 CREATE TABLE `reviews` (
@@ -528,7 +543,7 @@ ENABLE_PRE_SCRUB=false
 STATUS=inactive                  # No immediate plans per Heidi
 ```
 
-#### Database Schema (`init/02-schema-afib.sql`)
+#### Database Schema (`init/studies/afib.sql`)
 ```sql
 -- AFIB-specific review criteria
 CREATE TABLE `reviews` (
@@ -552,10 +567,10 @@ CREATE TABLE `reviews` (
 Principle V): it runs the lifecycle `created → uploaded → assigned →
 reviewer1_done → done`, skipping scrubbing, screening, sending, and
 second-/third-reviewer adjudication. It contrasts with the VTE example
-above: VTE *extends* the workflow (and therefore carries a per-study
-schema file and component directory), whereas `scans` only *removes*
-stages and so adds no per-study artifacts at all — it reuses the shared
-schema and the shared interface with bypassed-stage elements hidden.
+above: VTE *extends* the workflow, whereas `scans` *removes* stages.
+Since spec 012, `scans` also has its own review data (DEXA body regions
+with T and Z scores), and so its own study-specific schema, study module,
+and review form component.
 
 Selecting `STUDY_TYPE=scans` supplies the bypass profile as the default;
 the four workflow-stage controls are shown explicitly below for clarity.
@@ -574,14 +589,23 @@ REVIEWER_COUNT=1          # single-reviewer adjudication
 
 #### Study-Specific Artifacts
 
-None. Because `scans` is pure selective bypass, Steps 2–5 of the
-deployment walkthrough do not apply: there is no
-`init/02-schema-scans.sql`, no `flask_backend/models/studies/scans.py`,
-and no `frontend/src/studies/scans/` directory. The bypassed states
-(`scrubbed`, `screened`, `sent`, `reviewer2_done`, and the third-review
-states) remain defined in the shared schema and state machine — a
-`scans` deployment simply never enters them ("bypass means *not entered*
-for this deployment, not *deleted from the system*").
+- `init/studies/scans.sql`: `reviews` (one row per completed review) and
+  `review_regions` (one row per body-region entry). There is no
+  `event_derived_datas`, because a single reviewer has nothing to derive.
+- `flask_backend/models/studies/scans.py`: models, validation, storage,
+  retrieval, the per-region CSV export, and the schema check.
+- `frontend/src/studies/scans/ScansReviewForm.jsx`: the review form.
+- `app/webroot/files/instructions/scans.html`: the reviewer instructions,
+  a print-friendly page opened in a new tab and editable on the server
+  without a rebuild.
+- `init/migrations/012-scans-reviews.sh`: a one-off upgrade for scans
+  databases created before spec 012. It renames the old MI-shaped tables
+  to `*_mi_pre012` and never drops them.
+
+The bypassed states (`scrubbed`, `screened`, `sent`, `reviewer2_done`, and
+the third-review states) remain defined in the shared schema and state
+machine. A `scans` deployment simply never enters them ("bypass means
+*not entered* for this deployment, not *deleted from the system*").
 
 ## Best Practices for Multi-Study Deployments
 

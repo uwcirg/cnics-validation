@@ -169,9 +169,17 @@ updates this file on each push.
 
 ## Alternative SQLAlchemy models
 
-`flask_backend/models2.py` is a copy of `models.py` with all `back_populates`
-arguments removed from the `relationship()` definitions. The current
-application still imports `models.py` and does not use `models2.py`.
+`flask_backend/models2.py` is a copy of the original `models.py` with all
+`back_populates` arguments removed from the `relationship()` definitions. The
+current application imports the `flask_backend/models/` package and does not
+use `models2.py`.
+
+> **Removal candidate (spec 012).** `models2.py` predates the per-study model
+> layout: it still defines the MI `Reviews` and `EventDerivedDatas` tables,
+> which now belong to `flask_backend/models/studies/mci.py`, as one shared
+> model. Selecting it with `SQLA_MODELS=models2` would give every study the MI
+> review tables, contrary to constitution Principle IV. It is unused and is
+> kept only until it is removed in a follow-up (Principle VI).
 
 Removing `back_populates` turns these relationships into one‑way links. SQLA
 chemy will no longer keep both sides of a relationship in sync automatically.

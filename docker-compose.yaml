@@ -20,6 +20,11 @@ services:
       # tcp mode only (ignored when CNICS_DATA_BRIDGE_MODE=socket):
       CNICS_DATA_DB_HOST: ${CNICS_DATA_DB_HOST:-}
       CNICS_DATA_DB_PORT: ${CNICS_DATA_DB_PORT:-}
+      # Consumed by init/04-study-schema.sh, which applies only this study's
+      # study-specific tables (init/studies/<study>.sql) on first DB init —
+      # a deployment's database never holds another study's tables
+      # (constitution Principle IV). Must match the backend's STUDY_TYPE.
+      STUDY_TYPE: ${STUDY_TYPE:-mci}
     volumes:
       - mariadb-data:/var/lib/mysql
       - logs-data:/var/log/mysql

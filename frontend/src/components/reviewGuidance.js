@@ -52,13 +52,14 @@ const STUDY_GUIDANCE = {
         { label: '.pdf', href: '/files/CNICS MI Review packet assembly instructions.pdf', download: false },
       ],
     },
+    // Reviewer instructions are on-site HTML pages, not .doc/.pdf downloads
+    // (spec 012, FR-017). The MI reviewer-instruction .doc/.pdf links were
+    // removed (FR-017a); mci uses the same mechanism as scans once an
+    // `/files/instructions/mci.html` exists — add one link like scans' below.
+    // Until then: no link, and the review page hides its box (FR-022).
     instructions: {
       items: [],
-      linkLabel: 'View as:',
-      links: [
-        { label: '.doc', href: '/files/CNICS MI reviewer instructions.doc', download: true },
-        { label: '.pdf', href: '/files/CNICS MI reviewer instructions.pdf', download: false },
-      ],
+      links: [],
     },
     // The scrubbing protocol, moved verbatim off EventScrub.jsx where it was
     // hard-coded (spec 010, FR-012). Note the filenames say `MI` while the
@@ -73,8 +74,9 @@ const STUDY_GUIDANCE = {
       ],
     },
   },
-  // DEXA scans — short, study-specific guidance with no linked files
-  // (spec 007, FR-006 / FR-007). Empty `links` ⇒ no link area shown.
+  // DEXA scans — short, study-specific packet guidance with no linked files
+  // (spec 007, FR-006). Its reviewer instructions are an on-site page
+  // (spec 012), replacing spec 007's "No additional instructions".
   scans: {
     packets: {
       items: [
@@ -83,9 +85,15 @@ const STUDY_GUIDANCE = {
       ],
       links: [],
     },
+    // The DEXA reviewer instructions, as a self-contained, print-friendly
+    // HTML page opened in a new tab (spec 012, FR-017 – FR-021). It is served
+    // from FILES_DIR (app/webroot/files/instructions/scans.html), so the
+    // wording can be edited there without a rebuild (FR-023).
     instructions: {
-      items: ['No additional instructions'],
-      links: [],
+      items: [],
+      links: [
+        { label: 'View review instructions', href: '/files/instructions/scans.html', download: false },
+      ],
     },
     // DEXA scans has no scrubbing protocol document — and no scrubbing stage
     // at all. Empty `links` ⇒ the scrubbing page renders no document area

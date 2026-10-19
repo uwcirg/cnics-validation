@@ -1,3 +1,5 @@
+-- DORMANT
+-- Not applied: 04-study-schema.sh falls back to mci.sql while this marker is present. Remove this marker and the /* */ wrapping to activate.
 -- AFIB Study Schema
 -- This schema is commented out until AFIB study migration is needed
 -- Uncomment and modify as needed for AFIB study deployment

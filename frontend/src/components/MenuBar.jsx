@@ -34,8 +34,8 @@ function MenuBar({ admin, uploader, reviewer, third_reviewer }) {
         <Link to={isVtePage ? "/vte/review" : "/events/review"}>Review Events</Link>
       )}
       
-      {/* View All Events - for reviewers, uploaders and admins */}
-      {(reviewer || uploader || admin) && (
+      {/* View All Events - for admin users only (spec 012 FR-033) */}
+      {admin && (
         <Link to={isVtePage ? "/vte/viewAll" : "/events/viewAll"}>View All Events</Link>
       )}
     </nav>

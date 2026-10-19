@@ -1,3 +1,17 @@
+"""Shared SQLAlchemy models and session handling.
+
+This was `flask_backend/models.py` until spec 012. It became a package so the
+per-study model modules under `flask_backend/models/studies/` can be
+imported; before, the module file shadowed this directory.
+
+Only **shared** tables are modelled here: tables whose shape is the same in
+every study. Study-specific tables (`reviews`, and for some studies
+`event_derived_datas`) are modelled per study in
+`flask_backend/models/studies/<study>.py` and selected at call time by
+`flask_backend.models.studies.get_study_module()` (constitution Principle IV).
+The `Events.reviews` / `Events.derived_data` relationships were removed along
+with those classes; nothing read them.
+"""
 from typing import Optional
 from sqlalchemy import Column, Date, DateTime, Enum, Float, String, TIMESTAMP, text, ForeignKey, create_engine, Table
 from sqlalchemy.dialects.mysql import INTEGER, TINYINT, VARCHAR
@@ -22,23 +36,6 @@ class Criterias(Base):
     name: Mapped[str] = mapped_column(String(50))
     value: Mapped[str] = mapped_column(String(100))
     event = relationship("Events", back_populates="criterias")
-
-class EventDerivedDatas(Base):
-    __tablename__ = 'event_derived_datas'
-
-    id: Mapped[int] = mapped_column(INTEGER(11), primary_key=True)
-    event_id: Mapped[int] = mapped_column(INTEGER(11), ForeignKey("events.id"), comment='foreign key into events table')
-    outcome: Mapped[Optional[str]] = mapped_column(Enum('Definite', 'Probable', 'No', 'No [resuscitated cardiac arrest]'))
-    primary_secondary: Mapped[Optional[str]] = mapped_column(Enum('Primary', 'Secondary'))
-    false_positive_event: Mapped[Optional[int]] = mapped_column(TINYINT(1))
-    secondary_cause: Mapped[Optional[str]] = mapped_column(Enum('MVA', 'Overdose', 'Anaphlaxis', 'GI bleed', 'Sepsis/bacteremia', 'Procedure related', 'Arrhythmia', 'Cocaine or other illicit drug induced vasospasm', 'Hypertensive urgency/emergency', 'Hypoxia', 'Hypotension', 'Other', 'NC'))
-    secondary_cause_other: Mapped[Optional[str]] = mapped_column(String(100))
-    event = relationship("Events", back_populates="derived_data")
-    false_positive_reason: Mapped[Optional[str]] = mapped_column(Enum('Congestive heart failure', 'Myocarditis', 'Pericarditis', 'Pulmonary embolism', 'Renal failure', 'Severe sepsis/shock', 'Other'))
-    ci: Mapped[Optional[int]] = mapped_column(TINYINT(1))
-    ci_type: Mapped[Optional[str]] = mapped_column(Enum('CABG/Surgery', 'PCI/Angioplasty', 'Stent', 'Unknown', 'NC'))
-    ecg_type: Mapped[Optional[str]] = mapped_column(Enum('STEMI', 'non-STEMI', 'Other/Uninterpretable', 'New LBBB', 'Normal', 'No EKG', 'NC'))
-
 
 class Events(Base):
     __tablename__ = 'events'
@@ -79,8 +76,6 @@ class Events(Base):
     assign3rd_date: Mapped[Optional[datetime.date]] = mapped_column(Date)
     review3_date: Mapped[Optional[datetime.date]] = mapped_column(Date)
     criterias = relationship("Criterias", back_populates="event")
-    derived_data = relationship("EventDerivedDatas", back_populates="event", uselist=False)
-    reviews = relationship("Reviews", back_populates="event")
     solicitations = relationship("Solicitations", back_populates="event")
     creator = relationship("Users", foreign_keys=[creator_id])
     uploader = relationship("Users", foreign_keys=[uploader_id])
@@ -97,35 +92,6 @@ class Logs(Base):
     params: Mapped[Optional[str]] = mapped_column(String(1000))
 
 
-class Reviews(Base):
-    __tablename__ = 'reviews'
-
-    id: Mapped[int] = mapped_column(INTEGER(11), primary_key=True)
-    event_id: Mapped[int] = mapped_column(INTEGER(11), ForeignKey("events.id"))
-    reviewer_id: Mapped[int] = mapped_column(INTEGER(11), ForeignKey("users.id"))
-    mci: Mapped[str] = mapped_column(Enum('Definite', 'Probable', 'No', 'No [resuscitated cardiac arrest]'))
-    cardiac_cath: Mapped[int] = mapped_column(TINYINT(1))
-    abnormal_ce_values_flag: Mapped[Optional[int]] = mapped_column(TINYINT(1), comment='abnormal cardiac enzyme values')
-    ce_criteria: Mapped[Optional[str]] = mapped_column(Enum('Standard criteria', 'PTCA criteria', 'CABG criteria', 'Muscle trauma other than PTCA/CABG'), comment='cardiac enzyme criteria')
-    chest_pain_flag: Mapped[Optional[int]] = mapped_column(TINYINT(1))
-    ecg_changes_flag: Mapped[Optional[int]] = mapped_column(TINYINT(1))
-    lvm_by_imaging_flag: Mapped[Optional[int]] = mapped_column(TINYINT(1), comment='Loss of viable myocardium or regional wall abnormalities by imaging')
-    ci: Mapped[Optional[int]] = mapped_column(TINYINT(1), comment="Did the patient have a cardiac intervention (only set if mci = either type of 'no')")
-    type: Mapped[Optional[str]] = mapped_column(Enum('Primary', 'Secondary'))
-    secondary_cause: Mapped[Optional[str]] = mapped_column(Enum('MVA', 'Overdose', 'Anaphlaxis', 'GI bleed', 'Sepsis/bacteremia', 'Procedure related', 'Arrhythmia', 'Cocaine or other illicit drug induced vasospasm', 'Hypertensive urgency/emergency', 'Hypoxia', 'Hypotension', 'COVID', 'Other'))
-    other_cause: Mapped[Optional[str]] = mapped_column(String(100))
-    false_positive_flag: Mapped[Optional[int]] = mapped_column(TINYINT(1))
-    false_positive_reason: Mapped[Optional[str]] = mapped_column(Enum('Congestive heart failure', 'Myocarditis', 'Pericarditis', 'Pulmonary embolism', 'Renal failure', 'Severe sepsis/shock', 'Other'))
-    false_positive_other_cause: Mapped[Optional[str]] = mapped_column(String(100))
-    current_tobacco_use_flag: Mapped[Optional[int]] = mapped_column(TINYINT(1))
-    past_tobacco_use_flag: Mapped[Optional[int]] = mapped_column(TINYINT(1))
-    cocaine_use_flag: Mapped[Optional[int]] = mapped_column(TINYINT(1))
-    family_history_flag: Mapped[Optional[int]] = mapped_column(TINYINT(1))
-    ci_type: Mapped[Optional[str]] = mapped_column(Enum('CABG/Surgery', 'PCI/Angioplasty', 'Stent', 'Unknown'))
-    ecg_type: Mapped[Optional[str]] = mapped_column(Enum('STEMI', 'non-STEMI', 'Other/Uninterpretable', 'New LBBB', 'Normal', 'No EKG'))
-    event = relationship("Events", back_populates="reviews")
-    reviewer = relationship("Users", foreign_keys=[reviewer_id])
-    
 class Solicitations(Base):
     __tablename__ = "solicitations"
 
