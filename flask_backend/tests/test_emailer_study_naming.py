@@ -22,7 +22,7 @@ import pytest
 
 from flask_backend import emailer
 
-_ENV_VARS = ("STUDY_TYPE", "EMAIL_SUBJECT_PREFIX", "EMAIL_TEST_MODE")
+_ENV_VARS = ("STUDY_TYPE", "STUDY_LABEL", "EMAIL_SUBJECT_PREFIX", "EMAIL_TEST_MODE")
 
 
 class _FakeUser:
@@ -230,3 +230,27 @@ def test_body_still_carries_the_reviewer_name_and_links(clean_env):
 
     assert body.startswith("Dear Ann Lee,")
     assert "Please download the charts and complete the review at the links below." in body
+
+
+# --- STUDY_LABEL (spec 013 D6) ----------------------------------------------
+
+
+def test_study_label_setting_names_the_study_in_the_email(clean_env):
+    """An explicit STUDY_LABEL replaces the upper-cased study type."""
+    clean_env.setenv("STUDY_TYPE", "dischargesummaries")
+    clean_env.setenv("STUDY_LABEL", "Discharge Summary")
+
+    detail = _send()
+
+    assert detail["subject"] == "CNICS / NA-ACCORD Discharge Summary Review Assignment – Event 4821"
+    assert "You have been assigned a review in the Discharge Summary study." in detail["body_preview"]
+    assert "DISCHARGESUMMARIES" not in detail["subject"] + detail["body_preview"]
+
+
+def test_blank_study_label_falls_back_in_the_email(clean_env):
+    clean_env.setenv("STUDY_TYPE", "dischargesummaries")
+    clean_env.setenv("STUDY_LABEL", "  ")
+
+    detail = _send()
+
+    assert "DISCHARGESUMMARIES Review Assignment" in detail["subject"]

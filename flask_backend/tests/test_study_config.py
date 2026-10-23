@@ -18,6 +18,7 @@ from flask_backend.study_config import (
 _CONTROL_VARS = (
     "STUDY_TYPE",
     "STUDY_TITLE",
+    "STUDY_LABEL",
     "ENABLE_SCRUBBING",
     "ENABLE_SCREENING",
     "ENABLE_SENDING",
@@ -89,6 +90,33 @@ def test_other_study_resolves_to_full_workflow(monkeypatch):
         True,
         2,
     )
+
+
+def test_dischargesummaries_profile(monkeypatch):
+    """`dischargesummaries` scrubs, skips screening and sending, one reviewer (spec 013 D1)."""
+    _clear_controls(monkeypatch)
+    monkeypatch.setenv("STUDY_TYPE", "dischargesummaries")
+
+    cfg = get_workflow_config()
+
+    assert (cfg.scrubbing, cfg.screening, cfg.sending, cfg.reviewer_count) == (
+        True,
+        False,
+        False,
+        1,
+    )
+
+
+def test_dischargesummaries_profile_still_yields_to_overrides(monkeypatch):
+    """An explicit ENABLE_SCREENING still overrides the dischargesummaries profile."""
+    _clear_controls(monkeypatch)
+    monkeypatch.setenv("STUDY_TYPE", "dischargesummaries")
+    monkeypatch.setenv("ENABLE_SCREENING", "true")
+
+    cfg = get_workflow_config()
+
+    assert cfg.screening is True
+    assert (cfg.scrubbing, cfg.sending, cfg.reviewer_count) == (True, False, 1)
 
 
 def test_explicit_control_overrides_study_profile(monkeypatch):
@@ -198,3 +226,33 @@ def test_workflow_config_label_is_empty_when_study_type_unset(monkeypatch):
 
     assert cfg.study_label == ""
     assert cfg.study_type == "mci"
+
+
+# --- STUDY_LABEL override (spec 013 D6) --------------------------------------
+
+
+def test_study_label_setting_is_used_verbatim(monkeypatch):
+    """A non-blank STUDY_LABEL is the label, exactly as written (trimmed)."""
+    _clear_controls(monkeypatch)
+    monkeypatch.setenv("STUDY_TYPE", "dischargesummaries")
+    monkeypatch.setenv("STUDY_LABEL", "  Discharge Summary ")
+
+    assert get_study_label() == "Discharge Summary"
+    assert get_workflow_config().study_label == "Discharge Summary"
+
+
+def test_blank_study_label_falls_back_to_study_type(monkeypatch):
+    """A blank STUDY_LABEL is ignored: the label is the upper-cased STUDY_TYPE."""
+    _clear_controls(monkeypatch)
+    monkeypatch.setenv("STUDY_TYPE", "dischargesummaries")
+    monkeypatch.setenv("STUDY_LABEL", "   ")
+
+    assert get_study_label() == "DISCHARGESUMMARIES"
+
+
+def test_study_label_setting_applies_even_without_study_type(monkeypatch):
+    """STUDY_LABEL is explicit configuration, so it wins even when STUDY_TYPE is unset."""
+    _clear_controls(monkeypatch)
+    monkeypatch.setenv("STUDY_LABEL", "Discharge Summary")
+
+    assert get_study_label() == "Discharge Summary"

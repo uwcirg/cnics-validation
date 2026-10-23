@@ -16,8 +16,9 @@ The four controls (Constitution v1.4.0, Principle V — "selective bypass"):
 
 Resolution: the selected ``STUDY_TYPE`` supplies a default *profile*; an
 explicit environment variable for any individual control overrides that
-profile. ``scans`` bypasses every optional stage; every other (or unset)
-study runs the conservative full-workflow profile.
+profile. ``scans`` bypasses every optional stage; ``dischargesummaries``
+keeps scrubbing but skips screening and sending, with one reviewer; every
+other (or unset) study runs the conservative full-workflow profile.
 
 Validation is fail-fast: `get_workflow_config()` raises `WorkflowConfigError`
 on any malformed value, and `app.py` calls it at import time so an invalid
@@ -41,6 +42,13 @@ _SCANS_PROFILE = {
     "sending": False,
     "reviewer_count": 1,
 }
+# spec 013 D1: scrub on, screen and send off, one reviewer.
+_DISCHARGESUMMARIES_PROFILE = {
+    "scrubbing": True,
+    "screening": False,
+    "sending": False,
+    "reviewer_count": 1,
+}
 # Conservative full-workflow default for every other / unset study (FR-004).
 _FULL_WORKFLOW_PROFILE = {
     "scrubbing": True,
@@ -48,7 +56,10 @@ _FULL_WORKFLOW_PROFILE = {
     "sending": True,
     "reviewer_count": 2,
 }
-_PROFILES = {"scans": _SCANS_PROFILE}
+_PROFILES = {
+    "scans": _SCANS_PROFILE,
+    "dischargesummaries": _DISCHARGESUMMARIES_PROFILE,
+}
 
 
 class WorkflowConfigError(RuntimeError):
@@ -78,10 +89,14 @@ def get_study_type() -> str:
 
 
 def get_study_label() -> str:
-    """Return the upper-cased display label for this deployment's study.
+    """Return the display label for this deployment's study.
 
-    Returns the empty string when ``STUDY_TYPE`` is unset or blank — and only
-    then. This is the *one* place the raw, undefaulted variable is read.
+    ``STUDY_LABEL``, when set and not blank, is returned verbatim (trimmed);
+    it lets a study whose type is not readable when upper-cased say e.g.
+    "Discharge Summary" (spec 013 D6). Otherwise the label is the upper-cased
+    ``STUDY_TYPE``, and the empty string when ``STUDY_TYPE`` is unset or
+    blank — and only then. This is the *one* place the raw, undefaulted
+    ``STUDY_TYPE`` is read.
 
     **Why this differs from `get_study_type()`, deliberately**: that accessor
     defaults an unset ``STUDY_TYPE`` to ``mci``, which is correct for
@@ -98,8 +113,12 @@ def get_study_label() -> str:
     differ only when nothing is configured, so a mistake here is invisible
     until it reaches an unconfigured deployment.
 
-    Examples: ``mci`` → ``"MCI"``; ``"  Scans  "`` → ``"SCANS"``; unset → ``""``.
+    Examples: ``mci`` → ``"MCI"``; ``"  Scans  "`` → ``"SCANS"``; unset → ``""``;
+    ``STUDY_LABEL="Discharge Summary"`` → ``"Discharge Summary"``.
     """
+    label = os.getenv("STUDY_LABEL", "").strip()
+    if label:
+        return label
     return os.getenv("STUDY_TYPE", "").strip().upper()
 
 

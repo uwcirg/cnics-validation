@@ -49,12 +49,20 @@ are built or started. The template defines the following variables:
 - `DB_USER` – database user for the application.
 - `DB_PASSWORD` – password for `DB_USER`.
 - `STUDY_TYPE` – selects the clinical validation study this deployment serves
-  (`mci`, `vte`, `cva`, `hf`, `afib`, `scans`); defaults to `mci`. The chosen
-  study supplies the default profile for the four workflow-stage controls below.
+  (`mci`, `vte`, `cva`, `hf`, `afib`, `scans`, `dischargesummaries`); defaults
+  to `mci`. The chosen study supplies the default profile for the four
+  workflow-stage controls below. `mci`, `scans` and `dischargesummaries` are
+  usable; the others are dormant and run as `mci`. `dischargesummaries` scrubs,
+  skips screening and sending, and has one reviewer; its review form is not
+  built yet (spec 013 Phase A). See the worked example in
+  [docs/template-setup-guide.md](docs/template-setup-guide.md).
 - `STUDY_TITLE` – optional free-form display string shown verbatim in the
   banner and used for the browser tab title (`CNICS ` + this value, e.g.
   `CNICS DEXA Scans Validation`). When unset, the banner/tab title is derived
   from `STUDY_TYPE` (e.g. `Scans Project`, `MCI Project`). Purely cosmetic.
+- `STUDY_LABEL` – optional study name used in page headings and assignment
+  emails (e.g. `Discharge Summary` gives "Packet for Discharge Summary 4821").
+  When unset, it is `STUDY_TYPE` in capitals (`MCI`, `SCANS`). Purely cosmetic.
 - `ENABLE_SCRUBBING` – whether uploaded packets pass through the `scrubbed`
   stage (`true`/`false`/`1`/`0`/`yes`/`no`). Defaults to `true`.
 - `ENABLE_SCREENING` – whether events pass through the `screened` stage
@@ -66,6 +74,12 @@ are built or started. The template defines the following variables:
   resolved through the shared configuration layer; leaving them unset runs the
   full validation pipeline, while `STUDY_TYPE=scans` defaults them to the
   selective-bypass profile.
+- `INTERNAL_SUBNET` / `INTERNAL_GATEWAY` – address range of the stack's
+  internal Docker network; default `172.31.222.0/24` / `172.31.222.1`. Two
+  deployments on one host need non-overlapping ranges. In tcp bridge mode the
+  gateway is where the `cnics_data` tunnel listens; a second deployment can
+  share the first one's tunnel, as described in
+  [docs/cnics_data-bridge.md](docs/cnics_data-bridge.md#sharing-one-tunnel-between-deployments-on-the-same-vm).
 - `FRONTEND_ORIGIN` – allowed origin for CORS (Cross‑Origin Resource Sharing) requests to the backend.
 - `FHIR_SERVER` – **not currently used.** Retained for backward compatibility with deployments that still set it; no runtime component reads this value. Safe to omit.
 - `FILES_DIR` – directory containing instruction files served by the backend.
