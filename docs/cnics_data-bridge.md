@@ -130,15 +130,18 @@ CNICS_DATA_DB_USER=<read-only bridge user>
 CNICS_DATA_DB_PASSWORD=<secret>
 ```
 
-`docker-compose.yaml` **pins** the `internal` network to
-`subnet 172.31.222.0/24, gateway 172.31.222.1` so the tunnel has a stable
-address to bind to. The socket bind-mount is harmless in this mode (the source
+`docker-compose.yaml` **pins** the `internal` network so the tunnel has a
+stable address to bind to. The range comes from `INTERNAL_SUBNET` /
+`INTERNAL_GATEWAY` in `.env`, defaulting to `172.31.222.0/24` /
+`172.31.222.1`. The socket bind-mount is harmless in this mode (the source
 dir is simply empty on a separate-VM host; `init/06` never reads it).
 
-> Keep these four references to `172.31.222.x` in lockstep: the docker gateway,
-> `CNICS_DATA_DB_HOST`, the tunnel's `LocalForward` bind address, and the host
-> firewall rule. If that subnet ever collides with another network, change all
-> four together.
+> Keep these four in lockstep: the docker gateway (`INTERNAL_GATEWAY`, within
+> `INTERNAL_SUBNET`), `CNICS_DATA_DB_HOST`, the tunnel's `LocalForward` bind
+> address, and the host firewall rule. If the subnet ever collides with another
+> network, change all four together, in `.env` and puppet; never in
+> `docker-compose.yaml`. A second deployment on the same VM can instead share
+> this tunnel; see [Sharing one tunnel](#sharing-one-tunnel-between-deployments-on-the-same-vm).
 
 ### Prerequisites (one-time, per the two VMs)
 
@@ -213,6 +216,54 @@ On the **`cnics_data` VM**:
    Expect `bridge mode: tcp (172.31.222.1:13306)` and a clean return.
 4. [Verify](#verifying-the-bridge).
 
+### Sharing one tunnel between deployments on the same VM
+
+A second deployment of this stack on the same VM (for example
+`dischargesummaries` beside `scans`) reuses the first deployment's tunnel; no
+second tunnel is needed. The examples below assume the first stack uses the
+default range `172.31.222.0/24` and the second uses `172.31.223.0/24`.
+
+1. **The second stack gets its own network range** in its `.env`, because two
+   compose networks on one host cannot overlap:
+   ```bash
+   INTERNAL_SUBNET=172.31.223.0/24
+   INTERNAL_GATEWAY=172.31.223.1
+   ```
+2. **It keeps the first stack's tunnel address**, not its own gateway:
+   ```bash
+   CNICS_DATA_BRIDGE_MODE=tcp
+   CNICS_DATA_DB_HOST=172.31.222.1   # where the tunnel listens
+   CNICS_DATA_DB_PORT=13306
+   ```
+   It can use the same read-only bridge user, unless the data owner wants a
+   separate one.
+3. **One more firewall rule** lets the second subnet reach the tunnel, next to
+   the existing rule (prereq 4). Make it durable in puppet the same way:
+   ```bash
+   sudo iptables -I INPUT 1 -s 172.31.223.0/24 -d 172.31.222.1 -p tcp --dport 13306 -j ACCEPT
+   ```
+   This is the `INPUT` chain, not `FORWARD`. The tunnel is a host process, so
+   a container connecting to `172.31.222.1` is talking to the host, not to the
+   other bridge network. Docker's bridge-to-bridge isolation rules are in
+   `FORWARD` and do not apply. What blocks the second stack without this rule
+   is the existing rule's source range, which covers only `172.31.222.0/24`.
+4. **Dependency on the first stack's network.** `172.31.222.1` exists only
+   while the first stack's `internal` network exists:
+   - `docker compose stop` on the first stack keeps the network. Safe.
+   - `docker compose down` on the first stack removes the network and the
+     gateway address. The tunnel can no longer bind, and the second stack
+     loses patient lookups until the first stack is up again (and autossh has
+     re-bound).
+
+   Operators should use `stop`, not `down`, on the first stack while the
+   second one is live.
+5. **Optional, an operator decision:** rebind the tunnel to the default
+   `docker0` gateway (`172.17.0.1`), which exists as long as Docker runs and
+   does not depend on either stack. Both stacks would then set
+   `CNICS_DATA_DB_HOST=172.17.0.1`, and the firewall rules would use that
+   destination. This changes the puppet tunnel definition, so it is outside
+   the application.
+
 ---
 
 ## Verifying the bridge
@@ -241,6 +292,7 @@ patient-bearing pages should then load.
 | journal `Permission denied (publickey)`                           | autossh key not authorized on `cnics_data` VM                                                  | add the key to `~autossh/.ssh/authorized_keys` (prereq 5)                                        |
 | `ss` empty; gateway IP missing from `ip addr`                     | docker `internal` network not (re)created with the pinned subnet                               | recreate the network (prereq 1)                                                                  |
 | Fast `Access denied for user … '127.0.0.1'`/`'localhost'`         | bridge user grant host is wrong                                                                 | grant for `'<user>'@'localhost'` (prereq 6) — the tunnel arrives from `127.0.0.1`               |
+| Second stack on a shared tunnel: `Can't connect … (110)`, first stack fine | no `INPUT` rule for the second stack's subnet, or the first stack's network is down (`docker compose down`) | add the rule for the second subnet ([Sharing one tunnel](#sharing-one-tunnel-between-deployments-on-the-same-vm), step 3); bring the first stack up |
 | App: `<db>.patients_view doesn't exist`                           | `init/06` never completed against that DB (interrupted, or not run on an existing volume)       | re-run `init/06`; confirm `DB_NAME` matches the DB the app queries                               |
 
 Inspect the autossh tunnel state with:

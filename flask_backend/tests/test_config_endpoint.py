@@ -13,6 +13,7 @@ import pytest
 _CONTROL_VARS = (
     "STUDY_TYPE",
     "STUDY_TITLE",
+    "STUDY_LABEL",
     "ENABLE_SCRUBBING",
     "ENABLE_SCREENING",
     "ENABLE_SENDING",
@@ -246,3 +247,28 @@ def test_config_review_form_scans(admin_client, monkeypatch):
     monkeypatch.setenv("STUDY_TYPE", "scans")
     data = admin_client.get("/api/config").get_json()["data"]
     assert data["review_form"] == "scans"
+
+
+# --- dischargesummaries (spec 013, contracts/api-and-config.md) -------------
+
+
+def test_config_endpoint_returns_dischargesummaries_config(admin_client, monkeypatch):
+    _clear_controls(monkeypatch)
+    monkeypatch.setenv("STUDY_TYPE", "dischargesummaries")
+    monkeypatch.setenv("STUDY_LABEL", "Discharge Summary")
+    monkeypatch.setenv("STUDY_TITLE", "Discharge Summaries Validation")
+
+    res = admin_client.get("/api/config")
+
+    assert res.status_code == 200
+    data = res.get_json()["data"]
+    assert data["study_type"] == "dischargesummaries"
+    assert data["study_label"] == "Discharge Summary"
+    assert data["study_title"] == "Discharge Summaries Validation"
+    assert data["review_form"] == "dischargesummaries"
+    assert data["workflow"] == {
+        "scrubbing": True,
+        "screening": False,
+        "sending": False,
+        "reviewer_count": 1,
+    }

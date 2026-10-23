@@ -21,17 +21,21 @@
  * and `isVtePage` branching: there is one page and one route.
  */
 
+import DischargesummariesReviewForm from '../../studies/dischargesummaries/DischargesummariesReviewForm'
+import DischargesummariesReviewSummary from '../../studies/dischargesummaries/DischargesummariesReviewSummary'
 import MciReviewForm from '../../studies/mci/MciReviewForm'
 import MciReviewSummary from '../../studies/mci/MciReviewSummary'
 import ScansReviewForm from '../../studies/scans/ScansReviewForm'
 import ScansReviewSummary from '../../studies/scans/ScansReviewSummary'
 
 const REVIEW_FORMS = {
+  dischargesummaries: DischargesummariesReviewForm,
   mci: MciReviewForm,
   scans: ScansReviewForm,
 }
 
 const REVIEW_SUMMARIES = {
+  dischargesummaries: DischargesummariesReviewSummary,
   mci: MciReviewSummary,
   scans: ScansReviewSummary,
 }

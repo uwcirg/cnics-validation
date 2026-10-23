@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { showToast } from '../components/Toast'
+import { checkPacketAccess } from '../components/packetAccess'
 
 function EventDownload() {
   const [searchParams] = useSearchParams()
@@ -17,7 +18,14 @@ function EventDownload() {
     
     try {
       const url = `${apiUrl}/api/events/download/${eventId}`
-      
+      // A refused download (403/404) would otherwise be saved as a file.
+      const refusal = await checkPacketAccess(url)
+      if (refusal) {
+        setDownloadError(refusal)
+        showToast(refusal, 'error')
+        return
+      }
+
       // Create a temporary link element for download
       const link = document.createElement('a')
       link.href = url
