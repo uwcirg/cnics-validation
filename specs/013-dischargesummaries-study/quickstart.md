@@ -38,8 +38,6 @@ DB_ROOT_PASSWORD=<new secret>
 INTERNAL_SUBNET=172.31.223.0/24     # must not overlap scans' 172.31.222.0/24
 INTERNAL_GATEWAY=172.31.223.1
 
-CLINICAL_SITES=<site codes for this study>
-```
 
 Leave the four workflow settings (`ENABLE_SCRUBBING`, `ENABLE_SCREENING`,
 `ENABLE_SENDING`, `REVIEWER_COUNT`) **unset**. The study type supplies:
