@@ -50,3 +50,46 @@ def admin_client():
         client = app_mod.app.test_client()
         client.environ_base["HTTP_X_REMOTE_USER"] = "test"
         yield client
+
+
+@pytest.fixture
+def client_as():
+    """Factory for a test client authenticated as a chosen identity.
+
+    ``client_as(id=42, uploader=True, site="TEST")`` returns a client whose
+    requests resolve to that user. Unnamed role flags default to False, so a
+    test states exactly the roles it relies on. Calling it again switches
+    the identity; the patch is removed when the test ends.
+    """
+    app_mod = importlib.import_module("flask_backend.app")
+    app_mod.keycloak_openid = None
+    active = []
+
+    def _make(**user):
+        identity = {
+            "id": 1,
+            "username": "test-user",
+            "admin": False,
+            "uploader": False,
+            "reviewer": False,
+            "third_reviewer": False,
+            "site": "TEST",
+            **user,
+        }
+
+        def _load():
+            g.auth_user = dict(identity)
+            return g.auth_user
+
+        while active:
+            active.pop().stop()
+        ctx = patch.object(app_mod, "_load_user_from_remote_header", _load)
+        ctx.start()
+        active.append(ctx)
+        client = app_mod.app.test_client()
+        client.environ_base["HTTP_X_REMOTE_USER"] = identity["username"]
+        return client
+
+    yield _make
+    while active:
+        active.pop().stop()

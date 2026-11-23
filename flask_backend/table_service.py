@@ -496,6 +496,21 @@ def _empty_phase() -> tuple[list[dict], int]:
     return [], 0
 
 
+def _pre_assignment_stages(cfg) -> list[str]:
+    """Return the `events` date columns every enabled pre-assignment stage sets.
+
+    Upload is always required; scrub and screen only when their control is
+    on. Shared by the ready-to-assign queue and the assignment guard, so the
+    two cannot disagree (spec 013 D2).
+    """
+    stages = ["upload_date"]
+    if cfg.scrubbing:
+        stages.append("scrub_date")
+    if cfg.screening:
+        stages.append("screen_date")
+    return stages
+
+
 def _ready_to_assign_predicate() -> str:
     """Return the flag-aware "ready to assign" SQL predicate.
 
@@ -508,11 +523,7 @@ def _ready_to_assign_predicate() -> str:
     user input — so this string is safe to interpolate.
     """
     cfg = study_config.get_workflow_config()
-    parts = ["e.upload_date IS NOT NULL"]
-    if cfg.scrubbing:
-        parts.append("e.scrub_date IS NOT NULL")
-    if cfg.screening:
-        parts.append("e.screen_date IS NOT NULL")
+    parts = [f"e.{column} IS NOT NULL" for column in _pre_assignment_stages(cfg)]
     parts.append("e.assign_date IS NULL")
     return " AND ".join(parts)
 
@@ -680,6 +691,11 @@ def assign_events(event_ids: list[int], reviewer_id: int, slot: str, assigner_id
     so a per-slot call would drop the event from the queue before the second
     reviewer could be assigned. ``reviewer2_id`` is ignored for the
     ``second``/``third`` slots; existing positional callers are unaffected.
+
+    A ``first`` assignment is refused, for the whole batch and before any row
+    changes, if an event has not passed every enabled pre-assignment stage
+    (spec 013 D2). Before that, any event id was accepted and only the UI
+    kept unready events off the assign page.
     """
     if slot not in {"first", "second", "third"}:
         raise ValidationError("slot must be one of: first, second, third")
@@ -694,6 +710,17 @@ def assign_events(event_ids: list[int], reviewer_id: int, slot: str, assigner_id
             .filter(models.Events.id.in_(event_ids))
             .all()
         )
+        if slot == "first":
+            # spec 013 D2: the same stages as the ready-to-assign queue. Not
+            # `assign_date`, so a future reassignment path is not blocked.
+            stages = _pre_assignment_stages(study_config.get_workflow_config())
+            unready = sorted(
+                int(e.id) for e in events
+                if any(getattr(e, column, None) is None for column in stages)
+            )
+            if unready:
+                ids = ", ".join(str(i) for i in unready)
+                raise ValidationError(f"These events are not ready for assignment: {ids}")
         for e in events:
             if slot == "first":
                 e.reviewer1_id = reviewer_id

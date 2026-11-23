@@ -136,7 +136,8 @@ paths:
                     type: string
                   review_form:
                     type: string
-                    description: review form id from the study module (mci, scans)
+                    description: review form id from the study module (mci, scans,
+                      dischargesummaries)
                   workflow:
                     type: object
                     properties:
@@ -154,7 +155,29 @@ paths:
   /api/auth/dev_seed_users: {}
   /api/reviewer/awaiting: {}
   /api/events/export: {}
-  /api/events/download/{int:event_id}: {}
+  /api/events/download/{int:event_id}:
+    get:
+      parameters:
+      - name: event_id
+        in: path
+        type: integer
+        required: true
+        description: ID of the event
+      responses:
+        '200':
+          description: 'The packet as an attachment: the scrubbed copy when one exists,
+            otherwise the packet as submitted
+
+            '
+        '403':
+          description: 'A packet exists but the caller may not have it: {"error":
+            "You do not have access to this event''s packet"}
+
+            '
+        '404':
+          description: Event not found, or no packet the caller could receive exists
+        '500':
+          description: The event could not be read (non-admin callers)
   /api/criteria: {}
   /api/solicitations: {}
   /api/events/{int:event_id}/screen:
@@ -403,7 +426,36 @@ paths:
       responses:
         '403':
           description: admin only (spec 012 FR-033)
-  /api/events/{int:event_id}/upload_raw: {}
+  /api/events/{int:event_id}/upload_raw:
+    post:
+      consumes:
+      - multipart/form-data
+      parameters:
+      - name: event_id
+        in: path
+        type: integer
+        required: true
+        description: ID of the event
+      - name: chart_file
+        in: formData
+        type: file
+        required: true
+        description: The packet (zip, pdf, doc or docx)
+      responses:
+        '200':
+          description: Packet saved; event status is `uploaded`
+        '400':
+          description: No file, or an unsupported file type
+        '403':
+          description: Caller is not an admin and not at the event's patient site
+        '404':
+          description: Event not found
+        '409':
+          description: 'Non-admin caller and the event is past upload (status not
+            `created` or `uploaded`): {"error": "This event has moved past upload;
+            ask an administrator."} Nothing is saved.
+
+            '
   /api/events/{int:event_id}/mark_no_packet:
     post:
       parameters:
@@ -517,7 +569,12 @@ paths:
                   updated:
                     type: integer
         '400':
-          description: Invalid assignment request
+          description: 'Invalid assignment request. Also returned, with nothing changed,
+            for a `first` assignment when any event has not passed every enabled pre-assignment
+            stage (uploaded; scrubbed if scrubbing is on; screened if screening is
+            on): "These events are not ready for assignment: 12, 15" (spec 013 D2).
+
+            '
         '401':
           description: Not authenticated
         '403':

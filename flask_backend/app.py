@@ -830,7 +830,7 @@ def get_config():
                   type: string
                 review_form:
                   type: string
-                  description: review form id from the study module (mci, scans)
+                  description: review form id from the study module (mci, scans, dischargesummaries)
                 workflow:
                   type: object
                   properties:
@@ -1083,7 +1083,8 @@ def events_export():
 
     Query param format=csv defaults to CSV. Response is text/csv. The
     columns are this study's (spec 012): `mci` writes the MI export
-    unchanged; `scans` writes one row per review region. Returns 503 if the
+    unchanged; `scans` writes one row per review region; `dischargesummaries`
+    writes one row per event (spec 013 Phase A). Returns 503 if the
     study's review tables are not migrated.
     """
     # The export's columns are study-specific (the review columns come from
@@ -1173,44 +1174,33 @@ def _find_raw_packet(event_id: int, file_number) -> Optional[str]:
     return max(matches, key=os.path.getmtime)
 
 
-def _event_file_number(event_id: int):
-    """The event's recorded `file_number`, or None if unavailable.
+def _may_download_event_packet(session, event, auth_user, raw: bool) -> bool:
+    """Whether `auth_user` may download this event's packet (spec 013 D4).
 
-    A database fault must not turn a present file into a 404, so this
-    degrades to None and lets the caller fall back to the glob.
+    `raw` is True when the file to serve is the packet as submitted, False
+    for the scrubbed copy.
+
+    - Admins: always.
+    - Uploaders at the event's site: always. They supplied the original.
+    - Reviewers assigned to the event (any slot): the scrubbed copy. They get
+      the raw packet only when scrubbing is off (the `scans` profile), where
+      no scrubbed copy is made and the raw packet *is* the packet.
+    - Anyone else: never.
+
+    Before spec 013 the scrubbed copy went to any signed-in user, and with
+    scrubbing on the raw packet went to any admin or uploader, with no site
+    or assignment check.
     """
-    try:
-        session = models.get_session()
-    except Exception:
-        app.logger.exception("Could not open a session to read file_number for event %s", event_id)
-        return None
-    try:
-        event = session.query(models.Events).get(event_id)
-        return getattr(event, "file_number", None) if event is not None else None
-    except Exception:
-        app.logger.exception("Could not read file_number for event %s", event_id)
-        return None
-    finally:
-        session.close()
-
-
-def _may_receive_raw_packet(auth_user) -> bool:
-    """Whether this caller may be handed the packet as submitted.
-
-    Where scrubbing is part of the workflow, the raw packet still carries the
-    identifiers the scrubber removes, so it is not the file a reviewer or
-    screener is meant to open — they get the scrubbed one or nothing. Where
-    the deployment has scrubbing switched off (the `scans` profile), no
-    scrubbed file is ever produced and the raw packet *is* the packet, so it
-    is served to everyone who can reach the endpoint.
-
-    Uploaders and admins are the roles that upload and scrub, so they are the
-    ones entitled to the unscrubbed file in either configuration.
-    """
-    if not get_workflow_config().scrubbing:
-        return True
     auth_user = auth_user or {}
-    return bool(auth_user.get("admin")) or bool(auth_user.get("uploader"))
+    if bool(auth_user.get('admin')):
+        return True
+    if bool(auth_user.get('uploader')) and _uploader_may_act_on_event(session, event, auth_user):
+        return True
+    user_id = auth_user.get('id')
+    assigned = bool(user_id) and user_id in (
+        event.reviewer1_id, event.reviewer2_id, event.reviewer3_id,
+    )
+    return assigned and (not raw or not get_workflow_config().scrubbing)
 
 
 @app.route('/api/events/download/<int:event_id>')
@@ -1218,18 +1208,68 @@ def _may_receive_raw_packet(auth_user) -> bool:
 def events_download(event_id: int):
     """Stream this event's chart packet as an attachment.
 
-    Serves the scrubbed packet when one exists; otherwise the packet as
-    submitted, for callers entitled to it (see `_may_receive_raw_packet`).
-    """
-    path = _find_scrubbed_packet(event_id)
-    if path is None:
-        raw = _find_raw_packet(event_id, _event_file_number(event_id))
-        if raw is not None and _may_receive_raw_packet(getattr(g, 'auth_user', None)):
-            path = raw
+    Serves the scrubbed packet when one exists, otherwise the packet as
+    submitted, to callers allowed to have that file
+    (`_may_download_event_packet`). A file the caller may not have is a 403,
+    so the page can say why; no file at all is a 404.
 
-    if path is None:
-        app.logger.info("No downloadable packet found for event %s", event_id)
-        abort(404)
+    Observed before spec 013 (research D4): no per-event check. Now an
+    uploader at another site, or a reviewer not assigned to the event, is
+    refused.
+    ---
+    parameters:
+      - name: event_id
+        in: path
+        type: integer
+        required: true
+        description: ID of the event
+    responses:
+      200:
+        description: >
+          The packet as an attachment: the scrubbed copy when one exists,
+          otherwise the packet as submitted
+      403:
+        description: >
+          A packet exists but the caller may not have it:
+          {"error": "You do not have access to this event's packet"}
+      404:
+        description: Event not found, or no packet the caller could receive exists
+      500:
+        description: The event could not be read (non-admin callers)
+    """
+    auth_user = getattr(g, 'auth_user', None) or {}
+    session = None
+    event = None
+    db_fault = False
+    try:
+        session = models.get_session()
+        event = session.query(models.Events).get(event_id)
+    except Exception:
+        app.logger.exception("Could not read event %s for download", event_id)
+        db_fault = True
+
+    try:
+        if db_fault:
+            # Access is per event, so without the row only an admin can be
+            # served. The admin still gets the file, found by glob.
+            if not bool(auth_user.get('admin')):
+                return jsonify({'error': 'Failed to read the event'}), 500
+        elif event is None:
+            abort(404)
+
+        path = _find_scrubbed_packet(event_id)
+        raw = path is None
+        if raw:
+            path = _find_raw_packet(event_id, getattr(event, 'file_number', None))
+        if path is None:
+            app.logger.info("No downloadable packet found for event %s", event_id)
+            abort(404)
+
+        if not _may_download_event_packet(session, event, auth_user, raw=raw):
+            return jsonify({'error': "You do not have access to this event's packet"}), 403
+    finally:
+        if session is not None:
+            session.close()
 
     from flask import send_file
     name = os.path.basename(path)
@@ -1987,7 +2027,40 @@ def events_upload_raw(event_id: int):
     uploader_id, upload_date, and sets status to 'uploaded'.
 
     Upload is restricted to uploaders at the same site as the event's patient
-    (or admins).
+    (or admins). A non-admin may upload only while the event is `created` or
+    `uploaded`; later, the endpoint returns 409 and saves nothing.
+
+    Observed before spec 013 (research D3): no status check. A same-site
+    uploader could upload at any status, which reset a scrubbed, assigned or
+    done event to `uploaded` while its scrub and assign dates stayed set.
+    ---
+    consumes:
+      - multipart/form-data
+    parameters:
+      - name: event_id
+        in: path
+        type: integer
+        required: true
+        description: ID of the event
+      - name: chart_file
+        in: formData
+        type: file
+        required: true
+        description: The packet (zip, pdf, doc or docx)
+    responses:
+      200:
+        description: Packet saved; event status is `uploaded`
+      400:
+        description: No file, or an unsupported file type
+      403:
+        description: Caller is not an admin and not at the event's patient site
+      404:
+        description: Event not found
+      409:
+        description: >
+          Non-admin caller and the event is past upload (status not `created`
+          or `uploaded`): {"error": "This event has moved past upload; ask an
+          administrator."} Nothing is saved.
     """
     try:
         file = request.files.get('chart_file')
@@ -2016,6 +2089,12 @@ def events_upload_raw(event_id: int):
             auth_user = getattr(g, 'auth_user', None) or {}
             if not _uploader_may_act_on_event(session, e, auth_user):
                 return jsonify({'error': 'Uploader must match patient site'}), 403
+
+            # spec 013 D3: once past upload, only an admin may replace the file.
+            if not bool(auth_user.get('admin')) and e.status not in ('created', 'uploaded'):
+                return jsonify({
+                    'error': 'This event has moved past upload; ask an administrator.'
+                }), 409
 
             # Generate file number (legacy behavior)
             file_number = random.randint(1, 1_000_000_000)
@@ -2363,7 +2442,12 @@ def events_assign_many():
                 updated:
                   type: integer
       400:
-        description: Invalid assignment request
+        description: >
+          Invalid assignment request. Also returned, with nothing changed, for
+          a `first` assignment when any event has not passed every enabled
+          pre-assignment stage (uploaded; scrubbed if scrubbing is on;
+          screened if screening is on): "These events are not ready for
+          assignment: 12, 15" (spec 013 D2).
       401:
         description: Not authenticated
       403:

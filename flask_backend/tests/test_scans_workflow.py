@@ -5,6 +5,7 @@ eligibility/queue predicates in `table_service`, exercised with mocked
 sessions so no database is required.
 """
 
+import datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -39,7 +40,10 @@ def _mock_rows_session():
 def test_first_assignment_sets_status_assigned(mock_get_session):
     """First-reviewer assignment moves the event into the `assigned` state."""
     event = SimpleNamespace(
-        id=1, reviewer1_id=None, assigner_id=None, assign_date=None, status="uploaded"
+        id=1, reviewer1_id=None, assigner_id=None, assign_date=None, status="uploaded",
+        # Every stage done, so the readiness guard (spec 013 D2) lets it through.
+        upload_date=datetime.date.today(), scrub_date=datetime.date.today(),
+        screen_date=datetime.date.today(),
     )
     session = MagicMock()
     session.query.return_value.filter.return_value.all.return_value = [event]

@@ -9,10 +9,25 @@ These tests use mocked sessions and the auto-admin `admin_client` fixture
 (see conftest.py); no database is required.
 """
 
+import datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 import flask_backend.table_service as ts
+
+TODAY = datetime.date(2026, 10, 23)
+
+
+def _ready_event(event_id, **dates):
+    """An event that has passed every pre-assignment stage, unless `dates`
+    blanks one (e.g. ``scrub_date=None``)."""
+    fields = dict(upload_date=TODAY, scrub_date=TODAY, screen_date=TODAY)
+    fields.update(dates)
+    return SimpleNamespace(id=event_id, reviewer1_id=None, reviewer2_id=None,
+                           assigner_id=None, assign_date=None, status="screened",
+                           **fields)
 
 
 # --- Service layer: both reviewers set atomically (T009) --------------------
@@ -22,12 +37,7 @@ import flask_backend.table_service as ts
 def test_assign_events_two_reviewer_atomic(mock_get_session):
     """slot='first' with reviewer2_id sets both reviewers, audit, and status
     on every event within a single commit."""
-    events = [
-        SimpleNamespace(id=1, reviewer1_id=None, reviewer2_id=None,
-                        assigner_id=None, assign_date=None, status="uploaded"),
-        SimpleNamespace(id=2, reviewer1_id=None, reviewer2_id=None,
-                        assigner_id=None, assign_date=None, status="uploaded"),
-    ]
+    events = [_ready_event(1), _ready_event(2)]
     session = MagicMock()
     session.query.return_value.filter.return_value.all.return_value = events
     mock_get_session.return_value = session
@@ -93,3 +103,102 @@ def test_assign_many_forwards_reviewer2_id(mock_assign, admin_client, monkeypatc
     assert res.status_code == 200
     assert res.get_json() == {"data": {"updated": 1}}
     assert mock_assign.call_args.kwargs.get("reviewer2_id") == 9
+
+
+# --- Assignment readiness guard (spec 013 D2) -------------------------------
+#
+# Assignment used to accept any event id. Now a first-slot assignment refuses
+# the whole batch unless every event has passed every enabled pre-assignment
+# stage. These tests run through the endpoint with a mocked session.
+
+
+def _set_profile(monkeypatch, study):
+    for var in ("ENABLE_SCRUBBING", "ENABLE_SCREENING", "ENABLE_SENDING", "REVIEWER_COUNT"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("STUDY_TYPE", study)
+
+
+def _assign_first(client, ids):
+    return client.post("/api/events/assign_many", json={
+        "event_ids": ids, "reviewer_id": 7, "slot": "first",
+    })
+
+
+@pytest.mark.parametrize("blank", ["upload_date", "scrub_date"])
+@patch("flask_backend.table_service.get_session")
+def test_dischargesummaries_refuses_batch_with_an_unready_event(
+    mock_get_session, admin_client, monkeypatch, blank
+):
+    _set_profile(monkeypatch, "dischargesummaries")
+    events = [_ready_event(12), _ready_event(15, **{blank: None}), _ready_event(18, **{blank: None})]
+    session = MagicMock()
+    session.query.return_value.filter.return_value.all.return_value = events
+    mock_get_session.return_value = session
+
+    res = _assign_first(admin_client, [12, 15, 18])
+
+    assert res.status_code == 400
+    assert res.get_json()["error"] == "These events are not ready for assignment: 15, 18"
+    session.commit.assert_not_called()
+    for e in events:
+        assert e.reviewer1_id is None
+        assert e.status == "screened"
+
+
+@patch("flask_backend.table_service.get_session")
+def test_dischargesummaries_assigns_a_scrubbed_batch(mock_get_session, admin_client, monkeypatch):
+    _set_profile(monkeypatch, "dischargesummaries")
+    events = [_ready_event(1, screen_date=None), _ready_event(2, screen_date=None)]
+    session = MagicMock()
+    session.query.return_value.filter.return_value.all.return_value = events
+    mock_get_session.return_value = session
+
+    res = _assign_first(admin_client, [1, 2])
+
+    assert res.status_code == 200
+    assert res.get_json() == {"data": {"updated": 2}}
+    assert all(e.status == "assigned" for e in events)
+
+
+@patch("flask_backend.table_service.get_session")
+def test_scans_assigns_an_uploaded_unscrubbed_event(mock_get_session, admin_client, monkeypatch):
+    """Scrubbing is off for scans, so an uploaded event is ready."""
+    _set_profile(monkeypatch, "scans")
+    event = _ready_event(1, scrub_date=None, screen_date=None)
+    session = MagicMock()
+    session.query.return_value.filter.return_value.all.return_value = [event]
+    mock_get_session.return_value = session
+
+    res = _assign_first(admin_client, [1])
+
+    assert res.status_code == 200
+    assert event.status == "assigned"
+
+
+@patch("flask_backend.table_service.get_session")
+def test_mci_refuses_an_unscreened_event(mock_get_session, admin_client, monkeypatch):
+    _set_profile(monkeypatch, "mci")
+    event = _ready_event(4, screen_date=None)
+    session = MagicMock()
+    session.query.return_value.filter.return_value.all.return_value = [event]
+    mock_get_session.return_value = session
+
+    res = _assign_first(admin_client, [4])
+
+    assert res.status_code == 400
+    assert "4" in res.get_json()["error"]
+    session.commit.assert_not_called()
+
+
+@patch("flask_backend.table_service.get_session")
+def test_scans_refuses_an_event_with_no_upload(mock_get_session, admin_client, monkeypatch):
+    """Upload is never optional, even when every other stage is off."""
+    _set_profile(monkeypatch, "scans")
+    event = _ready_event(3, upload_date=None, scrub_date=None, screen_date=None)
+    session = MagicMock()
+    session.query.return_value.filter.return_value.all.return_value = [event]
+    mock_get_session.return_value = session
+
+    res = _assign_first(admin_client, [3])
+
+    assert res.status_code == 400

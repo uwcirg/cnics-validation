@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { resolveReviewSummary } from '../components/review/reviewForms'
+import PacketDownloadLink from '../components/PacketDownloadLink'
 
 function EventEdit({ auth, reviewForm }) {
   const [searchParams] = useSearchParams()
@@ -173,9 +174,8 @@ function EventEdit({ auth, reviewForm }) {
 
       {details && (
         <p>
-          <a 
-            href={`${apiUrl}/api/events/download/${eventId}`} 
-            download=""
+          <PacketDownloadLink
+            href={`${apiUrl}/api/events/download/${eventId}`}
             style={{ 
               display: 'inline-block',
               padding: '8px 16px',
@@ -187,7 +187,7 @@ function EventEdit({ auth, reviewForm }) {
             }}
           >
             📥 Download Charts
-          </a>
+          </PacketDownloadLink>
         </p>
       )}
 
@@ -269,7 +269,9 @@ function EventEdit({ auth, reviewForm }) {
                     <tr><th>Assign Date:</th><td>{details.assign_date}</td></tr>
                     <tr><th>Assigner:</th><td>{details.assigner_username || ''}</td></tr>
                     <tr><th>Reviewer 1:</th><td>{details.reviewer1_username || ''}</td></tr>
-                    <tr><th>Reviewer 2:</th><td>{details.reviewer2_username || ''}</td></tr>
+                    {/* Single-reviewer studies never fill slot 2, so an empty
+                        row would only suggest a missing second review (spec 013). */}
+                    {details.reviewer2_username && <tr><th>Reviewer 2:</th><td>{details.reviewer2_username}</td></tr>}
                   </>)}
                   {details.send_date && (<>
                     <tr><th>Send Date:</th><td>{details.send_date}</td></tr>

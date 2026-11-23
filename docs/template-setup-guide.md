@@ -3,7 +3,9 @@
 > **Current implementation status (2026-05-08)**
 >
 > - **MCI and `scans` are implemented** (spec 012 wired the per-study
->   schema, model, and review-form layers). Worked examples for VTE,
+>   schema, model, and review-form layers). **`dischargesummaries` is
+>   usable for upload and scrub** (spec 013, Phase A); its review form
+>   arrives in Phase B. Worked examples for VTE,
 >   CVA, Heart Failure, and AFIB describe how those studies *would* be
 >   wired up when each is brought online; their per-study files are
 >   dormant scaffolding. See `### 2. Study-Specific Components` below.
@@ -126,7 +128,8 @@ ENABLE_CARDIAC_INTERVENTIONS=true  # MCI-specific feature
 
 The three sub-sections below describe the **actual current state** of
 per-study artifacts in the repo. Since spec 012, each layer selects the
-deployment's study by `STUDY_TYPE`. `mci` and `scans` are live. VTE, CVA,
+deployment's study by `STUDY_TYPE`. `mci` and `scans` are live, and
+`dischargesummaries` is live except for its review form (spec 013 Phase A). VTE, CVA,
 HF, and AFIB files exist as **dormant** scaffolding, and a deployment of a
 dormant (or unknown) study falls back to `mci` at every layer, with a
 warning (constitution Principle IV, v1.5.1).
@@ -156,6 +159,8 @@ init/
 ├── studies/                       # Study-specific DDL. NOT auto-run.
 │   ├── mci.sql                    #   MI reviews + event_derived_datas.
 │   ├── scans.sql                  #   scans reviews + review_regions.
+│   ├── dischargesummaries.sql     #   reviews, shared columns only
+│                                  #   until Phase B (spec 013).
 │   └── vte.sql cva.sql hf.sql afib.sql
 │                                  #   Dormant: first line `-- DORMANT`,
 │                                  #   body wrapped in /* ... */.
@@ -191,6 +196,8 @@ flask_backend/
 │       │                          #   models + review form + export.
 │       ├── scans.py               # scans reviews/review_regions
 │       │                          #   models + review form + export.
+│       ├── dischargesummaries.py  # Phase A: refuses reviews until
+│       │                          #   the review form exists.
 │       └── vte.py cva.py hf.py afib.py
 │                                  # Dormant: class definitions are
 │                                  #   wrapped in a triple-quoted
@@ -224,6 +231,8 @@ frontend/src/
 └── studies/
     ├── mci/MciReviewForm.jsx      # Live: MI review form (spec 012).
     ├── scans/ScansReviewForm.jsx  # Live: scans review form (spec 012).
+    ├── dischargesummaries/        # Phase A: "not available yet"
+    │                              #   notice (spec 013).
     ├── cva/                       # CVA scaffolding (1 file:
     │                              #   EventReview.jsx, wrapped in a
     │                              #   /* ... */ gate).
@@ -607,6 +616,91 @@ the third-review states) remain defined in the shared schema and state
 machine. A `scans` deployment simply never enters them ("bypass means
 *not entered* for this deployment, not *deleted from the system*").
 
+### Example: `dischargesummaries` beside `scans` on the same VM
+
+Site uploaders upload a redacted hospital discharge summary, an admin
+uploads a scrubbed copy, an admin assigns one reviewer, and that review
+completes the event: `created → uploaded → scrubbed → assigned →
+reviewer1_done → done`. `STUDY_TYPE=dischargesummaries` supplies the
+profile (scrub on; screen, send and second reviewer off), so leave the four
+workflow controls unset. This deployment runs on the `scans` dev and prod
+VMs, next to the `scans` stack. Only the differences from `scans` and from
+`default.env` are shown; the full walk-through is
+`specs/013-dischargesummaries-study/quickstart.md`.
+
+> **Prod gate.** Until Phase B (the review form) is merged, use prod for
+> upload and scrub only. Reviewers see "The review form for this study is
+> not available yet", and the backend refuses review submissions.
+
+#### Environment Configuration
+```bash
+STUDY_TYPE=dischargesummaries
+STUDY_TITLE=Discharge Summaries Validation
+STUDY_LABEL=Discharge Summary           # headings and emails; else "DISCHARGESUMMARIES"
+
+# Must differ from the scans deployment on the same VM:
+COMPOSE_PROJECT_NAME=cnics-dischargesummaries
+EXTERNAL_PORT=3010
+BACKEND_EXTERNAL_PORT=3011
+SERVER_NAME=dischargesummaries.<domain>
+FRONTEND_ORIGIN=https://dischargesummaries.<domain>
+DB_NAME=cnics_dischargesummaries
+DB_USER=ds_user
+DB_PASSWORD=<new secret>
+DB_ROOT_PASSWORD=<new secret>
+INTERNAL_SUBNET=172.31.223.0/24         # scans keeps the default 172.31.222.0/24
+INTERNAL_GATEWAY=172.31.223.1
+```
+
+**Patient roster bridge.** Dev (socket mode) uses the same
+`CNICS_DATA_SOCKET_DIR` as `scans`; nothing else changes. Prod (tcp mode)
+shares the `scans` SSH tunnel: keep `CNICS_DATA_DB_HOST=172.31.222.1` (the
+`scans` gateway, where the tunnel listens), add one host firewall rule for
+`172.31.223.0/24`, and use `docker compose stop`, never `down`, on `scans`
+while this stack is live. See
+[Sharing one tunnel](cnics_data-bridge.md#sharing-one-tunnel-between-deployments-on-the-same-vm).
+
+#### Start-up checks
+```bash
+docker compose config | grep -A3 ipam                    # 172.31.223.0/24 / 172.31.223.1
+docker compose up -d --build
+docker compose logs mariadb | grep 04-study-schema       # "Applied .../dischargesummaries.sql"
+docker compose logs backend | grep -i "No usable study module"   # expect nothing
+```
+A warning that `mci.sql` was applied instead means `STUDY_TYPE` is wrong.
+Stop and fix it before any data goes in.
+
+**Apache.** Copy the `scans` vhost; change the server name to this
+`SERVER_NAME` and the proxy targets to this `EXTERNAL_PORT` /
+`BACKEND_EXTERNAL_PORT`. Keep the same LDAP basic-auth and `X-Remote-User`
+forwarding.
+
+#### Data-isolation check before go-live (required)
+
+The constitution's "Data isolation audits" gate requires both checks before
+the deployment goes live. Record the results in the deployment notes.
+
+1. The database user sees only this deployment's database:
+   ```bash
+   docker compose exec mariadb sh -c 'mariadb -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" -e "SHOW DATABASES;"'
+   ```
+   Expect `information_schema` and `cnics_dischargesummaries` only.
+2. The web origin is distinct from every other deployment on the VM:
+   ```bash
+   grep -H '^\(SERVER_NAME\|FRONTEND_ORIGIN\)=' /srv/*/.env    # each value appears once
+   ```
+
+#### Study-Specific Artifacts
+
+- `init/studies/dischargesummaries.sql`: `reviews` with the shared columns
+  only (`id`, `event_id`, `reviewer_id`, `created`). Phase B adds the answer
+  columns, with a migration for Phase A databases.
+- `flask_backend/models/studies/dischargesummaries.py`: refuses review
+  submissions until Phase B; exports one row per event.
+- `frontend/src/studies/dischargesummaries/`: the "not available yet" notice.
+- Reviewers get no assignment email, since sending is off (as for `scans`).
+  They find new work in their review queue.
+
 ## Best Practices for Multi-Study Deployments
 
 ### 1. Maintain Core Workflow
@@ -694,6 +788,11 @@ directories, each with its own `.env`. Differentiate them by:
 2. **Host ports** — set distinct `EXTERNAL_PORT` (web/frontend
    service) and `BACKEND_EXTERNAL_PORT` (Flask API service) in
    each `.env`. Two containers cannot bind the same host port.
+3. **Network range** — set distinct, non-overlapping
+   `INTERNAL_SUBNET` / `INTERNAL_GATEWAY` in each `.env` (one stack
+   may keep the defaults). Two compose networks on one host cannot
+   share an address range. In tcp bridge mode, see
+   [Sharing one tunnel](cnics_data-bridge.md#sharing-one-tunnel-between-deployments-on-the-same-vm).
 
 Then run `docker compose up -d` from each deployment directory
 independently. The two stacks are fully isolated; commands run from

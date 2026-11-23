@@ -241,3 +241,35 @@ def test_other_slot_reviewed_does_not_block(mock_get_session, admin_client, monk
 
     assert res.status_code == 200
     assert event.status == "reviewer2_done"
+
+
+# --- dischargesummaries, Phase A (spec 013, research D5) --------------------
+
+
+@patch("flask_backend.models.get_session")
+def test_dischargesummaries_review_is_refused_in_phase_a(mock_get_session, admin_client, monkeypatch):
+    """The review questions are not defined yet, so every submission is refused."""
+    monkeypatch.setenv("STUDY_TYPE", "dischargesummaries")
+    monkeypatch.delenv("REVIEWER_COUNT", raising=False)
+    event = FakeEvent(reviewer1_id=1, status="assigned")
+    session = _RecordingSession(event)
+    mock_get_session.return_value = session
+
+    res = admin_client.post("/api/events/5/review", json={"answer": "anything"})
+
+    assert res.status_code == 400
+    assert res.get_json() == {"error": "The discharge-summary review form is not available yet."}
+    assert session.added == []
+    assert event.status == "assigned"
+    assert event.review1_date is None
+
+
+@patch("flask_backend.models.get_session")
+def test_dischargesummaries_review_get_returns_no_reviews(mock_get_session, admin_client, monkeypatch):
+    monkeypatch.setenv("STUDY_TYPE", "dischargesummaries")
+    mock_get_session.return_value = FakeSession(FakeEvent(reviewer1_id=1))
+
+    res = admin_client.get("/api/events/5/review")
+
+    assert res.status_code == 200
+    assert res.get_json()["data"]["reviews"] == []

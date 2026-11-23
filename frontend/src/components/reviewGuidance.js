@@ -103,6 +103,31 @@ const STUDY_GUIDANCE = {
       links: [],
     },
   },
+  // Discharge summaries (spec 013, research D7). The packet wording is a
+  // placeholder for the study owner to confirm.
+  dischargesummaries: {
+    packets: {
+      items: [
+        'The hospital discharge summary for the event',
+        'Please redact personal identifiers (name, birth date, medical record number) before uploading',
+      ],
+      links: [],
+    },
+    // Phase B adds { label: 'View review instructions',
+    // href: '/files/instructions/dischargesummaries.html', download: false }
+    // once the review questions are known. Until then the review page hides
+    // its instructions box.
+    instructions: {
+      items: [],
+      links: [],
+    },
+    // No scrubbing protocol document exists yet, so the scrubbing page shows
+    // no document area (spec 010, FR-016).
+    scrubbing: {
+      items: [],
+      links: [],
+    },
+  },
 }
 
 // The empty result used only when no entry matches and no `mci` fallback is

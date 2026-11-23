@@ -6,6 +6,7 @@ This guards the "bypass ≠ change" guarantee — adding `scans` must not alter
 the behavior of a study left at its defaults.
 """
 
+import datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -43,7 +44,10 @@ def test_full_workflow_assignment_advances_status(mock_get_session, monkeypatch)
     """A full-workflow first assignment still advances status to `assigned`."""
     _clear_controls(monkeypatch)
     event = SimpleNamespace(
-        id=1, reviewer1_id=None, assigner_id=None, assign_date=None, status="screened"
+        id=1, reviewer1_id=None, assigner_id=None, assign_date=None, status="screened",
+        # Every stage done, so the readiness guard (spec 013 D2) lets it through.
+        upload_date=datetime.date.today(), scrub_date=datetime.date.today(),
+        screen_date=datetime.date.today(),
     )
     session = MagicMock()
     session.query.return_value.filter.return_value.all.return_value = [event]

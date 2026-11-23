@@ -5,6 +5,7 @@ import GuidanceLinks from '../components/GuidanceLinks'
 import { resolveStudyDocuments } from '../components/reviewGuidance'
 import { resolveReviewForm } from '../components/review/reviewForms'
 import ReviewQueue from '../components/review/ReviewQueue'
+import PacketDownloadLink from '../components/PacketDownloadLink'
 
 function EventReview({ studyLabel, studyType, reviewForm, configResolved = true }) {
   const apiUrl = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || '')
@@ -90,9 +91,8 @@ function EventReview({ studyLabel, studyType, reviewForm, configResolved = true 
         <p>Review the packet for this event:</p>
         <ul>
           <li>
-            <a 
-              href={`${apiUrl}/api/events/download/${eventId}`} 
-              download=""
+            <PacketDownloadLink
+              href={`${apiUrl}/api/events/download/${eventId}`}
               style={{ 
                 display: 'inline-block',
                 padding: '6px 12px',
@@ -104,7 +104,7 @@ function EventReview({ studyLabel, studyType, reviewForm, configResolved = true 
               }}
             >
               Download charts for {headingText}
-            </a>
+            </PacketDownloadLink>
           </li>
         </ul>
 
