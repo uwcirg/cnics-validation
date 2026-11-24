@@ -148,7 +148,7 @@ description: "Task list for 014-packet-replace-review-edit"
 
 ### Tests for US2
 
-- [ ] T032 [P] [US2] Create `flask_backend/tests/test_review_edit.py` with the scans profile (`STUDY_TYPE=scans`, so reviewer_count is 1). Patch `_study_schema_error` to None and patch the study module's `replace_review` and `get_reviews` where needed.
+- [X] T032 [P] [US2] Create `flask_backend/tests/test_review_edit.py` with the scans profile (`STUDY_TYPE=scans`, so reviewer_count is 1). Patch `_study_schema_error` to None and patch the study module's `replace_review` and `get_reviews` where needed.
   - (a) The author (slot 1, `review1_date` set) PUTs a valid scans body → 200 with `modified`; `status` and `review1_date` are unchanged; `replace_review` is called with the parsed body.
   - (b) The same at `status='done'` → 200.
   - (c) An invalid body → 400 with `fields`.
@@ -157,27 +157,27 @@ description: "Task list for 014-packet-replace-review-edit"
   - (f) `replace_review` returns False → 409, same message.
   - (g) `GET /review` as the author → `mine.editable` is true, `mine.locked_reason` is None, `mine.answers` is the caller's own item, and `mine.modified` is present.
   - (h) `GET` as a non-admin never includes another reviewer's answers.
-- [ ] T033 [P] [US2] In `flask_backend/tests/test_scans_review.py`, add tests for `scans.replace_review` and `get_reviews`:
+- [X] T033 [P] [US2] In `flask_backend/tests/test_scans_review.py`, add tests for `scans.replace_review` and `get_reviews`:
   - `replace_review` replaces the `regions` set and sets `modified`, using a mocked session or the existing in-memory approach in that file;
   - `get_reviews` items include `modified` (an ISO string or None);
   - the export header includes `Last Edited` immediately after `Review Date`, and the row value is the ISO `modified` or empty.
 
 ### Implementation for US2
 
-- [ ] T034 [US2] In `flask_backend/app.py`, add `review_editable(e, slot, cfg) -> tuple[bool, Optional[str]]` beside `_reviewer_slot`, per data-model.md "Editability":
+- [X] T034 [US2] In `flask_backend/app.py`, add `review_editable(e, slot, cfg) -> tuple[bool, Optional[str]]` beside `_reviewer_slot`, per data-model.md "Editability":
   - not slot 1/2, or no own `reviewN_date` → `(False, None)`;
   - not `table_service.pre_assignment_complete(e, cfg)` → `(False, "This event's packet is being re-processed.")`;
   - `cfg.reviewer_count == 2` and the other slot's date is set → `(False, "Both reviews for this event are complete, so they can no longer be changed.")`;
   - otherwise `(True, None)`.
-- [ ] T035 [US2] In `flask_backend/models/studies/scans.py`:
+- [X] T035 [US2] In `flask_backend/models/studies/scans.py`:
   - add `replace_review(session, event_id, reviewer_id, parsed) -> bool`. It loads `Reviews` by `(event_id, reviewer_id)`, returns False if absent, sets `review.regions = [ReviewRegions(**entry) for entry in parsed]` and `review.modified = datetime.datetime.now()`, returns True, and does not commit;
   - in `get_reviews`, select `rv.modified` and emit `"modified": iso-or-None` per review;
   - add `"Last Edited"` after `"Review Date"` in `EXPORT_HEADINGS`, add `rv.modified AS modified` to `_EXPORT_SQL`, and add `"modified"` after `"review_date"` in the `export_csv` key tuple.
-- [ ] T036 [P] [US2] In `flask_backend/models/studies/dischargesummaries.py`:
+- [X] T036 [P] [US2] In `flask_backend/models/studies/dischargesummaries.py`:
   - add `replace_review`, which raises `RuntimeError("dischargesummaries reviews cannot be stored until Phase B")`;
   - add `"Last Edited"` after the review-date heading in `EXPORT_HEADINGS`, with an empty cell per row in `export_csv`;
   - update the module docstring.
-- [ ] T037 [US2] Add `PUT /api/events/<int:event_id>/review` to `flask_backend/app.py` as `events_review_put`, with `@requires_auth` and `@requires_any_role('reviewer', 'admin')` (contracts/api.md, research D6). The flow mirrors POST:
+- [X] T037 [US2] Add `PUT /api/events/<int:event_id>/review` to `flask_backend/app.py` as `events_review_put`, with `@requires_auth` and `@requires_any_role('reviewer', 'admin')` (contracts/api.md, research D6). The flow mirrors POST:
   1. empty body → 400;
   2. `study.parse_review` → 400 on `ReviewValidationError`;
   3. schema check → 503;
@@ -188,22 +188,22 @@ description: "Task list for 014-packet-replace-review-edit"
   8. commit, then return `{"data": {"event_id", "status", "modified"}}`.
 
   It never touches `status` or `reviewN_date`. Roll back and log on exception. Write a full YAML docstring.
-- [ ] T038 [US2] Extend `events_review_get` in `flask_backend/app.py` (research D8). When `mine` is built, load `own = [r for r in study.get_reviews(session, event_id) if r.get('reviewer_id') == user_id]` and add `modified` (from `own[0]` if present), `editable` and `locked_reason` (from `review_editable`), and `answers` (`own[0]` or None). Admin `reviews` items already carry `modified` through `get_reviews`. Update the YAML.
-- [ ] T039 [P] [US2] In `frontend/src/studies/scans/ScansReviewForm.jsx`:
+- [X] T038 [US2] Extend `events_review_get` in `flask_backend/app.py` (research D8). When `mine` is built, load `own = [r for r in study.get_reviews(session, event_id) if r.get('reviewer_id') == user_id]` and add `modified` (from `own[0]` if present), `editable` and `locked_reason` (from `review_editable`), and `answers` (`own[0]` or None). Admin `reviews` items already carry `modified` through `get_reviews`. Update the YAML.
+- [X] T039 [P] [US2] In `frontend/src/studies/scans/ScansReviewForm.jsx`:
   - accept `initialReview = null`, `mode = 'create'` and `onSaved`;
   - when `initialReview?.regions` is set, initialize `entries` from it in `position` order, mapping `region`, `region_other`, `laterality`, `t_score` and `z_score` to the entry fields, with keys generated the way `addEntry` does;
   - when `mode === 'edit'`, use `method: 'PUT'` and the button label "Save changes";
   - on 2xx call `onSaved?.()`, and do not lock the form as "submitted" in edit mode;
   - on 409 show the server `error`.
-- [ ] T040 [P] [US2] In `frontend/src/studies/dischargesummaries/DischargesummariesReviewForm.jsx`, accept and ignore `initialReview`, `mode` and `onSaved` (extend the eslint-disable comment).
-- [ ] T041 [US2] In `frontend/src/pages/EventReview.jsx`, implement the `mine` states table from contracts/ui.md:
+- [X] T040 [P] [US2] In `frontend/src/studies/dischargesummaries/DischargesummariesReviewForm.jsx`, accept and ignore `initialReview`, `mode` and `onSaved` (extend the eslint-disable comment).
+- [X] T041 [US2] In `frontend/src/pages/EventReview.jsx`, implement the `mine` states table from contracts/ui.md:
   - `reviewStatus` becomes `'open' | 'editable' | 'locked' | 'loading' | 'error'`, from `mine?.editable`;
   - `'editable'`: the notice "You submitted this review on {review_date}{, last edited {modified}}. You can change your answers until the other reviewer submits theirs." (drop the "until…" clause when `workflow.reviewer_count === 1`; pass `workflow={workflow}` to `<EventReview>` in `frontend/src/App.jsx:312`, since `App.jsx` already holds `workflow.reviewer_count`), then `<ReviewForm eventId apiUrl initialReview={mine.answers} mode="edit" onSaved={refetch} />`;
   - `'locked'`: "You have already reviewed this event (submitted …{, last edited …})." plus `mine.locked_reason`, then `resolveReviewSummary(reviewForm)` rendering `review={mine.answers}`;
   - after `onSaved`, re-fetch `GET /review` and show "Your changes were saved.";
   - a 409 reported by the form triggers a re-fetch, which switches the page to locked.
-- [ ] T042 [P] [US2] In `frontend/src/pages/EventEdit.jsx`, in `reviewRow(slot)`, render `<div>Last edited: {r.modified}</div>` under `<ReviewSummary review={r} />` when `r.modified` is set (contracts/ui.md).
-- [ ] T043 [US2] Run `python3 -m pytest flask_backend/tests` and `cd frontend && npm run lint && npm run build`; fix failures.
+- [X] T042 [P] [US2] In `frontend/src/pages/EventEdit.jsx`, in `reviewRow(slot)`, render `<div>Last edited: {r.modified}</div>` under `<ReviewSummary review={r} />` when `r.modified` is set (contracts/ui.md).
+- [X] T043 [US2] Run `python3 -m pytest flask_backend/tests` and `cd frontend && npm run lint && npm run build`; fix failures.
 
 **Checkpoint**: single-reviewer editing works end to end.
 
@@ -217,30 +217,30 @@ description: "Task list for 014-packet-replace-review-edit"
 
 ### Tests for US3
 
-- [ ] T044 [P] [US3] Add two-reviewer cases to `flask_backend/tests/test_review_edit.py`, with `STUDY_TYPE=mci` (default reviewer_count 2):
+- [X] T044 [P] [US3] Add two-reviewer cases to `flask_backend/tests/test_review_edit.py`, with `STUDY_TYPE=mci` (default reviewer_count 2):
   - (a) slot 1 reviewed, `review2_date` None → PUT 200, and `status` stays `reviewer1_done`;
   - (b) both dates set → PUT 409 "Both reviews…" for slot 1 **and** slot 2, with `replace_review` not called;
   - (c) `GET` for the slot-1 author with both dates set → `editable` false and `locked_reason` "Both reviews…";
   - (d) race: `review2_date` set between page load and save → 409 (simulate by setting it on the fake event before the PUT).
-- [ ] T045 [P] [US3] Update `flask_backend/tests/test_mci_export_golden.py`:
+- [X] T045 [P] [US3] Update `flask_backend/tests/test_mci_export_golden.py`:
   - append `,Review 1 Last Edited,Review 2 Last Edited` to the header of `EXPECTED_CSV`, with the matching values (`review1_modified-v`, `review2_modified-v`) on `ROW_1` and empty cells on `ROW_2`;
   - add `review1_modified`/`review2_modified` keys to `ROW_1`;
   - append `rv1.modified AS review1_modified, rv2.modified AS review2_modified` to the end of the select list in `EXPECTED_EXPORT_SQL`, after `edd.ci AS overall_ci`;
   - add a comment citing spec 014 research D9 (appended, so no existing position moves).
-- [ ] T046 [P] [US3] Add `flask_backend/tests/test_mci_replace_review.py`. `mci.replace_review` sets every answer column from `parsed`, sets absent columns to None, sets `modified`, and returns False when there is no row. `mci.get_reviews` returns `modified` as an ISO string.
+- [X] T046 [P] [US3] Add `flask_backend/tests/test_mci_replace_review.py`. `mci.replace_review` sets every answer column from `parsed`, sets absent columns to None, sets `modified`, and returns False when there is no row. `mci.get_reviews` returns `modified` as an ISO string.
 
 ### Implementation for US3
 
-- [ ] T047 [US3] In `flask_backend/models/studies/mci.py`:
+- [X] T047 [US3] In `flask_backend/models/studies/mci.py`:
   - add `replace_review(session, event_id, reviewer_id, parsed) -> bool`. It loads the row by `(event_id, reviewer_id)` (`.first()`), returns False if missing, and for every column in `Reviews.__table__.columns` except `id`, `event_id`, `reviewer_id` and `modified` sets `parsed.get(name)` (NOT NULL `mci`/`cardiac_cath` are always in `parsed`). It sets `modified = datetime.datetime.now()`, returns True, and does not commit;
   - in `get_reviews`, isoformat `modified`;
   - append `rv1.modified AS review1_modified, rv2.modified AS review2_modified` to `_EXPORT_SQL`, and append the headings `Review 1 Last Edited` and `Review 2 Last Edited` and their keys at the end of the `export_csv` header and row lists.
-- [ ] T048 [P] [US3] In `frontend/src/studies/mci/MciReviewForm.jsx`:
+- [X] T048 [P] [US3] In `frontend/src/studies/mci/MciReviewForm.jsx`:
   - accept `initialReview = null`, `mode = 'create'` and `onSaved`;
   - when `initialReview` is set, initialize each `useState` from it: `mci`; flags `abnormal_ce_values_flag`, `chest_pain_flag`, `ecg_changes_flag`, `lvm_by_imaging_flag` and `false_positive_flag` → booleans; `ci`, `current_tobacco_use_flag`, `past_tobacco_use_flag`, `cocaine_use_flag`, `family_history_flag` and `cardiac_cath` → `'1'`/`'0'`/`''`; text fields `ce_criteria`, `ci_type`, `type`, `secondary_cause`, `other_cause`, `false_positive_reason`, `false_positive_other_cause` and `ecg_type` → strings, with `''` for null;
   - in edit mode, PUT and use the button label "Save changes";
   - on 2xx call `onSaved?.()`; on 409 show the server `error`.
-- [ ] T049 [US3] Run `python3 -m pytest flask_backend/tests` and `cd frontend && npm run lint && npm run build`; fix failures.
+- [X] T049 [US3] Run `python3 -m pytest flask_backend/tests` and `cd frontend && npm run lint && npm run build`; fix failures.
 
 **Checkpoint**: all three stories are complete.
 

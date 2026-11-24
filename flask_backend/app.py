@@ -2916,6 +2916,157 @@ def _reviewer_slot(e, user_id) -> Optional[int]:
     return None
 
 
+def review_editable(e, slot, cfg) -> tuple[bool, Optional[str]]:
+    """Whether the reviewer in `slot` may edit their submitted review (spec 014).
+
+    Returns ``(editable, locked_reason)`` per data-model.md "Editability":
+
+    - not slot 1 or 2, or no review submitted in that slot -> (False, None);
+    - the packet is being re-processed after a replacement ->
+      (False, REPROCESSING_MESSAGE);
+    - two reviewers and the other slot has submitted -> (False,
+      REVIEWS_LOCKED_MESSAGE), so neither review changes once both exist;
+    - otherwise (True, None). A single-reviewer study stays editable after
+      the event is `done`.
+
+    Reads `cfg.reviewer_count` and the stage flags, never the study name.
+    """
+    if slot not in (1, 2) or getattr(e, f'review{slot}_date', None) is None:
+        return False, None
+    if not table_service.pre_assignment_complete(e, cfg):
+        return False, REPROCESSING_MESSAGE
+    other = 2 if slot == 1 else 1
+    if cfg.reviewer_count == 2 and getattr(e, f'review{other}_date', None) is not None:
+        return False, REVIEWS_LOCKED_MESSAGE
+    return True, None
+
+
+@app.route('/api/events/<int:event_id>/review', methods=['PUT'])
+@requires_auth
+@requires_any_role('reviewer', 'admin')
+def events_review_put(event_id: int):
+    """Edit the caller's own submitted review (spec 014 research D6).
+
+    The body is the same as for POST and is validated by this study's module
+    (`parse_review`). The caller's stored answers are overwritten in place
+    (`replace_review`) and stamped with `modified`; `events.status` and the
+    `reviewN_date` submission dates are never changed.
+
+    Editable while `review_editable` allows it: always in a single-reviewer
+    study, and in a two-reviewer study until the other reviewer submits.
+    Like POST, an admin may edit only a review they wrote in slot 1 or 2.
+    ---
+    parameters:
+      - name: event_id
+        in: path
+        type: integer
+        required: true
+        description: ID of the event whose review is edited
+      - name: body
+        in: body
+        required: true
+        description: The study's review body, as for POST
+        schema:
+          type: object
+    responses:
+      200:
+        description: Edit saved
+        schema:
+          type: object
+          properties:
+            data:
+              type: object
+              properties:
+                event_id:
+                  type: integer
+                status:
+                  type: string
+                  description: Unchanged by the edit
+                modified:
+                  type: string
+                  description: ISO-8601 datetime of this edit
+      400:
+        description: Invalid review body (`error`, optional `fields`), as for POST
+      403:
+        description: >
+          Caller is not reviewer 1 or 2 of this event:
+          {"error": "Submitter is not an assigned reviewer for this event"}
+      404:
+        description: Event not found
+      409:
+        description: >
+          The review cannot be edited: {"error": "You have not submitted a
+          review for this event"}, {"error": "Both reviews for this event are
+          complete, so they can no longer be changed."}, or {"error": "This
+          event's packet is being re-processed."}
+      503:
+        description: >
+          This study's review tables are not migrated (names
+          init/migrations/014-reviews-modified.sh)
+    """
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not data:
+        return jsonify({'error': 'A review body is required'}), 400
+    study = get_study_module()
+    try:
+        parsed = study.parse_review(data)
+    except ReviewValidationError as err:
+        body = {'error': err.message}
+        if err.fields:
+            body['fields'] = err.fields
+        return jsonify(body), 400
+
+    auth_user = getattr(g, 'auth_user', None) or {}
+    user_id = int(auth_user.get('id') or 0)
+    cfg = get_workflow_config()
+    session = models.get_session()
+    try:
+        schema_error = _study_schema_error(study, session)
+        if schema_error:
+            return jsonify({'error': schema_error}), 503
+
+        e = session.query(models.Events).get(event_id)
+        if e is None:
+            return jsonify({'error': 'Event not found'}), 404
+
+        slot = _reviewer_slot(e, user_id)
+        if slot not in (1, 2):
+            return jsonify({
+                'error': 'Submitter is not an assigned reviewer for this event'
+            }), 403
+
+        # Re-checked here, immediately before the write: the other reviewer
+        # may have submitted since the page loaded (shared tables are MyISAM,
+        # so there is no transaction to lean on).
+        editable, reason = review_editable(e, slot, cfg)
+        if not editable:
+            return jsonify({'error': reason or NO_REVIEW_TO_EDIT_MESSAGE}), 409
+
+        if not study.replace_review(session, event_id, user_id, parsed):
+            return jsonify({'error': NO_REVIEW_TO_EDIT_MESSAGE}), 409
+
+        session.commit()
+        modified = None
+        own = [
+            r for r in study.get_reviews(session, event_id)
+            if r.get('reviewer_id') == user_id
+        ]
+        if own:
+            modified = own[0].get('modified')
+        app.logger.info("Review edited for event %d (slot %d)", event_id, slot)
+        return jsonify({'data': {
+            'event_id': event_id,
+            'status': e.status,
+            'modified': modified,
+        }})
+    except Exception:
+        session.rollback()
+        app.logger.exception('Failed to edit review for event %d', event_id)
+        return jsonify({'error': 'Failed to save review changes'}), 500
+    finally:
+        session.close()
+
+
 @app.route('/api/events/<int:event_id>/review', methods=['GET'])
 @requires_auth
 @requires_any_role('reviewer', 'admin')
@@ -2928,10 +3079,13 @@ def events_review_get(event_id: int):
     also has `slot`, the reviewer slot its author holds, or null. Answers go
     to admins only; for any other caller `reviews` is empty (FR-028).
 
-    `mine` is `{slot, review_date}` once the caller has reviewed this event in
-    slot 1 or 2, else null. This is the same rule as the POST 409 guard, and
-    the review page uses it to show "already reviewed" instead of the form
-    (FR-029).
+    `mine` is non-null once the caller has reviewed this event in slot 1 or
+    2, else null. This is the same rule as the POST 409 guard, and the review
+    page uses it instead of showing an empty form (FR-029). Since spec 014
+    (research D8) it also carries `modified`, `editable` and `locked_reason`
+    (`review_editable`), and `answers`: the caller's own review in this
+    study's shape, so the page can pre-fill the edit form or show it
+    read-only. It never contains another reviewer's answers.
 
     Admins may read any event; a reviewer only an event they are assigned to
     in slot 1 or 2.
@@ -2969,6 +3123,19 @@ def events_review_get(event_id: int):
                       type: integer
                     review_date:
                       type: string
+                      description: Original submission date (unchanged by edits)
+                    modified:
+                      type: string
+                      description: ISO-8601 datetime of the last edit, or null
+                    editable:
+                      type: boolean
+                      description: Whether the caller may still edit (spec 014)
+                    locked_reason:
+                      type: string
+                      description: Why the review cannot be edited, or null
+                    answers:
+                      type: object
+                      description: The caller's own review, in this study's shape
       403:
         description: Caller is neither an admin nor an assigned reviewer
       404:
@@ -2992,15 +3159,31 @@ def events_review_get(event_id: int):
             return jsonify({'error': 'Not an assigned reviewer for this event'}), 403
 
         mine = None
+        stored = None
         my_slot = _reviewer_slot(e, user_id)
         if my_slot in (1, 2):
             my_date = getattr(e, f'review{my_slot}_date')
             if my_date is not None:
-                mine = {'slot': my_slot, 'review_date': my_date.isoformat()}
+                # spec 014 D8: the caller's own answers (never anyone
+                # else's), and whether they may still change them.
+                stored = study.get_reviews(session, event_id)
+                own = [r for r in stored if r.get('reviewer_id') == user_id]
+                answers = dict(own[0]) if own else None
+                if answers is not None:
+                    answers['slot'] = my_slot
+                editable, locked_reason = review_editable(e, my_slot, get_workflow_config())
+                mine = {
+                    'slot': my_slot,
+                    'review_date': _iso(my_date),
+                    'modified': answers.get('modified') if answers else None,
+                    'editable': editable,
+                    'locked_reason': locked_reason,
+                    'answers': answers,
+                }
 
         reviews = []
         if is_admin:
-            reviews = study.get_reviews(session, event_id)
+            reviews = stored if stored is not None else study.get_reviews(session, event_id)
             for review in reviews:
                 review['slot'] = _reviewer_slot(e, review.get('reviewer_id'))
         return jsonify({'data': {

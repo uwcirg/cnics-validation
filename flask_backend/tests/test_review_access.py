@@ -201,13 +201,17 @@ def test_review_get_reviewer_already_reviewed(reviewer_client):
     res, _ = _get_review(reviewer_client, FakeEvent(reviewer1_id=7, review1_date=date(2026, 10, 16)))
     data = res.get_json()["data"]
     assert data["reviews"] == []
-    assert data["mine"] == {"slot": 1, "review_date": "2026-10-16"}
+    mine = data["mine"]
+    assert (mine["slot"], mine["review_date"]) == (1, "2026-10-16")
+    # Spec 014 adds the edit fields (tests/test_review_edit.py covers them).
+    assert {"modified", "editable", "locked_reason", "answers"} <= set(mine)
 
 
 def test_review_get_reviewer_slot2_reviewed(reviewer_client):
     res, _ = _get_review(reviewer_client, FakeEvent(reviewer1_id=8, reviewer2_id=7,
                                                     review2_date=date(2026, 10, 15)))
-    assert res.get_json()["data"]["mine"] == {"slot": 2, "review_date": "2026-10-15"}
+    mine = res.get_json()["data"]["mine"]
+    assert (mine["slot"], mine["review_date"]) == (2, "2026-10-15")
 
 
 def test_review_get_uploader_forbidden(uploader_client):

@@ -366,14 +366,16 @@ def test_get_reviews_serialization():
 
     rows = [
         {"review_id": 3, "reviewer_id": 7, "review_date": datetime.date(2026, 10, 14),
+         "modified": None,
          "position": 1, "region": "Lumbar spine", "region_other": None, "laterality": None,
          "t_score": Decimal("-1.10"), "z_score": Decimal("-0.40")},
         {"review_id": 3, "reviewer_id": 7, "review_date": datetime.date(2026, 10, 14),
+         "modified": None,
          "position": 2, "region": "Other", "region_other": "Total body", "laterality": "Both",
          "t_score": None, "z_score": Decimal("2.00")},
     ]
     assert scans.get_reviews(_RowsSession(rows), 5) == [{
-        "reviewer_id": 7, "review_date": "2026-10-14", "regions": [
+        "reviewer_id": 7, "review_date": "2026-10-14", "modified": None, "regions": [
             {"position": 1, "region": "Lumbar spine", "region_other": None, "laterality": None,
              "t_score": "-1.10", "z_score": "-0.40"},
             {"position": 2, "region": "Other", "region_other": "Total body", "laterality": "Both",
@@ -397,15 +399,17 @@ def test_scans_export_one_row_per_region(admin_client):
     rows = [
         {"event_id": 5, "patient_id": 11, "site": "UW", "site_patient_id": "A1",
          "event_date": datetime.date(2019, 3, 2), "status": "done", "reviewer": "rev",
-         "review_date": datetime.date(2026, 10, 14), "position": 1, "region": "Hip",
+         "review_date": datetime.date(2026, 10, 14),
+         "modified": datetime.datetime(2026, 11, 24, 10, 15, 2), "position": 1, "region": "Hip",
          "region_other": None, "laterality": "Left", "t_score": Decimal("-0.90"), "z_score": None},
         {"event_id": 5, "patient_id": 11, "site": "UW", "site_patient_id": "A1",
          "event_date": datetime.date(2019, 3, 2), "status": "done", "reviewer": "rev",
-         "review_date": datetime.date(2026, 10, 14), "position": 2, "region": "Other",
+         "review_date": datetime.date(2026, 10, 14),
+         "modified": datetime.datetime(2026, 11, 24, 10, 15, 2), "position": 2, "region": "Other",
          "region_other": "Total body", "laterality": None, "t_score": None, "z_score": Decimal("1.20")},
         {"event_id": 6, "patient_id": 12, "site": "UW", "site_patient_id": "A2",
          "event_date": None, "status": "assigned", "reviewer": None, "review_date": None,
-         "position": None, "region": None, "region_other": None, "laterality": None,
+         "modified": None, "position": None, "region": None, "region_other": None, "laterality": None,
          "t_score": None, "z_score": None},
     ]
     with patch("flask_backend.models.get_session", return_value=FakeSession(None)), \
@@ -414,8 +418,70 @@ def test_scans_export_one_row_per_region(admin_client):
     assert res.status_code == 200
     table = list(csv.reader(io.StringIO(res.get_data(as_text=True))))
     assert table[0] == scans.EXPORT_HEADINGS
+    # spec 014: "Last Edited" sits immediately after "Review Date".
+    assert table[0][7:9] == ["Review Date", "Last Edited"]
     assert table[1] == ["5", "11", "UW", "A1", "2019-03-02", "done", "rev", "2026-10-14",
-                        "1", "Hip", "", "Left", "-0.90", ""]
-    assert table[2][8:] == ["2", "Other", "Total body", "", "", "1.20"]
-    assert table[3] == ["6", "12", "UW", "A2", "", "assigned"] + [""] * 8
+                        "2026-11-24T10:15:02", "1", "Hip", "", "Left", "-0.90", ""]
+    assert table[2][9:] == ["2", "Other", "Total body", "", "", "1.20"]
+    assert table[3] == ["6", "12", "UW", "A2", "", "assigned"] + [""] * 9
     assert len(table) == 4
+
+
+# --- Review editing (spec 014 research D6, D9) ---------------------------------------
+
+
+class _ReviewQuery:
+    def __init__(self, review):
+        self._review = review
+
+    def filter(self, *args, **kwargs):
+        return self
+
+    def first(self):
+        return self._review
+
+
+class _ReviewSession:
+    def __init__(self, review):
+        self._review = review
+
+    def query(self, *args, **kwargs):
+        return _ReviewQuery(self._review)
+
+
+def test_replace_review_replaces_the_regions_as_a_set():
+    import datetime
+
+    review = scans.Reviews(id=3, event_id=5, reviewer_id=7)
+    review.regions = [
+        scans.ReviewRegions(position=1, region="Spine"),
+        scans.ReviewRegions(position=2, region="Wrist"),
+    ]
+    parsed = scans.parse_review({"regions": [_region("Hip", laterality="Left", t="-0.9")]})
+
+    assert scans.replace_review(_ReviewSession(review), 5, 7, parsed) is True
+
+    assert (review.id, review.event_id, review.reviewer_id) == (3, 5, 7)
+    assert [(r.position, r.region, r.laterality) for r in review.regions] == [(1, "Hip", "Left")]
+    assert review.regions[0].t_score == Decimal("-0.9")
+    assert isinstance(review.modified, datetime.datetime)
+
+
+def test_replace_review_without_a_review_returns_false():
+    parsed = scans.parse_review({"regions": [_region("Hip")]})
+    assert scans.replace_review(_ReviewSession(None), 5, 7, parsed) is False
+
+
+def test_get_reviews_carries_modified_as_iso():
+    import datetime
+
+    rows = [{"review_id": 3, "reviewer_id": 7, "review_date": datetime.date(2026, 10, 14),
+             "modified": datetime.datetime(2026, 11, 24, 10, 15, 2),
+             "position": 1, "region": "Hip", "region_other": None, "laterality": None,
+             "t_score": None, "z_score": None}]
+    assert scans.get_reviews(_RowsSession(rows), 5)[0]["modified"] == "2026-11-24T10:15:02"
+
+
+def test_export_heading_last_edited_follows_review_date():
+    headings = scans.EXPORT_HEADINGS
+    assert headings[headings.index("Review Date") + 1] == "Last Edited"
