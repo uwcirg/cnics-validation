@@ -8,34 +8,47 @@ import { useMemo, useState } from 'react'
 // `components/review/reviewForms.js` from `review_form` on GET /api/config.
 // The page shell — instructions box, heading, date, Step 1 — stays in
 // EventReview.jsx and is shared by every study. Behaviour is unchanged.
-function MciReviewForm({ eventId, apiUrl }) {
+//
+// Spec 014: the same form edits a submitted review. With `mode="edit"` it is
+// pre-filled from `initialReview` (the reviewer's own `reviews` row, as
+// served by GET …/review `mine.answers`) and saves with PUT.
+
+// A stored 0/1 flag as the radio value '1'/'0', or '' when not answered.
+const radioValue = (v) => (v === null || v === undefined || v === '' ? '' : (Number(v) ? '1' : '0'))
+// A stored text column as an input value ('' for null).
+const textValue = (v) => (v === null || v === undefined ? '' : String(v))
+
+function MciReviewForm({ eventId, apiUrl, initialReview = null, mode = 'create', onSaved, onConflict }) {
+  const r = initialReview || {}
+  const editing = mode === 'edit'
+
   // Core fields
-  const [mci, setMci] = useState('')
-  const [abnormalCeValues, setAbnormalCeValues] = useState(false)
-  const [ceCriteria, setCeCriteria] = useState('')
-  const [chestPain, setChestPain] = useState(false)
-  const [ecgChanges, setEcgChanges] = useState(false)
-  const [lvmByImaging, setLvmByImaging] = useState(false)
+  const [mci, setMci] = useState(textValue(r.mci))
+  const [abnormalCeValues, setAbnormalCeValues] = useState(Boolean(r.abnormal_ce_values_flag))
+  const [ceCriteria, setCeCriteria] = useState(textValue(r.ce_criteria))
+  const [chestPain, setChestPain] = useState(Boolean(r.chest_pain_flag))
+  const [ecgChanges, setEcgChanges] = useState(Boolean(r.ecg_changes_flag))
+  const [lvmByImaging, setLvmByImaging] = useState(Boolean(r.lvm_by_imaging_flag))
 
-  const [ci, setCi] = useState('') // '1' or '0'
-  const [ciType, setCiType] = useState('')
+  const [ci, setCi] = useState(radioValue(r.ci)) // '1' or '0'
+  const [ciType, setCiType] = useState(textValue(r.ci_type))
 
-  const [type, setType] = useState('') // 'Primary' | 'Secondary'
-  const [secondaryCause, setSecondaryCause] = useState('')
-  const [otherCause, setOtherCause] = useState('')
+  const [type, setType] = useState(textValue(r.type)) // 'Primary' | 'Secondary'
+  const [secondaryCause, setSecondaryCause] = useState(textValue(r.secondary_cause))
+  const [otherCause, setOtherCause] = useState(textValue(r.other_cause))
 
-  const [falsePositive, setFalsePositive] = useState(false)
-  const [falsePositiveReason, setFalsePositiveReason] = useState('')
-  const [falsePositiveOtherCause, setFalsePositiveOtherCause] = useState('')
+  const [falsePositive, setFalsePositive] = useState(Boolean(r.false_positive_flag))
+  const [falsePositiveReason, setFalsePositiveReason] = useState(textValue(r.false_positive_reason))
+  const [falsePositiveOtherCause, setFalsePositiveOtherCause] = useState(textValue(r.false_positive_other_cause))
 
-  const [ecgType, setEcgType] = useState('')
+  const [ecgType, setEcgType] = useState(textValue(r.ecg_type))
 
-  const [currentTobacco, setCurrentTobacco] = useState('') // '1' | '0'
-  const [pastTobacco, setPastTobacco] = useState('')
-  const [cocaine, setCocaine] = useState('')
-  const [familyHistory, setFamilyHistory] = useState('')
+  const [currentTobacco, setCurrentTobacco] = useState(radioValue(r.current_tobacco_use_flag)) // '1' | '0'
+  const [pastTobacco, setPastTobacco] = useState(radioValue(r.past_tobacco_use_flag))
+  const [cocaine, setCocaine] = useState(radioValue(r.cocaine_use_flag))
+  const [familyHistory, setFamilyHistory] = useState(radioValue(r.family_history_flag))
 
-  const [cardiacCath, setCardiacCath] = useState('')
+  const [cardiacCath, setCardiacCath] = useState(radioValue(r.cardiac_cath))
 
   const [submitting, setSubmitting] = useState(false)
   const [submitMessage, setSubmitMessage] = useState(null)
@@ -148,17 +161,26 @@ function MciReviewForm({ eventId, apiUrl }) {
     }
     try {
       const res = await fetch(`${apiUrl}/api/events/${eventId}/review`, {
-        method: 'POST',
+        method: editing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(body),
       })
       const json = await res.json().catch(() => ({}))
       if (res.ok) {
-        const status = json?.data?.status || 'updated'
-        setSubmitMessage({ type: 'success', text: `Review submitted. Event status: ${status}.` })
+        if (editing) {
+          setSubmitMessage({ type: 'success', text: 'Changes saved.' })
+        } else {
+          const status = json?.data?.status || 'updated'
+          setSubmitMessage({ type: 'success', text: `Review submitted. Event status: ${status}.` })
+        }
+        onSaved?.()
       } else {
-        setSubmitMessage({ type: 'error', text: json?.error || `Submission failed (${res.status}).` })
+        const text = json?.error || `Submission failed (${res.status}).`
+        setSubmitMessage({ type: 'error', text })
+        // spec 014: the review can no longer be edited (e.g. the other
+        // reviewer has just submitted); the page switches to read-only.
+        if (res.status === 409) onConflict?.(text)
       }
     } catch {
       setSubmitMessage({ type: 'error', text: 'Submission failed: network error.' })
@@ -412,7 +434,7 @@ function MciReviewForm({ eventId, apiUrl }) {
               <tr id="submit">
                 <td colSpan={2}>
                   <button type="submit" disabled={submitting}>
-                    {submitting ? 'Submitting…' : 'Submit'}
+                    {submitting ? (editing ? 'Saving…' : 'Submitting…') : (editing ? 'Save changes' : 'Submit')}
                   </button>
                   {submitMessage && (
                     <span

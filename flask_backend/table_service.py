@@ -279,23 +279,27 @@ def get_events_for_review(
 
 
 def get_events_for_reupload(limit: Optional[int] = None, offset: int = 0, site: Optional[str] = None):
-    """Return events eligible for re-upload.
+    """Return events whose existing packet may be replaced (spec 014 D10).
 
-    Rows are events with status 'uploaded', ordered by ID ascending. When
-    ``site`` is given, results are restricted to that patient site
-    (p.site = <site>); when it is None, all sites are returned. The caller
-    (events_need_reupload in app.py) passes the requesting user's site for
-    non-admins and None for admins, so admins see every site -- matching the
-    admin bypass in upload_raw.
+    Rows are the events inside the replacement window
+    (:func:`_replace_window_predicate`): a packet has been uploaded and has
+    not been released to reviewers. `created` events are excluded; they have
+    no packet yet and belong to the need-packets queue. Ordered by ID
+    ascending. When ``site`` is given, results are restricted to that
+    patient site (p.site = <site>); when it is None, all sites are returned.
+    The caller (events_need_reupload in app.py) passes the requesting user's
+    site for non-admins and None for admins.
+
+    Before spec 014 the rows were events with status 'uploaded' only.
     """
-    rows, _total = get_events_by_status_with_total(
-        status="uploaded",
-        limit=limit,
-        offset=offset,
-        q=None,
-        site=site,
-        sort_by='ID',
-        sort_dir='asc',
+    rows, _total = _phase_rows_with_total(
+        _replace_window_predicate(),
+        {},
+        limit,
+        offset,
+        None,
+        site,
+        "ORDER BY e.id ASC",
     )
     return rows
 
@@ -643,10 +647,15 @@ def get_to_be_assigned_with_total(limit: Optional[int], offset: int, q: Optional
 
 def get_to_be_sent_with_total(limit: Optional[int], offset: int, q: Optional[str], site: Optional[str], sort_by: Optional[str] = None, sort_dir: Optional[str] = None):
     # Assigned but not sent. Bypassed (no queue) when sending is off.
-    if not study_config.get_workflow_config().sending:
+    cfg = study_config.get_workflow_config()
+    if not cfg.sending:
         return _empty_phase()
+    # spec 014 D3: an event being re-processed after a packet replacement
+    # keeps its assignment, but is not ready to send until every enabled
+    # pre-assignment stage is complete again. Column names only: safe SQL.
+    stages = " AND ".join(f"e.{column} IS NOT NULL" for column in _pre_assignment_stages(cfg))
     return _phase_rows_with_total(
-        "e.assign_date IS NOT NULL AND e.send_date IS NULL",
+        f"e.assign_date IS NOT NULL AND e.send_date IS NULL AND {stages}",
         {},
         limit,
         offset,
@@ -825,6 +834,11 @@ def send_events(event_ids: list[int], sender_id: int) -> dict:
     """Mark many events as sent and send assignment emails to reviewers.
 
     Returns a dict with DB update count and email sending summary.
+
+    The whole batch is refused, before any row changes and before any email,
+    if an event has an incomplete enabled pre-assignment stage, as happens
+    while a replaced packet is re-processed (spec 014 D3). Before spec 014
+    any event id was accepted.
     """
     if not event_ids:
         return {"updated": 0, "email": {"attempted": 0, "sent": 0, "skipped": 0, "errors": []}}
@@ -837,11 +851,16 @@ def send_events(event_ids: list[int], sender_id: int) -> dict:
             .filter(models.Events.id.in_(event_ids))
             .all()
         )
+        cfg = study_config.get_workflow_config()
+        unready = sorted(int(e.id) for e in events if not pre_assignment_complete(e, cfg))
+        if unready:
+            ids = ", ".join(str(i) for i in unready)
+            raise ValidationError(f"These events are not ready to send: {ids}")
         # Advancing `status` to 'sent' is gated on the sending control: a
         # deployment with sending disabled has no send step in its lifecycle
         # (research Decision 4), so the status is not advanced even if this
         # helper is reached. With sending enabled it is the new transition.
-        sending_enabled = study_config.get_workflow_config().sending
+        sending_enabled = cfg.sending
         for e in events:
             e.sender_id = sender_id
             e.send_date = now
@@ -861,13 +880,36 @@ def send_events(event_ids: list[int], sender_id: int) -> dict:
     finally:
         session.close()
 
+def _packet_replaced_at(session, event_id: int) -> Optional[str]:
+    """ISO time of the latest packet replacement made while a reviewer was
+    assigned, or None (spec 014 D14).
+
+    Read from the `logs` rows `upload_raw` writes. Computed only when sending
+    is off: with sending on, a reviewer has no copy of the packet before the
+    replacement window closes, so there is nothing to warn them about.
+    """
+    if study_config.get_workflow_config().sending:
+        return None
+    latest = session.execute(
+        text(
+            "SELECT MAX(time) FROM logs "
+            "WHERE controller = 'events' AND action = 'replace_packet' AND params = :p"
+        ),
+        {"p": f"event_id={int(event_id)};assigned=1"},
+    ).scalar()
+    if latest is None:
+        return None
+    return latest.isoformat() if isinstance(latest, (datetime.date, datetime.datetime)) else str(latest)
+
+
 def get_event_details(event_id: int) -> dict:
     """Return a single event with related usernames, patient identifiers, and criteria.
 
     Includes core dates, status, creator/uploader/screener/assigner/sender usernames,
     patient `site_patient_id` and `site`, and the event's ascertainment `criteria`
     as a list of ``{"name": ..., "value": ...}`` dicts (``[]`` when the event has
-    none).
+    none). Since spec 014 it also carries `file_number` (the packet version) and
+    `packet_replaced_at` (:func:`_packet_replaced_at`).
     """
     session = get_session()
     try:
@@ -898,6 +940,7 @@ def get_event_details(event_id: int) -> dict:
               e.prior_event_date AS prior_event_date,
               e.prior_event_onsite_flag AS prior_event_onsite_flag,
               e.other_cause AS other_cause,
+              e.file_number AS file_number,
               cu.username AS creator_username,
               uu.username AS uploader_username,
               mk.username AS marker_username,
@@ -955,6 +998,7 @@ def get_event_details(event_id: int) -> dict:
         details["criteria"] = [
             {"name": c["name"], "value": c["value"]} for c in criteria_rows
         ]
+        details["packet_replaced_at"] = _packet_replaced_at(session, event_id)
         return details
     finally:
         session.close()

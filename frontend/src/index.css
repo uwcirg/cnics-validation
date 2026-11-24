@@ -121,3 +121,14 @@ button:disabled {
     animation-duration: 3s;
   }
 }
+
+/* Spec 014: a notice the reader must not miss (e.g. "This event's packet was
+   replaced on …" on the review page). */
+.warning-notice {
+  border: 1px solid #e0b252;
+  background-color: #fff8e5;
+  color: #5c4400;
+  padding: 8px 12px;
+  margin: 8px 0;
+  border-radius: 4px;
+}

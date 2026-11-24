@@ -1,11 +1,15 @@
-"""Upload status guard on POST /api/events/<id>/upload_raw (spec 013, research D3).
+"""Upload status guard on POST /api/events/<id>/upload_raw (specs 013 and 014).
 
-Observed before this change: the endpoint had no status check. A same-site
-uploader could upload at any status, and the handler always reset the
-status to `uploaded`, silently undoing a scrub, assignment or completed
-review. Now a non-admin may upload only while the event is `created` or
-`uploaded`; admins are not restricted, so the coordinating center can still
-recover from a wrong upload.
+Observed before spec 013 (research D3): the endpoint had no status check. A
+same-site uploader could upload at any status, and the handler always reset
+the status to `uploaded`, silently undoing a scrub, assignment or completed
+review. Spec 013 limited non-admins to `created`/`uploaded` and left admins
+unrestricted.
+
+Spec 014 (research D1) replaces that with one replacement window for
+admins and same-site uploaders alike: a packet may be replaced until it is
+released to reviewers (sent, or reviewed). The window's own tests are in
+test_packet_replace_window.py.
 """
 
 import importlib
@@ -15,11 +19,14 @@ from unittest.mock import patch
 import pytest
 
 URL = "/api/events/4821/upload_raw"
-REFUSAL = "This event has moved past upload; ask an administrator."
+REFUSAL = (
+    "This packet has already been released to reviewers and can no longer be "
+    "replaced here. Contact the systems operator."
+)
 
 
 class FakeEvent:
-    def __init__(self, status):
+    def __init__(self, status, send_date=None, review1_date=None):
         self.id = 4821
         self.patient_id = 7
         self.status = status
@@ -27,6 +34,13 @@ class FakeEvent:
         self.file_number = None
         self.original_name = None
         self.upload_date = None
+        self.scrub_date = None
+        self.screen_date = None
+        self.assign_date = None
+        self.send_date = send_date
+        self.review1_date = review1_date
+        self.review2_date = None
+        self.reviewer1_id = None
 
 
 class FakePatient:
@@ -43,6 +57,7 @@ class FakeSession:
         self._patient = FakePatient(patient_site)
         self._target = None
         self.committed = False
+        self.added = []
 
     def query(self, model, *args, **kwargs):
         self._target = model
@@ -51,6 +66,9 @@ class FakeSession:
     def get(self, _row_id):
         models = importlib.import_module("flask_backend.models")
         return self._patient if self._target is models.PatientsView else self._event
+
+    def add(self, obj):
+        self.added.append(obj)
 
     def commit(self):
         self.committed = True
@@ -103,10 +121,11 @@ def test_same_site_uploader_may_upload_before_scrub(client_as, downloads, monkey
 
 
 @pytest.mark.parametrize("study", ["mci", "scans", "dischargesummaries"])
-@pytest.mark.parametrize("status", ["scrubbed", "assigned", "done"])
-def test_same_site_uploader_is_refused_after_upload_stage(client_as, downloads, monkeypatch, study, status):
+@pytest.mark.parametrize("status", ["sent", "reviewer1_done", "done"])
+def test_same_site_uploader_is_refused_after_release(client_as, downloads, monkeypatch, study, status):
+    """Past the window (spec 014 D1): sent or reviewed."""
     monkeypatch.setenv("STUDY_TYPE", study)
-    event = FakeEvent(status)
+    event = FakeEvent(status, send_date="2026-11-01", review1_date="2026-11-02")
     session, ctx = _install(event)
     with ctx:
         res = _upload(_uploader(client_as))
@@ -121,7 +140,8 @@ def test_same_site_uploader_is_refused_after_upload_stage(client_as, downloads, 
     assert list(downloads.iterdir()) == []
 
 
-def test_admin_may_upload_after_scrub(admin_client, downloads):
+def test_admin_may_upload_after_scrub_but_not_after_send(admin_client, downloads):
+    """spec 014 narrows the admin bypass: the window applies to admins too."""
     event = FakeEvent("scrubbed")
     _session, ctx = _install(event)
     with ctx:
@@ -129,6 +149,16 @@ def test_admin_may_upload_after_scrub(admin_client, downloads):
 
     assert res.status_code == 200
     assert event.status == "uploaded"
+
+    sent = FakeEvent("sent", send_date="2026-11-01")
+    session, ctx = _install(sent)
+    with ctx:
+        res = _upload(admin_client)
+
+    assert res.status_code == 409
+    assert res.get_json() == {"error": REFUSAL}
+    assert sent.status == "sent"
+    assert not session.committed
 
 
 def test_wrong_site_is_still_403_not_409(client_as, downloads):

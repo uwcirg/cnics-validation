@@ -45,11 +45,12 @@ function EventScrub({ studyLabel, studyType, configResolved = true }) {
     e.preventDefault()
     if (!file || !eventId) return
     setStatus('uploading')
-    // Placeholder endpoint – backend route to accept scrubbed uploads not yet implemented
-    // Once available, update the URL below accordingly.
     try {
       const form = new FormData()
       form.append('scrubbed_file', file)
+      // The packet version this page loaded. The server refuses a scrubbed
+      // copy of a packet that has since been replaced (spec 014 D12).
+      form.append('packet_version', String(details?.file_number ?? ''))
       const res = await fetch(`${apiUrl}/api/events/${eventId}/upload_scrubbed`, {
         method: 'POST',
         credentials: 'include',
@@ -67,8 +68,21 @@ function EventScrub({ studyLabel, studyType, configResolved = true }) {
         setStatus('forbidden')
         showToast('You are not authorized to upload for this event.', 'error')
       } else {
+        // 400/409 carry a message the admin can act on (spec 014 D12), e.g.
+        // "This event's packet was replaced on …".
+        let message = 'Upload failed. Please try again.'
+        try {
+          const j = await res.json()
+          if (j && j.error) message = j.error
+        } catch {
+          // Not JSON; keep the generic message.
+        }
+        if (res.status === 409) {
+          setFile(null)
+          e.target.reset()
+        }
         setStatus('error')
-        showToast('Upload failed. Please try again.', 'error')
+        showToast(message, 'error')
       }
     } catch {
       setStatus('error')

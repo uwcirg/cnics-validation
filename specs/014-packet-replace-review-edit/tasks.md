@@ -70,36 +70,36 @@ description: "Task list for 014-packet-replace-review-edit"
 
 ### Tests for US1 (write first; they must fail before implementation)
 
-- [ ] T010 [P] [US1] Create `flask_backend/tests/test_packet_replace_window.py` covering `upload_raw` against the window (research D1). Use the `FakeEvent`/`_install` pattern from `test_upload_guard.py`, extended with `send_date`, `review1_date`, `review2_date`, `scrub_date`, `screen_date`, `assign_date` and the reviewer ids.
+- [X] T010 [P] [US1] Create `flask_backend/tests/test_packet_replace_window.py` covering `upload_raw` against the window (research D1). Use the `FakeEvent`/`_install` pattern from `test_upload_guard.py`, extended with `send_date`, `review1_date`, `review2_date`, `scrub_date`, `screen_date`, `assign_date` and the reviewer ids.
   - (a) Same-site uploader: 200 for each of `uploaded`, `scrubbed`, `screened`, `assigned` and `rejected`, with no send or review date.
   - (b) Uploader **and** admin: 409, with the exact message from contracts/api.md, for `sent`, `reviewer1_done`, `done`, and for `assigned` with `review1_date` set.
   - (c) `no_packet_available`: admin 200, uploader 409.
   - (d) Other-site uploader: 403 at `scrubbed`.
-- [ ] T011 [US1] In the same file, test the replacement side effects (research D2, D4, D14) with scrubbing on (default profile).
+- [X] T011 [US1] In the same file, test the replacement side effects (research D2, D4, D14) with scrubbing on (default profile).
   - A `scrubbed` event with `reviewer1_id` set: `scrub_date`, `scrubber_id`, `screen_date` and `screener_id` are cleared, while `reviewer1_id` and `assign_date` are kept.
   - A pre-existing `<id>.pdf` in the `downloads` tmp dir is renamed to match `superseded_<id>_\d{14}\.pdf`.
   - A `models.Logs` row is added with `controller='events'`, `action='replace_packet'` and `params='event_id=<id>;assigned=1'`.
   - A first upload (`created`) adds no `Logs` row and renames nothing.
 *(T012 moved to Phase 2 as T008b, so the helper tests sit with the helpers.)*
-- [ ] T013 [P] [US1] Create `flask_backend/tests/test_reprocess_guards.py` (research D3, D12, D13).
+- [X] T013 [P] [US1] Create `flask_backend/tests/test_reprocess_guards.py` (research D3, D12, D13).
   - (a) `upload_scrubbed` without `packet_version` → 400. With a mismatched `packet_version` → 409 with the "was replaced on" text, and no file written. With the matching version → 200, and the status comes from the helper: `assigned` for an event with `assign_date` under the dischargesummaries profile.
   - (b) `POST /screen` with scrubbing on and `scrub_date=None` → 409 for `accept`, `rescrub` and `reject`, with nothing changed. `accept` on a scrubbed, still-assigned event → `assigned`.
   - (c) `send_many` with one event lacking `scrub_date` → 400 "These events are not ready to send: <id>", and no event changed.
   - (d) `POST /review` on an assigned event with `scrub_date=None` under the dischargesummaries profile → 409 "This event's packet is being re-processed."
-- [ ] T014 [P] [US1] Create `flask_backend/tests/test_event_details_replace_fields.py` for `GET /api/events/<id>` (research D10, D14).
+- [X] T014 [P] [US1] Create `flask_backend/tests/test_event_details_replace_fields.py` for `GET /api/events/<id>` (research D10, D14).
   - `packet_replaceable` is true for a same-site uploader at `scrubbed`, false at `sent`, and false for an other-site uploader.
   - `file_number` is present.
   - `packet_replaced_at` is the ISO time of the latest `replace_packet` row with `assigned=1` when sending is off, null when sending is on, and null when only `assigned=0` rows exist.
-- [ ] T015 [US1] Update `flask_backend/tests/test_upload_guard.py` to the new rules. Rename `test_admin_may_upload_after_scrub` to assert admin 200 at `scrubbed` **and** 409 at `sent`. Change `test_same_site_uploader_is_refused_after_upload_stage` to parametrize over post-window statuses (`sent`, `reviewer1_done`, `done`) and assert the new 409 message. Keep the 403-before-409 and 400 tests. Update the module docstring to cite spec 014.
+- [X] T015 [US1] Update `flask_backend/tests/test_upload_guard.py` to the new rules. Rename `test_admin_may_upload_after_scrub` to assert admin 200 at `scrubbed` **and** 409 at `sent`. Change `test_same_site_uploader_is_refused_after_upload_stage` to parametrize over post-window statuses (`sent`, `reviewer1_done`, `done`) and assert the new 409 message. Keep the 403-before-409 and 400 tests. Update the module docstring to cite spec 014.
 
 ### Implementation for US1
 
-- [ ] T016 [US1] In `flask_backend/table_service.py`, next to the T008a helpers, add the window constants:
+- [X] T016 [US1] In `flask_backend/table_service.py`, next to the T008a helpers, add the window constants:
   - `REPLACEABLE_STATUSES = ('created','uploaded','scrubbed','screened','assigned','rejected')`, and `_replace_window_predicate() -> str` returning `"e.status IN ('uploaded','scrubbed','screened','assigned','rejected') AND e.send_date IS NULL AND e.review1_date IS NULL AND e.review2_date IS NULL"`, which excludes `created` (research D10).
 
   Write docstrings that cite research D1 and D10.
-- [ ] T017 [US1] In `flask_backend/app.py`, add `packet_replaceable(session, event, auth_user) -> tuple[bool, Optional[str]]` beside `_uploader_may_act_on_event`. It returns `(False, 'site')` when `_uploader_may_act_on_event` fails. Otherwise, admin with `status == 'no_packet_available'` → allowed; non-admin `no_packet_available` → `(False, 'window')`; otherwise allowed iff `status in REPLACEABLE_STATUSES` and `send_date`, `review1_date` and `review2_date` are all None. Write a docstring recording the observed pre-014 behavior (admin bypass at any status; uploader `created`/`uploaded` only, `app.py:2094`) per Principle VI.
-- [ ] T018 [US1] Rewrite the guard and update block of `events_upload_raw` in `flask_backend/app.py` (depends on T008a, T016, T017).
+- [X] T017 [US1] In `flask_backend/app.py`, add `packet_replaceable(session, event, auth_user) -> tuple[bool, Optional[str]]` beside `_uploader_may_act_on_event`. It returns `(False, 'site')` when `_uploader_may_act_on_event` fails. Otherwise, admin with `status == 'no_packet_available'` → allowed; non-admin `no_packet_available` → `(False, 'window')`; otherwise allowed iff `status in REPLACEABLE_STATUSES` and `send_date`, `review1_date` and `review2_date` are all None. Write a docstring recording the observed pre-014 behavior (admin bypass at any status; uploader `created`/`uploaded` only, `app.py:2094`) per Principle VI.
+- [X] T018 [US1] Rewrite the guard and update block of `events_upload_raw` in `flask_backend/app.py` (depends on T008a, T016, T017).
   - **Guard.** Replace the spec 013 status check with `packet_replaceable`: `'site'` → 403 as today; `'window'` → 409 with `"This packet has already been released to reviewers and can no longer be replaced here. Contact the systems operator."`
   - **Replacement.** Before saving, note `is_replacement = e.upload_date is not None` and `was_assigned = e.reviewer1_id is not None`. After saving the file, when `is_replacement`:
     - (i) rename each existing `DOWNLOADS_DIR/<id><ext>` for `ext in ALLOWED_PACKET_EXTENSIONS`, plus `event_<id>.zip`, to `superseded_<id>_<YYYYmmddHHMMSS><ext>`, and log `"Superseded %d scrubbed file(s) for event %d"` at INFO;
@@ -107,34 +107,34 @@ description: "Task list for 014-packet-replace-review-edit"
     - (iii) add `models.Logs(user_id=int(auth_user.get('id') or 0), controller='events', action='replace_packet', params=f'event_id={event_id};assigned={1 if was_assigned else 0}', time=datetime.datetime.now())`.
   - **Status.** **After** setting `upload_date` and the other upload metadata (otherwise a first upload would derive `created`), set `e.status = table_service.derive_pre_send_status(e, get_workflow_config())` instead of `'uploaded'`.
   - **Docs.** Update the docstring and the YAML `responses` per contracts/api.md.
-- [ ] T019 [US1] In `events_upload_scrubbed` in `flask_backend/app.py` (research D12):
+- [X] T019 [US1] In `events_upload_scrubbed` in `flask_backend/app.py` (research D12):
   - Read `request.form.get('packet_version')`. Missing or non-integer → 400 `{"error": "packet_version is required"}`.
   - Load the event **before** `file.save`. If `int(packet_version) != e.file_number`, return 409 `{"error": f"This event's packet was replaced on {e.upload_date}. Download the new packet and scrub it."}` with nothing written.
   - Move the save after these checks. Set `e.status = table_service.derive_pre_send_status(e, cfg)` after stamping `scrub_date`.
   - Update the docstring and YAML.
-- [ ] T020 [US1] In `events_screen` in `flask_backend/app.py` (research D13): after loading the event, if `get_workflow_config().scrubbing` and `e.scrub_date is None`, return 409 `{"error": "This event's packet has not been scrubbed yet."}`. For `accept`, set `e.status = table_service.derive_pre_send_status(e, cfg)` after stamping `screen_date`. Update the docstring.
-- [ ] T021 [US1] In `flask_backend/table_service.py` (research D3):
+- [X] T020 [US1] In `events_screen` in `flask_backend/app.py` (research D13): after loading the event, if `get_workflow_config().scrubbing` and `e.scrub_date is None`, return 409 `{"error": "This event's packet has not been scrubbed yet."}`. For `accept`, set `e.status = table_service.derive_pre_send_status(e, cfg)` after stamping `screen_date`. Update the docstring.
+- [X] T021 [US1] In `flask_backend/table_service.py` (research D3):
   - `get_to_be_sent_with_total`: AND the existing predicate with every `e.<col> IS NOT NULL` from `_pre_assignment_stages(cfg)`.
   - `send_events`: before any change, compute the ids failing `pre_assignment_complete`, and raise `ValidationError(f"These events are not ready to send: {ids}")` if any do.
   - `events_send_many` in `flask_backend/app.py`: catch `table_service.ValidationError` → 400 `{'error': str(ve)}`.
-- [ ] T022 [US1] In `events_review` (POST) in `flask_backend/app.py`, after the slot check and before the duplicate check: if `not table_service.pre_assignment_complete(e, cfg)`, return 409 `{"error": "This event's packet is being re-processed."}`. Add the 409 to the YAML.
-- [ ] T023 [US1] In `events_download` in `flask_backend/app.py` (research D4): when `get_workflow_config().scrubbing` and the event exists with `scrub_date is None`, skip `_find_scrubbed_packet`, so `path` comes from the raw lookup. Add a comment explaining that a legacy scrubbed copy in read-only `FILES_DIR` cannot be renamed.
-- [ ] T024 [US1] In `flask_backend/table_service.py`, change `get_events_for_reupload` to use `_replace_window_predicate()` through the same `_phase_rows_with_total` helper the phase queues use. Keep the site scoping and the ID-ascending order, and keep the row shape (ID, Patient ID, Date, Criteria) used by `EventReupload.jsx`. Update its docstring (research D10).
-- [ ] T025 [US1] In `get_event_details` (`GET /api/events/<id>`) in `flask_backend/app.py`, and in `table_service.get_event_details`:
+- [X] T022 [US1] In `events_review` (POST) in `flask_backend/app.py`, after the slot check and before the duplicate check: if `not table_service.pre_assignment_complete(e, cfg)`, return 409 `{"error": "This event's packet is being re-processed."}`. Add the 409 to the YAML.
+- [X] T023 [US1] In `events_download` in `flask_backend/app.py` (research D4): when `get_workflow_config().scrubbing` and the event exists with `scrub_date is None`, skip `_find_scrubbed_packet`, so `path` comes from the raw lookup. Add a comment explaining that a legacy scrubbed copy in read-only `FILES_DIR` cannot be renamed.
+- [X] T024 [US1] In `flask_backend/table_service.py`, change `get_events_for_reupload` to use `_replace_window_predicate()` through the same `_phase_rows_with_total` helper the phase queues use. Keep the site scoping and the ID-ascending order, and keep the row shape (ID, Patient ID, Date, Criteria) used by `EventReupload.jsx`. Update its docstring (research D10).
+- [X] T025 [US1] In `get_event_details` (`GET /api/events/<id>`) in `flask_backend/app.py`, and in `table_service.get_event_details`:
   - add `e.file_number AS file_number` to the details query;
   - add `packet_replaceable` (from `packet_replaceable(...)[0]`);
   - add `packet_replaced_at`. When `not cfg.sending`, it is `SELECT MAX(time) FROM logs WHERE controller='events' AND action='replace_packet' AND params = :p` with `p = f'event_id={id};assigned=1'`, formatted ISO; otherwise None.
 
   Update the YAML response schema (contracts/api.md).
-- [ ] T026 [P] [US1] In `frontend/src/pages/EventScrub.jsx`, append `form.append('packet_version', String(details?.file_number ?? ''))` before posting. For any non-OK response other than 401/403, read `j.error` from the JSON and show it in the toast; on 409, also call `e.target.reset()`. Remove the stale "Placeholder endpoint" comment.
-- [ ] T027 [P] [US1] In `frontend/src/pages/EventScreen.jsx`, for a non-OK response other than 401/403, read the JSON `error` and render it in place of "Failed to save." (store it in state, e.g. `errorText`).
-- [ ] T028 [P] [US1] In `frontend/src/pages/EventUpload.jsx` (contracts/ui.md):
+- [X] T026 [P] [US1] In `frontend/src/pages/EventScrub.jsx`, append `form.append('packet_version', String(details?.file_number ?? ''))` before posting. For any non-OK response other than 401/403, read `j.error` from the JSON and show it in the toast; on 409, also call `e.target.reset()`. Remove the stale "Placeholder endpoint" comment.
+- [X] T027 [P] [US1] In `frontend/src/pages/EventScreen.jsx`, for a non-OK response other than 401/403, read the JSON `error` and render it in place of "Failed to save." (store it in state, e.g. `errorText`).
+- [X] T028 [P] [US1] In `frontend/src/pages/EventUpload.jsx` (contracts/ui.md):
   - When `details && details.status !== 'created' && details.packet_replaceable === false`, render the released-to-reviewers message instead of the upload form. Leave the no-packet section's existing behavior unchanged.
   - When `details?.upload_date` is set, label the submit button "Replace packet".
   - When `(workflow.scrubbing || workflow.screening)`, show the one-line note. The `workflow` prop is already passed in by `App.jsx:290`.
-- [ ] T029 [P] [US1] In `frontend/src/pages/EventReupload.jsx`, change the count line to `` `${rows.length} event(s) can have their packet replaced. A packet can be replaced until it is sent to reviewers.` `` and the empty state to "No packets can be replaced right now." (contracts/ui.md).
-- [ ] T030 [P] [US1] In `frontend/src/pages/EventReview.jsx`, when `eventDetails?.packet_replaced_at` is set, render above "Step 1" a `<div role="alert" className="warning-notice">` with "This event's packet was replaced on {packet_replaced_at}. If you downloaded it before then, download it again before reviewing." Use an existing warning style if one exists in `frontend/src/index.css` or `App.css`; otherwise add a minimal `.warning-notice` rule there.
-- [ ] T031 [US1] Run `python3 -m pytest flask_backend/tests` until T010–T015 pass along with the full suite. Fix regressions caused by the status-helper changes in `test_scans_workflow.py`, `test_dischargesummaries_workflow.py` and `test_full_workflow_defaults.py`, and record any intended expectation change in `pr-description.md`.
+- [X] T029 [P] [US1] In `frontend/src/pages/EventReupload.jsx`, change the count line to `` `${rows.length} event(s) can have their packet replaced. A packet can be replaced until it is sent to reviewers.` `` and the empty state to "No packets can be replaced right now." (contracts/ui.md).
+- [X] T030 [P] [US1] In `frontend/src/pages/EventReview.jsx`, when `eventDetails?.packet_replaced_at` is set, render above "Step 1" a `<div role="alert" className="warning-notice">` with "This event's packet was replaced on {packet_replaced_at}. If you downloaded it before then, download it again before reviewing." Use an existing warning style if one exists in `frontend/src/index.css` or `App.css`; otherwise add a minimal `.warning-notice` rule there.
+- [X] T031 [US1] Run `python3 -m pytest flask_backend/tests` until T010–T015 pass along with the full suite. Fix regressions caused by the status-helper changes in `test_scans_workflow.py`, `test_dischargesummaries_workflow.py` and `test_full_workflow_defaults.py`, and record any intended expectation change in `pr-description.md`.
 
 **Checkpoint**: US1 is complete and shippable alone (MVP).
 

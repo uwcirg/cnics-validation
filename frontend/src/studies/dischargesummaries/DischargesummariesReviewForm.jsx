@@ -7,8 +7,10 @@
 // The backend refuses submissions with the same reason. Phase B replaces it
 // with the real form.
 
-// eslint-disable-next-line no-unused-vars -- Phase B uses eventId and apiUrl
-function DischargesummariesReviewForm({ eventId, apiUrl }) {
+// Spec 014's edit props (`initialReview`, `mode`, `onSaved`, `onConflict`)
+// are accepted and ignored until Phase B adds the form.
+// eslint-disable-next-line no-unused-vars -- Phase B uses eventId, apiUrl and the spec 014 edit props
+function DischargesummariesReviewForm({ eventId, apiUrl, initialReview, mode, onSaved, onConflict }) {
   return <p role="status">The review form for this study is not available yet.</p>
 }
 

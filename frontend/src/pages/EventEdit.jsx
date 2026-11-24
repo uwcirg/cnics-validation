@@ -38,7 +38,17 @@ function EventEdit({ auth, reviewForm }) {
   const reviewRow = (slot) => {
     const r = reviews.find((rv) => rv.slot === slot)
     if (!r) return null
-    return <tr><th>Review {slot}:</th><td><ReviewSummary review={r} /></td></tr>
+    // Spec 014: a review its author has edited shows when, under the
+    // summary. The page renders this itself, so study summaries are unchanged.
+    return (
+      <tr>
+        <th>Review {slot}:</th>
+        <td>
+          <ReviewSummary review={r} />
+          {r.modified && <div>Last edited: {String(r.modified).replace('T', ' ')}</div>}
+        </td>
+      </tr>
+    )
   }
 
   useEffect(() => {

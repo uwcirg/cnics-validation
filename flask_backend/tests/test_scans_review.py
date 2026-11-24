@@ -26,6 +26,11 @@ class FakeEvent:
         self.review2_date = review2_date
         self.review3_date = None
         self.status = status
+        # A fully processed packet: every pre-assignment stage complete
+        # (spec 014 D3 refuses a review while the packet is re-processed).
+        self.upload_date = "2026-01-01"
+        self.scrub_date = "2026-01-02"
+        self.screen_date = "2026-01-03"
 
 
 class _Result:

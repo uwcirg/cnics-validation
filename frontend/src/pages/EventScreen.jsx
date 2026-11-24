@@ -20,6 +20,7 @@ function EventScreen({ studyLabel, configResolved = true }) {
   const [decision, setDecision] = useState('accept')
   const [message, setMessage] = useState('')
   const [status, setStatus] = useState(null)
+  const [errorText, setErrorText] = useState('')
 
   useEffect(() => {
     if (!eventId) return
@@ -36,6 +37,7 @@ function EventScreen({ studyLabel, configResolved = true }) {
     e.preventDefault()
     if (!eventId) return
     setStatus('saving')
+    setErrorText('')
     try {
       const res = await fetch(`${apiUrl}/api/events/${eventId}/screen`, {
         method: 'POST',
@@ -50,9 +52,17 @@ function EventScreen({ studyLabel, configResolved = true }) {
       } else if (res.status === 403) {
         setStatus('forbidden')
       } else {
+        // e.g. 409 "This event's packet has not been scrubbed yet." (spec 014 D13)
+        try {
+          const j = await res.json()
+          setErrorText((j && j.error) || '')
+        } catch {
+          setErrorText('')
+        }
         setStatus('error')
       }
     } catch {
+      setErrorText('')
       setStatus('error')
     }
   }
@@ -145,7 +155,7 @@ function EventScreen({ studyLabel, configResolved = true }) {
       {status === 'saved' && <p>Decision saved.</p>}
       {status === 'unauthorized' && <p>Login required.</p>}
       {status === 'forbidden' && <p>Not authorized.</p>}
-      {status === 'error' && <p>Failed to save.</p>}
+      {status === 'error' && <p>{errorText || 'Failed to save.'}</p>}
 
       <p style={{ marginTop: '16px' }}>
         <a href="#" onClick={(e) => { e.preventDefault(); navigate('/events/viewAll') }}>
