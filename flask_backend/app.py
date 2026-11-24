@@ -2741,6 +2741,33 @@ def events_assign_many():
 @requires_auth
 @requires_roles('admin')
 def events_send_many():
+    """Mark events as sent and email their reviewers. Admin only.
+
+    The whole batch is refused, with nothing changed and no email sent, if
+    any event has an incomplete enabled pre-assignment stage, as while a
+    replaced packet is re-processed (spec 014 D3).
+    ---
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            event_ids:
+              type: array
+              items:
+                type: integer
+    responses:
+      200:
+        description: Events sent; DB update count and email summary
+      400:
+        description: >
+          `event_ids` missing, or events not ready to send:
+          {"error": "These events are not ready to send: 12, 15"}
+      403:
+        description: admin only
+    """
     data = request.get_json() or {}
     event_ids = data.get('event_ids') or []
     if not isinstance(event_ids, list) or not event_ids:
@@ -2869,7 +2896,7 @@ def events_review(event_id: int):
         # spec 014 D3: after a packet replacement the event keeps its
         # reviewer, but is not reviewable until the new packet has passed
         # every enabled pre-assignment stage again.
-        if not table_service.pre_assignment_complete(e, cfg):
+        if _being_reprocessed(e, cfg):
             return jsonify({'error': REPROCESSING_MESSAGE}), 409
 
         # A reviewer reviews an event once (FR-024). Before spec 012 a second
@@ -2907,6 +2934,17 @@ def events_review(event_id: int):
         session.close()
 
 
+def _being_reprocessed(e, cfg) -> bool:
+    """Whether `e` kept its reviewer through a packet replacement and the new
+    packet has not yet passed every enabled pre-assignment stage (spec 014 D3).
+
+    Only an unsent event can be in that state: the replacement window closes
+    when the event is sent. Limiting the check to unsent events keeps legacy
+    rows that were sent with a stage date missing reviewable.
+    """
+    return getattr(e, 'send_date', None) is None and not table_service.pre_assignment_complete(e, cfg)
+
+
 def _reviewer_slot(e, user_id) -> Optional[int]:
     """Return the reviewer slot (1, 2 or 3) `user_id` holds on event `e`,
     or None. Shared by review submission and retrieval (spec 012)."""
@@ -2933,7 +2971,7 @@ def review_editable(e, slot, cfg) -> tuple[bool, Optional[str]]:
     """
     if slot not in (1, 2) or getattr(e, f'review{slot}_date', None) is None:
         return False, None
-    if not table_service.pre_assignment_complete(e, cfg):
+    if _being_reprocessed(e, cfg):
         return False, REPROCESSING_MESSAGE
     other = 2 if slot == 1 else 1
     if cfg.reviewer_count == 2 and getattr(e, f'review{other}_date', None) is not None:

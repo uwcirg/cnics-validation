@@ -37,7 +37,7 @@ The original submission date is not stored in `reviews`. It stays in `events.rev
 
 - `slot ∈ {1, 2}`, and that slot's `reviewN_date` is set;
 - `cfg.reviewer_count == 1`, **or** the other slot's `reviewN_date` is null;
-- every enabled pre-assignment stage is complete (research D3).
+- every enabled pre-assignment stage is complete (research D3). This check applies only to an **unsent** event: the replacement window closes at send, so a sent event cannot be mid-replacement, and a legacy row sent with a stage date missing stays reviewable. The same rule guards `POST /review`.
 
 The value of `locked_reason` when editability is false:
 

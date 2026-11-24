@@ -109,6 +109,25 @@ paths:
                           type: string
                         value:
                           type: string
+                  packet_replaceable:
+                    type: boolean
+                    description: 'Whether this caller may replace the packet now:
+                      the site check plus the replacement window (spec 014 D1, D10)
+
+                      '
+                  file_number:
+                    type: integer
+                    description: 'Packet version; the scrub page sends it back as
+                      `packet_version` (spec 014 D12). Null before any upload.
+
+                      '
+                  packet_replaced_at:
+                    type: string
+                    description: 'ISO datetime of the latest packet replacement made
+                      while a reviewer was assigned, or null. Always null when sending
+                      is on (spec 014 D14).
+
+                      '
         '403':
           description: Caller is neither admin nor uploader, and is not one of this
             event's reviewers
@@ -183,8 +202,19 @@ paths:
   /api/events/{int:event_id}/screen:
     post:
       responses:
+        '200':
+          description: 'Decision recorded: {"data": {"updated": true}}'
+        '400':
+          description: decision is not one of accept, rescrub, reject
         '403':
           description: admin only (spec 012 FR-033)
+        '404':
+          description: Event not found
+        '409':
+          description: 'Scrubbing is on and the packet has not been scrubbed yet:
+            {"error": "This event''s packet has not been scrubbed yet."}
+
+            '
   /api/events/bulk:
     post:
       summary: Bulk-create events from an uploaded CSV, archiving the submission
@@ -423,9 +453,42 @@ paths:
             '
   /api/events/{int:event_id}/upload_scrubbed:
     post:
+      consumes:
+      - multipart/form-data
+      parameters:
+      - name: event_id
+        in: path
+        type: integer
+        required: true
+        description: ID of the event
+      - name: scrubbed_file
+        in: formData
+        type: file
+        required: true
+        description: The scrubbed packet (zip, pdf, doc or docx)
+      - name: packet_version
+        in: formData
+        type: integer
+        required: true
+        description: The event's `file_number` as loaded by the scrub page
       responses:
+        '200':
+          description: 'Scrubbed copy saved: {"data": {"saved": true}}'
+        '400':
+          description: 'No file, an unsupported file type, or `packet_version` missing
+            or not an integer: {"error": "packet_version is required"}
+
+            '
         '403':
           description: admin only (spec 012 FR-033)
+        '404':
+          description: Event not found
+        '409':
+          description: '`packet_version` is not the event''s current packet: {"error":
+            "This event''s packet was replaced on <upload_date>. Download the new
+            packet and scrub it."} Nothing is saved.
+
+            '
   /api/events/{int:event_id}/upload_raw:
     post:
       consumes:
@@ -443,7 +506,11 @@ paths:
         description: The packet (zip, pdf, doc or docx)
       responses:
         '200':
-          description: Packet saved; event status is `uploaded`
+          description: 'Packet saved; the status is derived from the completed stages
+            (`uploaded`, or `assigned` for a kept assignment in a study with no scrub
+            or screen step). Body: {"data": {"saved": true}}
+
+            '
         '400':
           description: No file, or an unsupported file type
         '403':
@@ -451,9 +518,10 @@ paths:
         '404':
           description: Event not found
         '409':
-          description: 'Non-admin caller and the event is past upload (status not
-            `created` or `uploaded`): {"error": "This event has moved past upload;
-            ask an administrator."} Nothing is saved.
+          description: 'The packet has been released to reviewers (sent, or reviewed),
+            or a non-admin is acting on a `no_packet_available` event: {"error": "This
+            packet has already been released to reviewers and can no longer be replaced
+            here. Contact the systems operator."} Nothing is saved.
 
             '
   /api/events/{int:event_id}/mark_no_packet:
@@ -579,7 +647,29 @@ paths:
           description: Not authenticated
         '403':
           description: Caller is not an administrator
-  /api/events/send_many: {}
+  /api/events/send_many:
+    post:
+      parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            event_ids:
+              type: array
+              items:
+                type: integer
+      responses:
+        '200':
+          description: Events sent; DB update count and email summary
+        '400':
+          description: '`event_ids` missing, or events not ready to send: {"error":
+            "These events are not ready to send: 12, 15"}
+
+            '
+        '403':
+          description: admin only
   /api/events/{int:event_id}/review:
     post:
       parameters:
@@ -608,9 +698,63 @@ paths:
         '404':
           description: Event not found
         '409':
-          description: The submitter has already reviewed this event (FR-024)
+          description: 'The submitter has already reviewed this event (FR-024), or
+            the event''s packet is being re-processed after a replacement: {"error":
+            "This event''s packet is being re-processed."} (spec 014)
+
+            '
         '503':
           description: This study's review tables are not migrated
+    put:
+      parameters:
+      - name: event_id
+        in: path
+        type: integer
+        required: true
+        description: ID of the event whose review is edited
+      - name: body
+        in: body
+        required: true
+        description: The study's review body, as for POST
+        schema:
+          type: object
+      responses:
+        '200':
+          description: Edit saved
+          schema:
+            type: object
+            properties:
+              data:
+                type: object
+                properties:
+                  event_id:
+                    type: integer
+                  status:
+                    type: string
+                    description: Unchanged by the edit
+                  modified:
+                    type: string
+                    description: ISO-8601 datetime of this edit
+        '400':
+          description: Invalid review body (`error`, optional `fields`), as for POST
+        '403':
+          description: 'Caller is not reviewer 1 or 2 of this event: {"error": "Submitter
+            is not an assigned reviewer for this event"}
+
+            '
+        '404':
+          description: Event not found
+        '409':
+          description: 'The review cannot be edited: {"error": "You have not submitted
+            a review for this event"}, {"error": "Both reviews for this event are
+            complete, so they can no longer be changed."}, or {"error": "This event''s
+            packet is being re-processed."}
+
+            '
+        '503':
+          description: 'This study''s review tables are not migrated (names init/migrations/014-reviews-modified.sh)
+
+            '
     get:
       parameters:
       - name: event_id
@@ -645,6 +789,19 @@ paths:
                         type: integer
                       review_date:
                         type: string
+                        description: Original submission date (unchanged by edits)
+                      modified:
+                        type: string
+                        description: ISO-8601 datetime of the last edit, or null
+                      editable:
+                        type: boolean
+                        description: Whether the caller may still edit (spec 014)
+                      locked_reason:
+                        type: string
+                        description: Why the review cannot be edited, or null
+                      answers:
+                        type: object
+                        description: The caller's own review, in this study's shape
         '403':
           description: Caller is neither an admin nor an assigned reviewer
         '404':

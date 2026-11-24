@@ -165,7 +165,9 @@ init/
 │                                  #   Dormant: first line `-- DORMANT`,
 │                                  #   body wrapped in /* ... */.
 └── migrations/                    # One-off upgrades for existing DBs
-    └── 012-scans-reviews.sh       #   (existing scans deployments).
+    ├── 012-scans-reviews.sh       #   (existing scans deployments).
+    └── 014-reviews-modified.sh    #   (every study; run before deploying
+                                   #   spec 014, then restart the backend).
 ```
 
 > **Why `studies/` is a subdirectory.** MariaDB runs every *top-level*
@@ -352,6 +354,10 @@ study-specific files in the repo) and the per-host deployment
 3. **For existing databases**, add a one-off script under
    `init/migrations/` (see `012-scans-reviews.sh`), since `init/` only
    runs when a volume is first created.
+4. **Include the nullable `modified` datetime** in the study's `reviews`
+   table (spec 014). Every study's review-editing and schema check rely on
+   it; `init/migrations/014-reviews-modified.sh` adds it to databases
+   created before spec 014.
 
 ### Step 3: Backend Model Configuration
 
@@ -359,8 +365,10 @@ study-specific files in the repo) and the per-host deployment
    (for VTE: `vte.py`, currently dormant), following `scans.py`. It needs
    its own `DeclarativeBase`, a `Reviews` model, and the interface
    documented in `flask_backend/models/studies/__init__.py` (`REVIEW_FORM`,
-   `parse_review`, `add_review`, `get_reviews`, `export_csv`,
-   `check_schema`).
+   `parse_review`, `add_review`, `replace_review`, `get_reviews`,
+   `export_csv`, `check_schema`). Since spec 014, `get_reviews` items carry
+   `modified`, and the review form accepts `initialReview`, `mode`,
+   `onSaved` and `onConflict` so the same form can edit a submitted review.
 2. **Export `REVIEW_FORM`.** Its presence is what makes the module live:
    `get_study_module()` then returns it for `STUDY_TYPE=<study>` instead of
    falling back to `mci`.
@@ -610,6 +618,11 @@ REVIEWER_COUNT=1          # single-reviewer adjudication
 - `init/migrations/012-scans-reviews.sh`: a one-off upgrade for scans
   databases created before spec 012. It renames the old MI-shaped tables
   to `*_mi_pre012` and never drops them.
+- `init/migrations/014-reviews-modified.sh`: adds the nullable
+  `reviews.modified` column (spec 014, review editing) to a database of
+  any study created before spec 014. Idempotent. Run it before deploying a
+  spec 014 backend (after `012-scans-reviews.sh` on an old scans database),
+  then restart the backend.
 
 The bypassed states (`scrubbed`, `screened`, `sent`, `reviewer2_done`, and
 the third-review states) remain defined in the shared schema and state

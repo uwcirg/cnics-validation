@@ -248,8 +248,8 @@ description: "Task list for 014-packet-replace-review-edit"
 
 ## Phase 6: Polish & cross-cutting
 
-- [ ] T050 Regenerate the API contract: `python -m flask_backend.generate_openapi` from the repo root, and commit `openapi.json`. Verify that the diff shows the new PUT `/review`, the `packet_version` field, and the new 409/400 responses.
-- [ ] T051 [P] Write `specs/014-packet-replace-review-edit/pr-description.md`. It covers:
+- [X] T050 Regenerate the API contract: `python -m flask_backend.generate_openapi` from the repo root, and commit `openapi.json`. Verify that the diff shows the new PUT `/review`, the `packet_version` field, and the new 409/400 responses.
+- [X] T051 [P] Write `specs/014-packet-replace-review-edit/pr-description.md`. It covers:
   - studies affected (**all**: shared code; per-study notes from contracts/api.md);
   - the "will this break another study's deployment?" answer;
   - **admin rights narrowed** (no replacement after send or review);
@@ -260,9 +260,9 @@ description: "Task list for 014-packet-replace-review-edit"
   - the baseline from T001.
 
   End with the attribution line from the session instructions.
-- [ ] T052 [P] Update `docs/` operator material if a deployment or runbook doc lists migrations. Search with `grep -rl "012-scans-reviews" docs README* 2>/dev/null` and add `014-reviews-modified.sh` beside each mention, with one line on when to run it.
-- [ ] T053 Walk through quickstart.md §2 and §3 against the code, as a desk check: there is no local stack. Confirm each message string in quickstart.md, contracts/api.md and contracts/ui.md matches the implemented string exactly, and fix any drift in the docs or the code.
-- [ ] T054 Final full run: `python3 -m pytest flask_backend/tests` and `cd frontend && npm run lint && npm run build`, all green.
+- [X] T052 [P] Update `docs/` operator material if a deployment or runbook doc lists migrations. Search with `grep -rl "012-scans-reviews" docs README* 2>/dev/null` and add `014-reviews-modified.sh` beside each mention, with one line on when to run it.
+- [X] T053 Walk through quickstart.md §2 and §3 against the code, as a desk check: there is no local stack. Confirm each message string in quickstart.md, contracts/api.md and contracts/ui.md matches the implemented string exactly, and fix any drift in the docs or the code.
+- [X] T054 Final full run: `python3 -m pytest flask_backend/tests` and `cd frontend && npm run lint && npm run build`, all green.
 
 ---
 

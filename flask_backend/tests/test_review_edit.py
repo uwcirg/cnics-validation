@@ -35,6 +35,7 @@ class FakeEvent:
         self.scrub_date = D
         self.screen_date = D
         self.assign_date = D
+        self.send_date = None
         self.reviewer1_id = None
         self.reviewer2_id = None
         self.reviewer3_id = None
@@ -243,6 +244,17 @@ def test_get_mine_is_locked_once_both_reviews_exist(client_as, mci_profile):
     assert mine["editable"] is False
     assert mine["locked_reason"] == LOCKED
     assert mine["answers"]["reviewer_id"] == 7
+
+
+def test_legacy_sent_event_with_a_missing_stage_date_is_still_editable(client_as, mci_profile):
+    """A sent event cannot be mid-replacement (the window closed at send), so
+    a legacy row sent without a `screen_date` is not 'being re-processed'."""
+    event = FakeEvent("reviewer1_done", reviewer1_id=7, reviewer2_id=8, review1_date=D,
+                      send_date=D, screen_date=None)
+    res, _session, replace = _call(_reviewer(client_as), "PUT", event, mci_profile,
+                                   body=MCI_BODY, stored=[_own()])
+    assert res.status_code == 200
+    replace.assert_called_once()
 
 
 def test_second_review_landing_after_page_load_is_409(client_as, mci_profile):

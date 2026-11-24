@@ -46,6 +46,7 @@ These props are added to every registered form (`components/review/reviewForms.j
 | `initialReview` | object \| null | null | One `get_reviews` item to pre-fill from |
 | `mode` | `'create'` \| `'edit'` | `'create'` | `'edit'` sends PUT and uses "Save changes" |
 | `onSaved` | function | none | Called after a 2xx response |
+| `onConflict` | function(message) | none | Called with the server's `error` after a 409, so the page can re-fetch, switch to read-only and keep showing why (the form unmounts). *Added during implementation.* |
 
 - **`studies/mci/MciReviewForm.jsx`**: maps review columns to state, for example `mci`, `abnormal_ce_values_flag` → `abnormalCeValues`, and `ci` → `'1'`/`'0'`.
 - **`studies/scans/ScansReviewForm.jsx`**: maps `regions[]` to entries, keeping their order.
