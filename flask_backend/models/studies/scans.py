@@ -25,7 +25,7 @@ from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, String, text
 from sqlalchemy.dialects.mysql import INTEGER, TINYINT
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-from . import ReviewValidationError
+from . import MODIFIED_MIGRATION_HINT, ReviewValidationError, reviews_columns
 
 REVIEW_FORM = "scans"
 
@@ -48,6 +48,8 @@ class Reviews(ScansBase):
     created: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=text("CURRENT_TIMESTAMP")
     )
+    # Last edit by the author; NULL = never edited (spec 014).
+    modified: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, nullable=True)
     regions = relationship(
         "ReviewRegions",
         order_by="ReviewRegions.position",
@@ -196,13 +198,15 @@ def check_schema(session) -> Optional[str]:
     init/migrations/012-scans-reviews.sh still has the MI `reviews` table
     (research D10). Writing to it would fail with an obscure database error.
     Instead, the endpoints report this message.
+
+    A scans table that lacks the spec 014 `modified` column is reported
+    next, naming init/migrations/014-reviews-modified.sh.
     """
-    columns = set(session.execute(text(
-        "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
-        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'reviews'"
-    )).scalars().all())
+    columns = reviews_columns(session)
     if "mci" in columns or "created" not in columns:
         return _MIGRATION_HINT
+    if "modified" not in columns:
+        return MODIFIED_MIGRATION_HINT
     return None
 
 

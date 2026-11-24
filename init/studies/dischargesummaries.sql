@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS `reviews` (
   `event_id`    int(11)  NOT NULL,
   `reviewer_id` int(11)  NOT NULL,
   `created`     datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified`    datetime NULL DEFAULT NULL, -- last edit by the author; NULL = never edited (spec 014)
   PRIMARY KEY (`id`),
   UNIQUE KEY `event_reviewer` (`event_id`, `reviewer_id`),
   KEY `event_id` (`event_id`)

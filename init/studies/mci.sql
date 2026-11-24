@@ -68,6 +68,7 @@ CREATE TABLE `reviews` (
   `ci_type` enum('CABG/Surgery','PCI/Angioplasty','Stent','Unknown') DEFAULT NULL,
   `cardiac_cath` tinyint(1) NOT NULL,
   `ecg_type` enum('STEMI','non-STEMI','Other/Uninterpretable','New LBBB','Normal','No EKG') DEFAULT NULL,
+  `modified` datetime NULL DEFAULT NULL, -- last edit by the author; NULL = never edited (spec 014)
   PRIMARY KEY (`id`),
   KEY `event_id` (`event_id`),
   KEY `reviewer_id` (`reviewer_id`)

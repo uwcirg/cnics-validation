@@ -34,7 +34,7 @@ from sqlalchemy import DateTime, text
 from sqlalchemy.dialects.mysql import INTEGER
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from . import ReviewValidationError
+from . import MODIFIED_MIGRATION_HINT, ReviewValidationError, reviews_columns
 
 REVIEW_FORM = "dischargesummaries"
 
@@ -59,6 +59,8 @@ class Reviews(DischargesummariesBase):
     created: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=text("CURRENT_TIMESTAMP")
     )
+    # Last edit by the author; NULL = never edited (spec 014).
+    modified: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, nullable=True)
 
 
 def parse_review(data: dict) -> dict:
@@ -108,5 +110,11 @@ def export_csv(session, writer) -> None:
 
 
 def check_schema(session) -> Optional[str]:
-    """Phase A's table has only the shared columns, so there is nothing to check."""
+    """Report a `reviews` table that lacks the spec 014 `modified` column.
+
+    Phase A's table otherwise has only the shared columns, so before spec 014
+    this returned None.
+    """
+    if "modified" not in reviews_columns(session):
+        return MODIFIED_MIGRATION_HINT
     return None

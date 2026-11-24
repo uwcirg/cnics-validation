@@ -30,14 +30,34 @@ Study-module interface (duck-typed)
     :class:`ReviewValidationError` when the body is invalid.
 ``add_review(session, event_id, reviewer_id, parsed) -> None``
     Adds this study's rows for one review to ``session``. Does not commit.
+``replace_review(session, event_id, reviewer_id, parsed) -> bool``
+    Overwrites this reviewer's stored answers for the event in place with
+    ``parsed`` (the output of ``parse_review``) and sets ``modified`` to now.
+    The row's ``id`` is kept, so there is still one row per reviewer per
+    event. Does not commit. Returns False when the reviewer has no stored
+    review for the event (spec 014, ``PUT /api/events/<id>/review``).
 ``get_reviews(session, event_id) -> list[dict]``
-    Serializes the stored reviews of one event.
+    Serializes the stored reviews of one event. Each item carries
+    ``reviewer_id`` and ``modified``: when the author last edited it, as an
+    ISO-8601 string, or ``None`` if never edited (spec 014).
 ``export_csv(session, writer) -> None``
     Writes this study's ``GET /api/events/export`` headings and rows to a
     ``csv.writer``.
 ``check_schema(session) -> str | None``
     Returns an operator-facing message if the database's study tables do not
     match this module (e.g. an un-migrated database); otherwise ``None``.
+    Every study reports a missing ``reviews.modified`` column with
+    :data:`MODIFIED_MIGRATION_HINT`, which names
+    ``init/migrations/014-reviews-modified.sh``.
+
+The ``modified`` column (spec 014)
+----------------------------------
+
+Every study's ``reviews`` table has a nullable ``modified`` datetime, both in
+its DDL and in its ORM class, and every study's ``get_reviews`` items carry a
+``modified`` key. Shared code reads that key from module output only
+(constitution Principle IV), so **any study activated in future must provide
+``modified`` in both places**, and must implement ``replace_review``.
 
 Each study module declares its **own** ``DeclarativeBase``. Several studies
 define a table named ``reviews``, and the test suite imports more than one
@@ -61,6 +81,8 @@ import logging
 from types import ModuleType
 from typing import Optional
 
+from sqlalchemy import text
+
 from ... import study_config
 
 logger = logging.getLogger(__name__)
@@ -71,6 +93,25 @@ FALLBACK_STUDY = "mci"
 
 # Study names already warned about, so each fallback is logged once per process.
 _warned: set = set()
+
+
+# The `check_schema` message every study returns when its `reviews` table
+# lacks the spec 014 `modified` column (an un-migrated database).
+MODIFIED_MIGRATION_HINT = (
+    "reviews.modified is missing; run init/migrations/014-reviews-modified.sh "
+    "and restart the backend"
+)
+
+
+def reviews_columns(session) -> set:
+    """Column names of this database's `reviews` table (empty if none).
+
+    Shared by each study module's ``check_schema``.
+    """
+    return set(session.execute(text(
+        "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'reviews'"
+    )).scalars().all())
 
 
 class ReviewValidationError(Exception):

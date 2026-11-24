@@ -16,11 +16,11 @@ DDL: ``init/studies/mci.sql``.
 import datetime
 from typing import Optional
 
-from sqlalchemy import Enum, String, text
+from sqlalchemy import DateTime, Enum, String, text
 from sqlalchemy.dialects.mysql import INTEGER, TINYINT
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from . import ReviewValidationError
+from . import MODIFIED_MIGRATION_HINT, ReviewValidationError, reviews_columns
 
 REVIEW_FORM = "mci"
 
@@ -74,6 +74,8 @@ class Reviews(MciBase):
     family_history_flag: Mapped[Optional[int]] = mapped_column(TINYINT(1))
     ci_type: Mapped[Optional[str]] = mapped_column(Enum('CABG/Surgery', 'PCI/Angioplasty', 'Stent', 'Unknown'))
     ecg_type: Mapped[Optional[str]] = mapped_column(Enum('STEMI', 'non-STEMI', 'Other/Uninterpretable', 'New LBBB', 'Normal', 'No EKG'))
+    # Last edit by the author; NULL = never edited (spec 014).
+    modified: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, nullable=True)
 
 
 # --- Review submission (moved from app.py `events_review`) -------------------
@@ -137,7 +139,12 @@ def get_reviews(session, event_id: int) -> list:
 
 
 def check_schema(session) -> Optional[str]:
-    """The MI tables need no migration check; always None."""
+    """Report an MI `reviews` table that lacks the spec 014 `modified` column.
+
+    Before spec 014 the MI tables needed no check, and this returned None.
+    """
+    if "modified" not in reviews_columns(session):
+        return MODIFIED_MIGRATION_HINT
     return None
 
 

@@ -11,6 +11,7 @@ satisfying ``@requires_auth``, ``@requires_roles``, and
 """
 
 import importlib
+import sys
 from unittest.mock import patch
 
 import pytest
@@ -31,6 +32,20 @@ _FAKE_ADMIN = {
 def _fake_load_user_from_remote_header():
     g.auth_user = dict(_FAKE_ADMIN)
     return g.auth_user
+
+
+@pytest.fixture(autouse=True)
+def _fresh_schema_check_cache(monkeypatch):
+    """Start every test with an empty study-schema check cache.
+
+    `app._study_schema_error` caches each study's `check_schema` result per
+    process. Since spec 014 every study's check can report a missing
+    `reviews.modified`, so a result cached from one test's mocked session
+    must not leak into the next.
+    """
+    app_mod = sys.modules.get("flask_backend.app")
+    if app_mod is not None:
+        monkeypatch.setattr(app_mod, "_schema_errors", {}, raising=False)
 
 
 @pytest.fixture

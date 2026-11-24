@@ -44,7 +44,7 @@ class FakeSession:
     whose `add()` calls are recorded. `execute()` answers the schema check
     with a migrated scans `reviews` table unless told otherwise."""
 
-    def __init__(self, event, reviews_columns=("id", "event_id", "reviewer_id", "created")):
+    def __init__(self, event, reviews_columns=("id", "event_id", "reviewer_id", "created", "modified")):
         self._event = event
         self.added = []
         self.committed = False

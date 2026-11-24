@@ -70,7 +70,7 @@ class FakeSession:
         self.added.append(obj)
 
     def execute(self, *args, **kwargs):
-        return _Result(("id", "event_id", "reviewer_id", "created"))
+        return _Result(("id", "event_id", "reviewer_id", "created", "modified"))
 
     def commit(self):
         pass

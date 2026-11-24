@@ -511,6 +511,70 @@ def _pre_assignment_stages(cfg) -> list[str]:
     return stages
 
 
+def pre_assignment_complete(event, cfg) -> bool:
+    """Whether every enabled pre-assignment stage of `event` is complete.
+
+    True when each column from :func:`_pre_assignment_stages` is non-null.
+    Used to keep an event that is being re-processed after a packet
+    replacement out of the send step and the review endpoints (spec 014
+    research D3).
+    """
+    return all(getattr(event, column, None) is not None for column in _pre_assignment_stages(cfg))
+
+
+def derive_pre_send_status(event, cfg) -> str:
+    """Return the pre-send lifecycle status `event` has reached.
+
+    Replaces the literals that `upload_raw` (`uploaded`), `upload_scrubbed`
+    (`scrubbed`) and screen-accept (`screened`) wrote before spec 014
+    (research D3). The rules run in order; the first match wins:
+
+    1. no `upload_date` -> `created`
+    2. scrubbing on and no `scrub_date` -> `uploaded`
+    3. screening on and no `screen_date` -> `scrubbed` if scrubbing is on,
+       else `uploaded`
+    4. no `assign_date` -> the last enabled stage's status (`screened`,
+       `scrubbed` or `uploaded`)
+    5. otherwise -> `assigned`
+
+    For an event that was never assigned this gives the same value each
+    endpoint wrote before. An event that kept its reviewer assignment
+    through a packet replacement returns to `assigned` once every enabled
+    stage is complete again (spec 014 data-model.md).
+    """
+    if getattr(event, "upload_date", None) is None:
+        return "created"
+    if cfg.scrubbing and getattr(event, "scrub_date", None) is None:
+        return "uploaded"
+    if cfg.screening and getattr(event, "screen_date", None) is None:
+        return "scrubbed" if cfg.scrubbing else "uploaded"
+    if getattr(event, "assign_date", None) is None:
+        if cfg.screening:
+            return "screened"
+        return "scrubbed" if cfg.scrubbing else "uploaded"
+    return "assigned"
+
+
+# Statuses in which a packet may still be replaced, provided the event has no
+# send date and no review date (spec 014 research D1). `no_packet_available`
+# is handled separately: admins only, as before.
+REPLACEABLE_STATUSES = ('created', 'uploaded', 'scrubbed', 'screened', 'assigned', 'rejected')
+
+
+def _replace_window_predicate() -> str:
+    """SQL predicate for events whose existing packet may be replaced.
+
+    The same window as ``REPLACEABLE_STATUSES`` (research D1), but without
+    `created`: an event with no packet has nothing to replace, and is
+    already listed by the need-packets queue (research D10). Literals only,
+    so the string is safe to interpolate.
+    """
+    return (
+        "e.status IN ('uploaded','scrubbed','screened','assigned','rejected') "
+        "AND e.send_date IS NULL AND e.review1_date IS NULL AND e.review2_date IS NULL"
+    )
+
+
 def _ready_to_assign_predicate() -> str:
     """Return the flag-aware "ready to assign" SQL predicate.
 
