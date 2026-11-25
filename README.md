@@ -106,7 +106,7 @@ Override these values in your copied `.env` file as needed.
 
 ## Local Development
 
-See [docs/development.md](docs/development.md) for instructions on running the application with Docker. For a full end‑to‑end overview of setup, auth, data, and file flows, read [docs/WORKFLOW.md](docs/WORKFLOW.md).
+See [docs/development.md](docs/development.md) for instructions on running the application with Docker. For the event lifecycle, per-study workflow controls, and file flows, read [docs/WORKFLOW.md](docs/WORKFLOW.md); for what each role can do, read [docs/WORKFLOW_AUTH.md](docs/WORKFLOW_AUTH.md).
 
 
 ## Backend API

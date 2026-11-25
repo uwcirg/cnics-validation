@@ -16,11 +16,11 @@ DDL: ``init/studies/mci.sql``.
 import datetime
 from typing import Optional
 
-from sqlalchemy import Enum, String, text
+from sqlalchemy import DateTime, Enum, String, text
 from sqlalchemy.dialects.mysql import INTEGER, TINYINT
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from . import ReviewValidationError
+from . import MODIFIED_MIGRATION_HINT, ReviewValidationError, reviews_columns
 
 REVIEW_FORM = "mci"
 
@@ -74,6 +74,8 @@ class Reviews(MciBase):
     family_history_flag: Mapped[Optional[int]] = mapped_column(TINYINT(1))
     ci_type: Mapped[Optional[str]] = mapped_column(Enum('CABG/Surgery', 'PCI/Angioplasty', 'Stent', 'Unknown'))
     ecg_type: Mapped[Optional[str]] = mapped_column(Enum('STEMI', 'non-STEMI', 'Other/Uninterpretable', 'New LBBB', 'Normal', 'No EKG'))
+    # Last edit by the author; NULL = never edited (spec 014).
+    modified: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, nullable=True)
 
 
 # --- Review submission (moved from app.py `events_review`) -------------------
@@ -127,17 +129,55 @@ def add_review(session, event_id: int, reviewer_id: int, parsed: dict) -> None:
     session.add(Reviews(event_id=event_id, reviewer_id=reviewer_id, **parsed))
 
 
+# Columns `replace_review` never overwrites from a review body.
+_REPLACE_KEEP = ('id', 'event_id', 'reviewer_id', 'modified')
+
+
+def replace_review(session, event_id: int, reviewer_id: int, parsed: dict) -> bool:
+    """Overwrite this reviewer's MI `reviews` row in place (spec 014; no commit).
+
+    Every answer column takes its value from `parsed`; one the edited body
+    omits becomes NULL, as it would be in a new submission. NOT NULL `mci`
+    and `cardiac_cath` are always present in a parsed body. The row's `id`
+    is kept and `modified` is set to now. Returns False when the reviewer
+    has no row for this event.
+    """
+    review = (
+        session.query(Reviews)
+        .filter(Reviews.event_id == event_id, Reviews.reviewer_id == reviewer_id)
+        .first()
+    )
+    if review is None:
+        return False
+    for column in Reviews.__table__.columns:
+        if column.name not in _REPLACE_KEEP:
+            setattr(review, column.name, parsed.get(column.name))
+    review.modified = datetime.datetime.now()
+    return True
+
+
 def get_reviews(session, event_id: int) -> list:
-    """Return this event's MI `reviews` rows as column dicts."""
+    """Return this event's MI `reviews` rows as column dicts.
+
+    `modified` is an ISO-8601 string, or None if never edited (spec 014).
+    """
     rows = session.query(Reviews).filter(Reviews.event_id == event_id).order_by(Reviews.id).all()
-    return [
-        {c.name: getattr(r, c.name) for c in Reviews.__table__.columns}
-        for r in rows
-    ]
+    reviews = []
+    for r in rows:
+        review = {c.name: getattr(r, c.name) for c in Reviews.__table__.columns}
+        modified = review.get('modified')
+        review['modified'] = modified.isoformat() if modified is not None else None
+        reviews.append(review)
+    return reviews
 
 
 def check_schema(session) -> Optional[str]:
-    """The MI tables need no migration check; always None."""
+    """Report an MI `reviews` table that lacks the spec 014 `modified` column.
+
+    Before spec 014 the MI tables needed no check, and this returned None.
+    """
+    if "modified" not in reviews_columns(session):
+        return MODIFIED_MIGRATION_HINT
     return None
 
 
@@ -260,7 +300,9 @@ _EXPORT_SQL = """
               edd.secondary_cause AS overall_secondary_cause,
               edd.secondary_cause_other AS overall_secondary_cause_other,
               edd.false_positive_reason AS overall_false_positive_reason,
-              edd.ci AS overall_ci
+              edd.ci AS overall_ci,
+              rv1.modified AS review1_modified,
+              rv2.modified AS review2_modified
             FROM events e
             LEFT JOIN patients_view p ON p.id = e.patient_id
             LEFT JOIN crit ON crit.event_id = e.id
@@ -288,6 +330,13 @@ def _export_rows(session) -> list:
     return [dict(r) for r in rows]
 
 
+def _iso_cell(value):
+    """A `modified` export cell: ISO-8601 for a datetime, blank for None (spec 014)."""
+    if value is None:
+        return ''
+    return value.isoformat() if isinstance(value, datetime.datetime) else value
+
+
 def export_csv(session, writer) -> None:
     """Write the MI events export (headings + one row per event) to `writer`."""
     rows = _export_rows(session)
@@ -313,7 +362,9 @@ def export_csv(session, writer) -> None:
         'Review 3 False Positive?', 'Review 3 False Positive Reason', 'Review 3 False Positive Other Cause',
         'Review 3 Current Tobacco Use?', 'Review 3 Past Tobacco Use?', 'Review 3 Cocaine Use?', 'Review 3 Family History?', 'Review 3 Date',
         'Overall Outcome', 'Overall Primary vs. Secondary', 'Overall False Positive Event?', 'Overall Secondary Cause',
-        'Overall Secondary Cause Other', 'Overall False Positive Cause', 'Overall Cardiac Intervention?'
+        'Overall Secondary Cause Other', 'Overall False Positive Cause', 'Overall Cardiac Intervention?',
+        # spec 014 research D9: appended, so every earlier column keeps its position.
+        'Review 1 Last Edited', 'Review 2 Last Edited',
     ]
     writer.writerow(headings)
     for r in rows:
@@ -342,5 +393,6 @@ def export_csv(session, writer) -> None:
             r.get('assigner3rd',''), r.get('assign3rd_date',''), r.get('reviewer3',''), r.get('review3_mci',''), r.get('review3_abnormal_ce',''),
             r.get('review3_ce_criteria',''), r.get('review3_chest_pain',''), r.get('review3_ecg_changes',''), r.get('review3_lvm',''), r.get('review3_ci',''), r.get('review3_type',''), r.get('review3_secondary_cause',''), r.get('review3_other_cause',''),
             r.get('review3_false_positive',''), r.get('review3_false_positive_reason',''), r.get('review3_false_positive_other_cause',''), r.get('review3_current_tobacco',''), r.get('review3_past_tobacco',''), r.get('review3_cocaine',''), r.get('review3_family_history',''), r.get('review3_date',''),
-            r.get('overall_outcome',''), r.get('overall_primary_secondary',''), 'Yes' if r.get('overall_false_positive_event') else 'No' if r.get('overall_false_positive_event') is not None else '', r.get('overall_secondary_cause',''), r.get('overall_secondary_cause_other',''), r.get('overall_false_positive_reason',''), 'Yes' if r.get('overall_ci') else 'No' if r.get('overall_ci') is not None else ''
+            r.get('overall_outcome',''), r.get('overall_primary_secondary',''), 'Yes' if r.get('overall_false_positive_event') else 'No' if r.get('overall_false_positive_event') is not None else '', r.get('overall_secondary_cause',''), r.get('overall_secondary_cause_other',''), r.get('overall_false_positive_reason',''), 'Yes' if r.get('overall_ci') else 'No' if r.get('overall_ci') is not None else '',
+            _iso_cell(r.get('review1_modified')), _iso_cell(r.get('review2_modified')),
         ])

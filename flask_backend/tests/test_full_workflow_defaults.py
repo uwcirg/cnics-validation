@@ -64,7 +64,8 @@ def test_full_workflow_send_advances_status(mock_get_session, mock_email, monkey
     """A full-workflow send still advances status to `sent`."""
     _clear_controls(monkeypatch)
     mock_email.return_value = {"attempted": 0, "sent": 0, "skipped": 0, "errors": []}
-    event = SimpleNamespace(id=1, sender_id=None, send_date=None, status="assigned")
+    event = SimpleNamespace(id=1, sender_id=None, send_date=None, status="assigned",
+                            upload_date="2026-01-01", scrub_date="2026-01-02", screen_date="2026-01-03")
     session = MagicMock()
     session.query.return_value.filter.return_value.all.return_value = [event]
     mock_get_session.return_value = session

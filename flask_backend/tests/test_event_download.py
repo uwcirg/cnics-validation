@@ -13,6 +13,7 @@ supplying `file_number` is mocked with the `FakeSession` pattern used by
 the other endpoint tests.
 """
 
+import datetime
 import importlib
 from unittest.mock import patch
 
@@ -29,11 +30,18 @@ FILE_NUMBER = 837261234
 REVIEWER_ID = 9
 
 
+SCRUBBED_ON = datetime.date(2026, 11, 1)
+
+
 class FakeEvent:
-    def __init__(self, file_number=FILE_NUMBER, reviewer1_id=REVIEWER_ID):
+    """An event whose current packet has been scrubbed. Since spec 014 D4 a
+    scrubbed copy is served only when `scrub_date` is set (scrubbing on)."""
+
+    def __init__(self, file_number=FILE_NUMBER, reviewer1_id=REVIEWER_ID, scrub_date=SCRUBBED_ON):
         self.id = EVENT_ID
         self.patient_id = 7
         self.file_number = file_number
+        self.scrub_date = scrub_date
         self.reviewer1_id = reviewer1_id
         self.reviewer2_id = None
         self.reviewer3_id = None
@@ -269,6 +277,35 @@ def test_reviewer_still_gets_the_scrubbed_packet(app_mod, downloads, event_row):
 
     assert res.status_code == 200
     assert res.data == b"scrubbed"
+
+
+def test_stale_scrubbed_copy_is_ignored_after_a_replacement(app_mod, admin_client, downloads, event_row):
+    """spec 014 D4: with no `scrub_date`, a leftover scrubbed copy (e.g. a
+    legacy one in read-only FILES_DIR) is not the current packet. An admin
+    gets the raw packet, which is the replacement."""
+    event_row.scrub_date = None
+    (downloads / f"orig_{EVENT_ID}_{FILE_NUMBER}.zip").write_bytes(b"new raw")
+    (downloads / f"{EVENT_ID}.pdf").write_bytes(b"old scrubbed")
+    with _full_workflow(app_mod):
+        res = admin_client.get(DOWNLOAD_URL.format(event_id=EVENT_ID))
+
+    assert res.status_code == 200
+    assert res.data == b"new raw"
+
+
+def test_reviewer_gets_nothing_while_the_replacement_is_unscrubbed(app_mod, downloads, event_row):
+    """spec 014 D4: the reviewer is refused the stale copy and the raw packet."""
+    event_row.scrub_date = None
+    (downloads / f"orig_{EVENT_ID}_{FILE_NUMBER}.zip").write_bytes(b"new raw")
+    (downloads / f"{EVENT_ID}.pdf").write_bytes(b"old scrubbed")
+    ctx, client = _reviewer_client(app_mod)
+    try:
+        with _full_workflow(app_mod):
+            res = client.get(DOWNLOAD_URL.format(event_id=EVENT_ID))
+    finally:
+        ctx.stop()
+
+    assert res.status_code == 403
 
 
 def test_a_database_fault_does_not_hide_a_present_file(app_mod, admin_client, downloads):

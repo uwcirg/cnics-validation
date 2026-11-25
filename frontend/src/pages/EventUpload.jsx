@@ -242,6 +242,15 @@ function EventUpload({ studyLabel, studyType, configResolved = true, workflow })
     }
   }
 
+  // Spec 014 D1/D10: a packet can be replaced until it is released to
+  // reviewers. Past that point the server refuses the upload, so the form is
+  // replaced by the reason instead of offering an upload that would fail.
+  const packetReleased = Boolean(
+    details && details.status !== 'created' && details.packet_replaceable === false
+  )
+  const isReplacement = Boolean(details?.upload_date)
+  const showReprocessNote = isReplacement && (wf.scrubbing || wf.screening)
+
   // Once recorded, the event is resolved: the form locks so the same
   // declaration cannot be submitted twice (FR-020).
   const noPacketDone = noPacketStatus === 'success'
@@ -430,7 +439,19 @@ function EventUpload({ studyLabel, studyType, configResolved = true, workflow })
             If packet is available:
           </h2>
           <div className="indent2">
+            {packetReleased ? (
+              <p>
+                This packet has already been released to reviewers and can no
+                longer be replaced here. Contact the systems operator.
+              </p>
+            ) : (
             <form onSubmit={handleUploadSubmit}>
+              {showReprocessNote && (
+                <p>
+                  Replacing the packet sends it back through scrubbing and
+                  screening; any reviewer assignment is kept.
+                </p>
+              )}
               <div>
                 <label>
                   Choose a file to upload:{' '}
@@ -443,7 +464,7 @@ function EventUpload({ studyLabel, studyType, configResolved = true, workflow })
               </div>
               <div style={{ paddingTop: '6px' }}>
                 <button type="submit" disabled={uploadStatus === 'uploading'}>
-                  {uploadStatus === 'uploading' ? 'Uploading…' : 'Upload'}
+                  {uploadStatus === 'uploading' ? 'Uploading…' : (isReplacement ? 'Replace packet' : 'Upload')}
                 </button>
               </div>
               {uploadStatus === 'error' && uploadError && (
@@ -455,6 +476,7 @@ function EventUpload({ studyLabel, studyType, configResolved = true, workflow })
                 </div>
               )}
             </form>
+            )}
           </div>
 
           <h2 className="indent1" style={{ paddingTop: '6px' }}>

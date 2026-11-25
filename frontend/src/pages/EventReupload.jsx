@@ -112,9 +112,9 @@ function EventReupload({ studyType, configResolved = true }) {
     <div className="home-container">
       <h1>Re-upload Existing Packets</h1>
       {rows.length ? (
-        <p>{rows.length} event(s) require packet re-upload.</p>
+        <p>{`${rows.length} event(s) can have their packet replaced. A packet can be replaced until it is sent to reviewers.`}</p>
       ) : (
-        <p>No events currently require re-upload.</p>
+        <p>No packets can be replaced right now.</p>
       )}
 
       <section>

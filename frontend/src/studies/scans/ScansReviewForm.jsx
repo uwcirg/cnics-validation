@@ -11,6 +11,11 @@ import './ScansReviewForm.css'
 // in pages/EventReview.jsx.
 //
 // UI contract: specs/012-dexa-review-form/contracts/review-ui.md.
+//
+// Spec 014: the same form edits a submitted review. With `mode="edit"` it is
+// pre-filled from `initialReview` (the reviewer's own review, as served by
+// GET …/review `mine.answers`) and saves with PUT
+// (specs/014-packet-replace-review-edit/contracts/ui.md).
 
 // --- Validation rules: keep in sync with flask_backend/models/studies/scans.py
 // [stored value, display label], in dropdown order.
@@ -78,15 +83,30 @@ function FieldError({ id, message }) {
   return <div id={id} className="scans-field-error" role="alert">{message}</div>
 }
 
-function ScansReviewForm({ eventId, apiUrl }) {
-  const [entries, setEntries] = useState([])
+// Form entries from a stored review's `regions`, in entry order, keyed the
+// way `addEntry` keys new entries (r1, r2, …).
+function entriesFrom(review) {
+  const regions = [...(review?.regions || [])].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+  return regions.map((region, i) => ({
+    key: `r${i + 1}`,
+    region: region.region || '',
+    regionOther: region.region_other || '',
+    laterality: region.laterality || '',
+    tScore: region.t_score ?? '',
+    zScore: region.z_score ?? '',
+  }))
+}
+
+function ScansReviewForm({ eventId, apiUrl, initialReview = null, mode = 'create', onSaved, onConflict }) {
+  const editing = mode === 'edit'
+  const [entries, setEntries] = useState(() => entriesFrom(initialReview))
   // Errors keyed by `${entry.key}.${field}`. Keys are stable across removals,
   // so removing an entry never moves another entry's errors (FR-011).
   const [errors, setErrors] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [submitMessage, setSubmitMessage] = useState(null)
-  const nextKey = useRef(1)
+  const nextKey = useRef(entries.length + 1)
   const inputs = useRef({})
   const [focusTarget, setFocusTarget] = useState(null)
 
@@ -98,7 +118,8 @@ function ScansReviewForm({ eventId, apiUrl }) {
     setFocusTarget(null)
   }, [focusTarget])
 
-  const locked = submitting || submitted
+  // An edit can be saved again; only a first submission locks the form.
+  const locked = submitting || (submitted && !editing)
   const inputRef = (name) => (el) => {
     if (el) inputs.current[name] = el
     else delete inputs.current[name]
@@ -198,16 +219,27 @@ function ScansReviewForm({ eventId, apiUrl }) {
     setSubmitMessage(null)
     try {
       const res = await fetch(`${apiUrl}/api/events/${eventId}/review`, {
-        method: 'POST',
+        method: editing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(body),
       })
       const json = await res.json().catch(() => ({}))
       if (res.ok) {
-        const status = json?.data?.status || 'updated'
         setSubmitted(true)
-        setSubmitMessage({ type: 'success', text: `Review submitted. Event status: ${status}.` })
+        if (editing) {
+          setSubmitMessage({ type: 'success', text: 'Changes saved.' })
+        } else {
+          const status = json?.data?.status || 'updated'
+          setSubmitMessage({ type: 'success', text: `Review submitted. Event status: ${status}.` })
+        }
+        onSaved?.()
+      } else if (res.status === 409) {
+        // spec 014: the review can no longer be edited; the page switches
+        // to read-only and shows why.
+        const text = json?.error || `Submission failed (${res.status}).`
+        setSubmitMessage({ type: 'error', text })
+        onConflict?.(text)
       } else {
         // Map server field errors (by 0-based entry index) onto the inputs.
         const serverErrs = {}
@@ -359,7 +391,7 @@ function ScansReviewForm({ eventId, apiUrl }) {
           )}
           <div className="scans-submit">
             <button type="submit" disabled={locked}>
-              {submitting ? 'Submitting…' : 'Submit'}
+              {submitting ? (editing ? 'Saving…' : 'Submitting…') : (editing ? 'Save changes' : 'Submit')}
             </button>
             {submitMessage && (
               <span

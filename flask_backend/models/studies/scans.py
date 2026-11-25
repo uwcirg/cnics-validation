@@ -25,7 +25,7 @@ from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, String, text
 from sqlalchemy.dialects.mysql import INTEGER, TINYINT
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-from . import ReviewValidationError
+from . import MODIFIED_MIGRATION_HINT, ReviewValidationError, reviews_columns
 
 REVIEW_FORM = "scans"
 
@@ -48,6 +48,8 @@ class Reviews(ScansBase):
     created: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=text("CURRENT_TIMESTAMP")
     )
+    # Last edit by the author; NULL = never edited (spec 014).
+    modified: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, nullable=True)
     regions = relationship(
         "ReviewRegions",
         order_by="ReviewRegions.position",
@@ -180,6 +182,26 @@ def add_review(session, event_id: int, reviewer_id: int, parsed: list) -> None:
     session.add(review)
 
 
+def replace_review(session, event_id: int, reviewer_id: int, parsed: list) -> bool:
+    """Replace this reviewer's region entries in place (spec 014; no commit).
+
+    The `reviews` row (its `id` and `created`) is kept; its `review_regions`
+    are replaced as a set through the delete-orphan cascade, and `modified`
+    is set to now. Returns False when the reviewer has no review for this
+    event.
+    """
+    review = (
+        session.query(Reviews)
+        .filter(Reviews.event_id == event_id, Reviews.reviewer_id == reviewer_id)
+        .first()
+    )
+    if review is None:
+        return False
+    review.regions = [ReviewRegions(**entry) for entry in parsed]
+    review.modified = datetime.datetime.now()
+    return True
+
+
 # --- Schema check -------------------------------------------------------------
 
 
@@ -196,13 +218,15 @@ def check_schema(session) -> Optional[str]:
     init/migrations/012-scans-reviews.sh still has the MI `reviews` table
     (research D10). Writing to it would fail with an obscure database error.
     Instead, the endpoints report this message.
+
+    A scans table that lacks the spec 014 `modified` column is reported
+    next, naming init/migrations/014-reviews-modified.sh.
     """
-    columns = set(session.execute(text(
-        "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
-        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'reviews'"
-    )).scalars().all())
+    columns = reviews_columns(session)
     if "mci" in columns or "created" not in columns:
         return _MIGRATION_HINT
+    if "modified" not in columns:
+        return MODIFIED_MIGRATION_HINT
     return None
 
 
@@ -217,7 +241,7 @@ def get_reviews(session, event_id: int) -> list:
     """Return this event's scans reviews with their regions, in entry order."""
     rows = session.execute(text(
         """
-        SELECT rv.id AS review_id, rv.reviewer_id,
+        SELECT rv.id AS review_id, rv.reviewer_id, rv.modified,
                CASE WHEN rv.reviewer_id = e.reviewer2_id THEN e.review2_date
                     ELSE e.review1_date END AS review_date,
                rr.position, rr.region, rr.region_other, rr.laterality,
@@ -235,9 +259,12 @@ def get_reviews(session, event_id: int) -> list:
         review = by_id.get(r["review_id"])
         if review is None:
             date = r["review_date"]
+            modified = r["modified"]
             review = {
                 "reviewer_id": r["reviewer_id"],
                 "review_date": date.isoformat() if date is not None else None,
+                # spec 014: when the author last edited it; None if never.
+                "modified": modified.isoformat() if modified is not None else None,
                 "regions": [],
             }
             by_id[r["review_id"]] = review
@@ -256,7 +283,7 @@ def get_reviews(session, event_id: int) -> list:
 
 EXPORT_HEADINGS = [
     "Event ID", "Patient ID", "Site", "Site Patient ID", "Event Date", "Status",
-    "Reviewer", "Review Date", "Position", "Region", "Region (other)",
+    "Reviewer", "Review Date", "Last Edited", "Position", "Region", "Region (other)",
     "Laterality", "T score", "Z score",
 ]
 
@@ -264,6 +291,7 @@ _EXPORT_SQL = """
     SELECT e.id AS event_id, e.patient_id, p.site, p.site_patient_id,
            e.event_date, e.status,
            r1.username AS reviewer, e.review1_date AS review_date,
+           rv.modified AS modified,
            rr.position, rr.region, rr.region_other, rr.laterality,
            rr.t_score, rr.z_score
       FROM events e
@@ -281,17 +309,30 @@ def _export_rows(session) -> list:
     return [dict(r) for r in session.execute(text(_EXPORT_SQL)).mappings().all()]
 
 
+def _export_cell(value):
+    """One export cell: blank for None, plain decimals, ISO datetimes."""
+    if value is None:
+        return ""
+    if isinstance(value, Decimal):
+        return format(value, "f")
+    if isinstance(value, datetime.datetime):
+        return value.isoformat()
+    return value
+
+
 def export_csv(session, writer) -> None:
-    """Write the scans events export (one row per region entry) to `writer`."""
+    """Write the scans events export (one row per region entry) to `writer`.
+
+    `Last Edited` (spec 014) is the review's `modified`, ISO-8601, or blank
+    if the review was never edited.
+    """
     writer.writerow(EXPORT_HEADINGS)
     for r in _export_rows(session):
         writer.writerow([
-            "" if r.get(key) is None else (
-                format(r[key], "f") if isinstance(r[key], Decimal) else r[key]
-            )
+            _export_cell(r.get(key))
             for key in (
                 "event_id", "patient_id", "site", "site_patient_id", "event_date",
-                "status", "reviewer", "review_date", "position", "region",
+                "status", "reviewer", "review_date", "modified", "position", "region",
                 "region_other", "laterality", "t_score", "z_score",
             )
         ])

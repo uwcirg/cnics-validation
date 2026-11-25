@@ -14,7 +14,12 @@ Until Phase B:
 * :func:`parse_review` refuses every submission, so no review is stored and
   the Phase B migration starts from an empty table;
 * :func:`get_reviews` returns no reviews, and :func:`export_csv` writes the
-  shared event columns with empty review cells.
+  shared event columns with empty review cells;
+* :func:`replace_review` (spec 014 review editing) is unreachable, since
+  there is never a stored review to edit.
+
+Spec 014 adds the nullable ``reviews.modified`` column and the export's
+``Last Edited`` column now, so Phase B inherits both.
 
 Phase B adds the answer columns, real validation, storage, retrieval, the
 export's answer columns and a :func:`check_schema` that detects an
@@ -34,7 +39,7 @@ from sqlalchemy import DateTime, text
 from sqlalchemy.dialects.mysql import INTEGER
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from . import ReviewValidationError
+from . import MODIFIED_MIGRATION_HINT, ReviewValidationError, reviews_columns
 
 REVIEW_FORM = "dischargesummaries"
 
@@ -59,6 +64,8 @@ class Reviews(DischargesummariesBase):
     created: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=text("CURRENT_TIMESTAMP")
     )
+    # Last edit by the author; NULL = never edited (spec 014).
+    modified: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, nullable=True)
 
 
 def parse_review(data: dict) -> dict:
@@ -71,19 +78,27 @@ def add_review(session, event_id: int, reviewer_id: int, parsed) -> None:
     raise RuntimeError("dischargesummaries reviews cannot be stored until Phase B")
 
 
+def replace_review(session, event_id: int, reviewer_id: int, parsed) -> bool:
+    """Unreachable in Phase A, because :func:`parse_review` always refuses."""
+    raise RuntimeError("dischargesummaries reviews cannot be stored until Phase B")
+
+
 def get_reviews(session, event_id: int) -> list:
-    """Return this event's reviews. Phase A stores none."""
+    """Return this event's reviews. Phase A stores none.
+
+    Phase B items must carry ``modified`` (spec 014; see the package docs).
+    """
     return []
 
 
 EXPORT_HEADINGS = [
     "Event ID", "Patient ID", "Site", "Site Patient ID", "Event Date", "Status",
-    "Reviewer", "Review Date",
+    "Reviewer", "Review Date", "Last Edited",
 ]
 
 _EXPORT_KEYS = (
     "event_id", "patient_id", "site", "site_patient_id", "event_date",
-    "status", "reviewer", "review_date",
+    "status", "reviewer", "review_date", "modified",
 )
 
 _EXPORT_SQL = """
@@ -108,5 +123,11 @@ def export_csv(session, writer) -> None:
 
 
 def check_schema(session) -> Optional[str]:
-    """Phase A's table has only the shared columns, so there is nothing to check."""
+    """Report a `reviews` table that lacks the spec 014 `modified` column.
+
+    Phase A's table otherwise has only the shared columns, so before spec 014
+    this returned None.
+    """
+    if "modified" not in reviews_columns(session):
+        return MODIFIED_MIGRATION_HINT
     return None

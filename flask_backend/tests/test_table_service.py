@@ -130,10 +130,16 @@ def test_get_events_for_reupload(mock_get_session):
     mock_session.execute.assert_called()
     all_queries = [str(c.args[0]) for c in mock_session.execute.call_args_list]
     all_params = [c.args[1] for c in mock_session.execute.call_args_list if len(c.args) > 1]
-    assert any('e.status = :status' in q for q in all_queries)
-    # get_events_for_reupload filters on status='uploaded' (events that have
-    # been uploaded but need re-upload by the uploader's site), not 'rejected'.
-    assert any(p.get('status') == 'uploaded' for p in all_params)
+    # spec 014 D10: every event inside the replacement window except
+    # `created` (before spec 014: status = 'uploaded' only).
+    assert any(
+        "e.status IN ('uploaded','scrubbed','screened','assigned','rejected')" in q
+        and 'e.send_date IS NULL' in q
+        and 'e.review1_date IS NULL' in q
+        and 'e.review2_date IS NULL' in q
+        and 'ORDER BY e.id ASC' in q
+        for q in all_queries
+    )
     assert any(p.get('limit') == 7 and p.get('offset') == 0 for p in all_params)
     assert rows == [{'ID': 3}]
 

@@ -64,13 +64,16 @@ def test_resolver_dischargesummaries_has_its_own_module(monkeypatch, caplog):
 
 
 def test_dischargesummaries_phase_a_refuses_reviews():
-    """Phase A: every submission is refused, and there is nothing to read or check."""
+    """Phase A: every submission is refused, and there is nothing to read.
+
+    `check_schema` is no longer a no-op: since spec 014 it reports a missing
+    `reviews.modified` (tests/test_reviews_modified_schema.py).
+    """
     ds = importlib.import_module("flask_backend.models.studies.dischargesummaries")
     with pytest.raises(studies.ReviewValidationError) as exc:
         ds.parse_review({"anything": 1})
     assert exc.value.message == "The discharge-summary review form is not available yet."
     assert ds.get_reviews(None, 1) == []
-    assert ds.check_schema(None) is None
     assert ds.REVIEW_TABLES == ("reviews",)
 
 

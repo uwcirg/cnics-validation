@@ -309,7 +309,7 @@ function App() {
           {/* Reviewer routes (reviewer or admin) */}
           <Route path="/events/review" element={
             <ProtectedRoute requiredRoles={['reviewer', 'admin']} auth={auth}>
-              <EventReview studyLabel={studyLabel} studyType={studyType} reviewForm={reviewForm} configResolved={configResolved} />
+              <EventReview studyLabel={studyLabel} studyType={studyType} reviewForm={reviewForm} configResolved={configResolved} workflow={workflow} />
             </ProtectedRoute>
           } />
           <Route path="/vte/review" element={

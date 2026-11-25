@@ -64,7 +64,8 @@ def test_send_sets_status_sent_when_sending_enabled(mock_get_session, mock_email
     """With sending enabled, `send_events` advances status to `sent`."""
     _clear_controls(monkeypatch)
     mock_email.return_value = {"attempted": 0, "sent": 0, "skipped": 0, "errors": []}
-    event = SimpleNamespace(id=1, sender_id=None, send_date=None, status="assigned")
+    event = SimpleNamespace(id=1, sender_id=None, send_date=None, status="assigned",
+                            upload_date="2026-01-01", scrub_date="2026-01-02", screen_date="2026-01-03")
     session = MagicMock()
     session.query.return_value.filter.return_value.all.return_value = [event]
     mock_get_session.return_value = session
@@ -81,7 +82,8 @@ def test_send_leaves_status_when_sending_disabled(mock_get_session, mock_email, 
     _clear_controls(monkeypatch)
     monkeypatch.setenv("ENABLE_SENDING", "false")
     mock_email.return_value = {"attempted": 0, "sent": 0, "skipped": 0, "errors": []}
-    event = SimpleNamespace(id=1, sender_id=None, send_date=None, status="assigned")
+    event = SimpleNamespace(id=1, sender_id=None, send_date=None, status="assigned",
+                            upload_date="2026-01-01", scrub_date="2026-01-02", screen_date="2026-01-03")
     session = MagicMock()
     session.query.return_value.filter.return_value.all.return_value = [event]
     mock_get_session.return_value = session

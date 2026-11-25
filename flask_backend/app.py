@@ -156,6 +156,15 @@ MIME_TYPE_MAP = {
 }
 
 
+def _iso(value) -> Optional[str]:
+    """ISO-8601 text for a date/datetime (str passed through; None stays None)."""
+    if value is None:
+        return None
+    if isinstance(value, (datetime.date, datetime.datetime)):
+        return value.isoformat()
+    return str(value)
+
+
 def get_limit(default: Optional[int] = None) -> Optional[int]:
     """Return the integer limit requested by the client."""
     value = request.args.get("limit", default)
@@ -717,6 +726,22 @@ def get_event_details(event_id: int):
                         type: string
                       value:
                         type: string
+                packet_replaceable:
+                  type: boolean
+                  description: >
+                    Whether this caller may replace the packet now: the site
+                    check plus the replacement window (spec 014 D1, D10)
+                file_number:
+                  type: integer
+                  description: >
+                    Packet version; the scrub page sends it back as
+                    `packet_version` (spec 014 D12). Null before any upload.
+                packet_replaced_at:
+                  type: string
+                  description: >
+                    ISO datetime of the latest packet replacement made while a
+                    reviewer was assigned, or null. Always null when sending is
+                    on (spec 014 D14).
       403:
         description: Caller is neither admin nor uploader, and is not one of this event's reviewers
       404:
@@ -741,10 +766,37 @@ def get_event_details(event_id: int):
         details = table_service.get_event_details(event_id)
         if not details:
             abort(404)
+        details['packet_replaceable'] = _caller_may_replace_packet(event_id, auth_user)
         return jsonify({'data': details})
     except Exception:
         app.logger.exception("Failed to fetch event details %d", event_id)
         return jsonify({'error': 'Failed to fetch event details'}), 500
+
+
+def _caller_may_replace_packet(event_id: int, auth_user) -> bool:
+    """`packet_replaceable` for `GET /api/events/<id>` (spec 014 D10).
+
+    False for a caller without the uploader or admin role, since
+    `upload_raw` would refuse them whatever the event's state. Fails closed:
+    an error here is logged and reported as False rather than failing the
+    whole details response, which every event page needs. `upload_raw`
+    re-checks the rule itself.
+    """
+    if not (auth_user.get('admin') or auth_user.get('uploader')):
+        return False
+    session = None
+    try:
+        session = models.get_session()
+        e = session.query(models.Events).get(event_id)
+        if e is None:
+            return False
+        return bool(packet_replaceable(session, e, auth_user)[0])
+    except Exception:
+        app.logger.warning("Could not decide packet_replaceable for event %d", event_id, exc_info=True)
+        return False
+    finally:
+        if session is not None:
+            session.close()
 
 
 @app.route('/api/sites')
@@ -1257,7 +1309,18 @@ def events_download(event_id: int):
         elif event is None:
             abort(404)
 
-        path = _find_scrubbed_packet(event_id)
+        # spec 014 D4: with scrubbing on, an event with no scrub_date has no
+        # current scrubbed copy (e.g. its packet was just replaced). A
+        # replacement renames the old copies in DOWNLOADS_DIR, but a legacy
+        # copy in read-only FILES_DIR cannot be renamed, so it is ignored
+        # here instead of being served as the current packet.
+        path = None
+        if not (
+            event is not None
+            and get_workflow_config().scrubbing
+            and getattr(event, 'scrub_date', None) is None
+        ):
+            path = _find_scrubbed_packet(event_id)
         raw = path is None
         if raw:
             path = _find_raw_packet(event_id, getattr(event, 'file_number', None))
@@ -1408,10 +1471,28 @@ def events_screen(event_id: int):
     """Record a screening decision for an event.
 
     Admin only (spec 012 FR-033, research D19).
+
+    With scrubbing on, an event whose current packet has not been scrubbed
+    (`scrub_date` is null, e.g. just after a packet replacement) cannot be
+    screened: every decision is refused with 409 and nothing is saved
+    (spec 014 D13). Before spec 014 any decision was applied at any status.
+    `accept` sets the status from `table_service.derive_pre_send_status`, so
+    an event that kept its assignment through a replacement returns to
+    `assigned` (spec 014 D3).
     ---
     responses:
+      200:
+        description: 'Decision recorded: {"data": {"updated": true}}'
+      400:
+        description: decision is not one of accept, rescrub, reject
       403:
         description: admin only (spec 012 FR-033)
+      404:
+        description: Event not found
+      409:
+        description: >
+          Scrubbing is on and the packet has not been scrubbed yet:
+          {"error": "This event's packet has not been scrubbed yet."}
     """
     data = request.get_json() or {}
     decision = (data.get('decision') or '').strip()
@@ -1419,16 +1500,19 @@ def events_screen(event_id: int):
     if decision not in {'accept', 'rescrub', 'reject'}:
         return jsonify({'error': 'decision must be one of: accept, rescrub, reject'}), 400
     auth_user = getattr(g, 'auth_user', None) or {}
+    cfg = get_workflow_config()
     session = models.get_session()
     try:
         e = session.query(models.Events).get(event_id)
         if e is None:
             return jsonify({'error': 'Event not found'}), 404
+        if cfg.scrubbing and e.scrub_date is None:
+            return jsonify({'error': "This event's packet has not been scrubbed yet."}), 409
         today = datetime.date.today()
         if decision == 'accept':
             e.screener_id = int(auth_user.get('id') or 0)
             e.screen_date = today
-            e.status = 'screened'
+            e.status = table_service.derive_pre_send_status(e, cfg)
         elif decision == 'rescrub':
             e.rescrub_message = message
             e.status = 'uploaded'
@@ -1942,18 +2026,60 @@ def events_upload_scrubbed(event_id: int):
 
     Admin only (spec 012 FR-033, research D19).
 
-    Expects multipart/form-data with field name 'scrubbed_file'. Saves the
-    uploaded file to DOWNLOADS_DIR using a conventional filename and updates
-    the event's scrubber, scrub_date, and status.
+    Expects multipart/form-data with field name 'scrubbed_file', and
+    `packet_version`: the `file_number` of the packet the scrub page loaded
+    (spec 014 D12). Saves the uploaded file to DOWNLOADS_DIR using a
+    conventional filename and updates the event's scrubber, scrub_date, and
+    status (`table_service.derive_pre_send_status`).
+
+    A scrubbed copy of a packet that has since been replaced is refused
+    before anything is written. Before spec 014 any file was accepted at any
+    status, and the status was always set to `scrubbed`.
     ---
+    consumes:
+      - multipart/form-data
+    parameters:
+      - name: event_id
+        in: path
+        type: integer
+        required: true
+        description: ID of the event
+      - name: scrubbed_file
+        in: formData
+        type: file
+        required: true
+        description: The scrubbed packet (zip, pdf, doc or docx)
+      - name: packet_version
+        in: formData
+        type: integer
+        required: true
+        description: The event's `file_number` as loaded by the scrub page
     responses:
+      200:
+        description: 'Scrubbed copy saved: {"data": {"saved": true}}'
+      400:
+        description: >
+          No file, an unsupported file type, or `packet_version` missing or
+          not an integer: {"error": "packet_version is required"}
       403:
         description: admin only (spec 012 FR-033)
+      404:
+        description: Event not found
+      409:
+        description: >
+          `packet_version` is not the event's current packet:
+          {"error": "This event's packet was replaced on <upload_date>.
+          Download the new packet and scrub it."} Nothing is saved.
     """
     try:
         file = request.files.get('scrubbed_file')
         if not file or not file.filename:
             return jsonify({'error': 'No file provided'}), 400
+
+        try:
+            packet_version = int(request.form.get('packet_version') or '')
+        except (TypeError, ValueError):
+            return jsonify({'error': 'packet_version is required'}), 400
 
         # Ensure downloads directory exists (may be a separate RW mount)
         try:
@@ -1968,22 +2094,30 @@ def events_upload_scrubbed(event_id: int):
         if ext not in ALLOWED_PACKET_EXTENSIONS:
             return jsonify({'error': 'Unsupported file type. Allowed: zip, pdf, doc, docx'}), 400
 
-        # Save using <event_id><ext> so the download endpoint can find it
-        out_name = f"{event_id}{ext}"
-        out_path = os.path.join(DOWNLOADS_DIR, out_name)
-        file.save(out_path)
-
-        # Update event metadata
         session = models.get_session()
         try:
             e = session.query(models.Events).get(event_id)
             if e is None:
                 return jsonify({'error': 'Event not found'}), 404
+            # spec 014 D12: refuse a scrub of a superseded packet, before
+            # anything is written to disk.
+            if packet_version != e.file_number:
+                return jsonify({'error': (
+                    f"This event's packet was replaced on {_iso(e.upload_date)}. "
+                    "Download the new packet and scrub it."
+                )}), 409
+
+            # Save using <event_id><ext> so the download endpoint can find it
+            out_name = f"{event_id}{ext}"
+            out_path = os.path.join(DOWNLOADS_DIR, out_name)
+            file.save(out_path)
+
+            # Update event metadata
             auth_user = getattr(g, 'auth_user', None) or {}
             if auth_user.get('id'):
                 e.scrubber_id = int(auth_user['id'])
             e.scrub_date = datetime.date.today()
-            e.status = 'scrubbed'
+            e.status = table_service.derive_pre_send_status(e, get_workflow_config())
             session.commit()
         finally:
             session.close()
@@ -2015,24 +2149,107 @@ def _uploader_may_act_on_event(session, event, auth_user) -> bool:
     return bool(user_site) and bool(event_site) and user_site == event_site
 
 
+PACKET_RELEASED_MESSAGE = (
+    "This packet has already been released to reviewers and can no longer be "
+    "replaced here. Contact the systems operator."
+)
+
+# spec 014: refusals shared by the review endpoints.
+REPROCESSING_MESSAGE = "This event's packet is being re-processed."
+REVIEWS_LOCKED_MESSAGE = (
+    "Both reviews for this event are complete, so they can no longer be changed."
+)
+NO_REVIEW_TO_EDIT_MESSAGE = "You have not submitted a review for this event"
+
+
+def packet_replaceable(session, event, auth_user) -> tuple[bool, Optional[str]]:
+    """Whether `auth_user` may replace this event's packet now (spec 014 D1).
+
+    Returns ``(allowed, reason)``; ``reason`` is ``'site'`` when the caller
+    is a non-admin at another site (403), ``'window'`` when the packet is
+    past the replacement window (409), and None when allowed.
+
+    The window is open while the event's status is in
+    ``table_service.REPLACEABLE_STATUSES`` and it has no send date and no
+    review date, so the packet has not been released to any reviewer. It is
+    the same for admins and same-site uploaders, except that only an admin
+    may act on a ``no_packet_available`` event (unchanged).
+
+    Observed before spec 014 (``app.py:2094`` at 9182d7b): an admin could
+    replace a packet at any status, including after it was sent or reviewed;
+    a non-admin only while the event was ``created`` or ``uploaded``.
+    """
+    auth_user = auth_user or {}
+    if not _uploader_may_act_on_event(session, event, auth_user):
+        return False, 'site'
+    if event.status == 'no_packet_available':
+        return (True, None) if bool(auth_user.get('admin')) else (False, 'window')
+    released = any(
+        getattr(event, column, None) is not None
+        for column in ('send_date', 'review1_date', 'review2_date')
+    )
+    if event.status in table_service.REPLACEABLE_STATUSES and not released:
+        return True, None
+    return False, 'window'
+
+
+def _supersede_scrubbed_copies(event_id: int) -> int:
+    """Rename this event's scrubbed copies in DOWNLOADS_DIR aside (spec 014 D4).
+
+    Each ``<id><ext>`` and the legacy ``event_<id>.zip`` becomes
+    ``superseded_<id>_<YYYYmmddHHMMSS><ext>``, a name the download lookup
+    never matches. Nothing is deleted; the systems operator cleans up.
+    Returns the number of files moved.
+    """
+    stamp = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+    names = [f"{event_id}{ext}" for ext in sorted(ALLOWED_PACKET_EXTENSIONS)]
+    names.append(f"event_{event_id}.zip")
+    moved = 0
+    for name in names:
+        src = os.path.join(DOWNLOADS_DIR, name)
+        if not os.path.isfile(src):
+            continue
+        _, ext = os.path.splitext(name)
+        dest = os.path.join(DOWNLOADS_DIR, f"superseded_{event_id}_{stamp}{ext}")
+        # `<id>.zip` and the legacy `event_<id>.zip` share a target name;
+        # never overwrite one superseded file with another.
+        n = 1
+        while os.path.exists(dest):
+            dest = os.path.join(DOWNLOADS_DIR, f"superseded_{event_id}_{stamp}_{n}{ext}")
+            n += 1
+        os.replace(src, dest)
+        moved += 1
+    return moved
+
+
 @app.route('/api/events/<int:event_id>/upload_raw', methods=['POST'])
 @requires_auth
 @requires_any_role('uploader', 'admin')
 def events_upload_raw(event_id: int):
-    """Accept a raw packet upload and mark the event as uploaded (pre-scrub).
+    """Accept a packet upload, or replace the existing packet (spec 014).
 
     Expects multipart/form-data with field name 'chart_file'. Saves the
     uploaded file under DOWNLOADS_DIR using legacy-style name
     "orig_<eventId>_<fileNumber>.<ext>", updates file_number, original_name,
-    uploader_id, upload_date, and sets status to 'uploaded'.
+    uploader_id and upload_date, and sets the status from
+    `table_service.derive_pre_send_status`.
 
     Upload is restricted to uploaders at the same site as the event's patient
-    (or admins). A non-admin may upload only while the event is `created` or
-    `uploaded`; later, the endpoint returns 409 and saves nothing.
+    (or admins), and to the replacement window (`packet_replaceable`): until
+    the packet is sent, or with sending off until a review is submitted.
+    Past the window, admins too get 409 and nothing is saved.
+
+    A **replacement** (the event already had an upload) also undoes the work
+    done on the old packet (spec 014 D2, D4, D14): the scrubbed copies in
+    DOWNLOADS_DIR are renamed `superseded_<id>_<timestamp><ext>`, the scrub
+    and screen dates and users are cleared, the reviewer assignment is kept,
+    and a `logs` row (`events`/`replace_packet`) is written.
 
     Observed before spec 013 (research D3): no status check. A same-site
     uploader could upload at any status, which reset a scrubbed, assigned or
     done event to `uploaded` while its scrub and assign dates stayed set.
+    Spec 013 limited non-admins to `created`/`uploaded`; admins could still
+    upload at any status, until spec 014.
     ---
     consumes:
       - multipart/form-data
@@ -2049,7 +2266,10 @@ def events_upload_raw(event_id: int):
         description: The packet (zip, pdf, doc or docx)
     responses:
       200:
-        description: Packet saved; event status is `uploaded`
+        description: >
+          Packet saved; the status is derived from the completed stages
+          (`uploaded`, or `assigned` for a kept assignment in a study with no
+          scrub or screen step). Body: {"data": {"saved": true}}
       400:
         description: No file, or an unsupported file type
       403:
@@ -2058,9 +2278,11 @@ def events_upload_raw(event_id: int):
         description: Event not found
       409:
         description: >
-          Non-admin caller and the event is past upload (status not `created`
-          or `uploaded`): {"error": "This event has moved past upload; ask an
-          administrator."} Nothing is saved.
+          The packet has been released to reviewers (sent, or reviewed), or a
+          non-admin is acting on a `no_packet_available` event:
+          {"error": "This packet has already been released to reviewers and
+          can no longer be replaced here. Contact the systems operator."}
+          Nothing is saved.
     """
     try:
         file = request.files.get('chart_file')
@@ -2087,21 +2309,43 @@ def events_upload_raw(event_id: int):
                 return jsonify({'error': 'Event not found'}), 404
 
             auth_user = getattr(g, 'auth_user', None) or {}
-            if not _uploader_may_act_on_event(session, e, auth_user):
-                return jsonify({'error': 'Uploader must match patient site'}), 403
+            # spec 014 D1: the site check first (403), then the window (409).
+            allowed, reason = packet_replaceable(session, e, auth_user)
+            if not allowed:
+                if reason == 'site':
+                    return jsonify({'error': 'Uploader must match patient site'}), 403
+                return jsonify({'error': PACKET_RELEASED_MESSAGE}), 409
 
-            # spec 013 D3: once past upload, only an admin may replace the file.
-            if not bool(auth_user.get('admin')) and e.status not in ('created', 'uploaded'):
-                return jsonify({
-                    'error': 'This event has moved past upload; ask an administrator.'
-                }), 409
+            is_replacement = e.upload_date is not None
+            was_assigned = e.reviewer1_id is not None
 
-            # Generate file number (legacy behavior)
+            # Generate file number (legacy behavior). It changes on every
+            # upload, so it doubles as the packet version (spec 014 D12).
             file_number = random.randint(1, 1_000_000_000)
             original_name = file.filename
             out_name = f"orig_{event_id}_{file_number}{ext}"
             out_path = os.path.join(DOWNLOADS_DIR, out_name)
             file.save(out_path)
+
+            if is_replacement:
+                # spec 014 D4: the old scrubbed copy must never be served again.
+                moved = _supersede_scrubbed_copies(event_id)
+                if moved:
+                    app.logger.info("Superseded %d scrubbed file(s) for event %d", moved, event_id)
+                # spec 014 D2: undo the stages done on the old packet. The
+                # reviewer assignment and the rescrub/reject messages are kept.
+                e.scrub_date = None
+                e.scrubber_id = None
+                e.screen_date = None
+                e.screener_id = None
+                # spec 014 D14: the audit record (ids and a flag only, no PHI).
+                session.add(models.Logs(
+                    user_id=int(auth_user.get('id') or 0),
+                    controller='events',
+                    action='replace_packet',
+                    params=f'event_id={event_id};assigned={1 if was_assigned else 0}',
+                    time=datetime.datetime.now(),
+                ))
 
             # Update event metadata
             if auth_user.get('id'):
@@ -2109,7 +2353,8 @@ def events_upload_raw(event_id: int):
             e.file_number = file_number
             e.original_name = original_name
             e.upload_date = datetime.date.today()
-            e.status = 'uploaded'
+            # After upload_date is set, or a first upload would derive `created`.
+            e.status = table_service.derive_pre_send_status(e, get_workflow_config())
             session.commit()
         finally:
             session.close()
@@ -2496,6 +2741,33 @@ def events_assign_many():
 @requires_auth
 @requires_roles('admin')
 def events_send_many():
+    """Mark events as sent and email their reviewers. Admin only.
+
+    The whole batch is refused, with nothing changed and no email sent, if
+    any event has an incomplete enabled pre-assignment stage, as while a
+    replaced packet is re-processed (spec 014 D3).
+    ---
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            event_ids:
+              type: array
+              items:
+                type: integer
+    responses:
+      200:
+        description: Events sent; DB update count and email summary
+      400:
+        description: >
+          `event_ids` missing, or events not ready to send:
+          {"error": "These events are not ready to send: 12, 15"}
+      403:
+        description: admin only
+    """
     data = request.get_json() or {}
     event_ids = data.get('event_ids') or []
     if not isinstance(event_ids, list) or not event_ids:
@@ -2505,6 +2777,9 @@ def events_send_many():
     try:
         result = table_service.send_events(event_ids, int(sender_id))
         return jsonify({'data': result})
+    except table_service.ValidationError as ve:
+        # spec 014 D3: an event in the batch is being re-processed.
+        return jsonify({'error': str(ve)}), 400
     except Exception:
         app.logger.exception('Failed to send events')
         return jsonify({'error': 'Failed to send events'}), 500
@@ -2576,7 +2851,10 @@ def events_review(event_id: int):
       404:
         description: Event not found
       409:
-        description: The submitter has already reviewed this event (FR-024)
+        description: >
+          The submitter has already reviewed this event (FR-024), or the
+          event's packet is being re-processed after a replacement:
+          {"error": "This event's packet is being re-processed."} (spec 014)
       503:
         description: This study's review tables are not migrated
     """
@@ -2615,6 +2893,12 @@ def events_review(event_id: int):
                 'error': 'Submitter is not an assigned reviewer for this event'
             }), 403
 
+        # spec 014 D3: after a packet replacement the event keeps its
+        # reviewer, but is not reviewable until the new packet has passed
+        # every enabled pre-assignment stage again.
+        if _being_reprocessed(e, cfg):
+            return jsonify({'error': REPROCESSING_MESSAGE}), 409
+
         # A reviewer reviews an event once (FR-024). Before spec 012 a second
         # POST stored a second review and re-stamped the status; a submitted
         # review is final, so refuse it and write nothing (research D5).
@@ -2650,6 +2934,17 @@ def events_review(event_id: int):
         session.close()
 
 
+def _being_reprocessed(e, cfg) -> bool:
+    """Whether `e` kept its reviewer through a packet replacement and the new
+    packet has not yet passed every enabled pre-assignment stage (spec 014 D3).
+
+    Only an unsent event can be in that state: the replacement window closes
+    when the event is sent. Limiting the check to unsent events keeps legacy
+    rows that were sent with a stage date missing reviewable.
+    """
+    return getattr(e, 'send_date', None) is None and not table_service.pre_assignment_complete(e, cfg)
+
+
 def _reviewer_slot(e, user_id) -> Optional[int]:
     """Return the reviewer slot (1, 2 or 3) `user_id` holds on event `e`,
     or None. Shared by review submission and retrieval (spec 012)."""
@@ -2657,6 +2952,157 @@ def _reviewer_slot(e, user_id) -> Optional[int]:
         if user_id is not None and getattr(e, f'reviewer{slot}_id') == user_id:
             return slot
     return None
+
+
+def review_editable(e, slot, cfg) -> tuple[bool, Optional[str]]:
+    """Whether the reviewer in `slot` may edit their submitted review (spec 014).
+
+    Returns ``(editable, locked_reason)`` per data-model.md "Editability":
+
+    - not slot 1 or 2, or no review submitted in that slot -> (False, None);
+    - the packet is being re-processed after a replacement ->
+      (False, REPROCESSING_MESSAGE);
+    - two reviewers and the other slot has submitted -> (False,
+      REVIEWS_LOCKED_MESSAGE), so neither review changes once both exist;
+    - otherwise (True, None). A single-reviewer study stays editable after
+      the event is `done`.
+
+    Reads `cfg.reviewer_count` and the stage flags, never the study name.
+    """
+    if slot not in (1, 2) or getattr(e, f'review{slot}_date', None) is None:
+        return False, None
+    if _being_reprocessed(e, cfg):
+        return False, REPROCESSING_MESSAGE
+    other = 2 if slot == 1 else 1
+    if cfg.reviewer_count == 2 and getattr(e, f'review{other}_date', None) is not None:
+        return False, REVIEWS_LOCKED_MESSAGE
+    return True, None
+
+
+@app.route('/api/events/<int:event_id>/review', methods=['PUT'])
+@requires_auth
+@requires_any_role('reviewer', 'admin')
+def events_review_put(event_id: int):
+    """Edit the caller's own submitted review (spec 014 research D6).
+
+    The body is the same as for POST and is validated by this study's module
+    (`parse_review`). The caller's stored answers are overwritten in place
+    (`replace_review`) and stamped with `modified`; `events.status` and the
+    `reviewN_date` submission dates are never changed.
+
+    Editable while `review_editable` allows it: always in a single-reviewer
+    study, and in a two-reviewer study until the other reviewer submits.
+    Like POST, an admin may edit only a review they wrote in slot 1 or 2.
+    ---
+    parameters:
+      - name: event_id
+        in: path
+        type: integer
+        required: true
+        description: ID of the event whose review is edited
+      - name: body
+        in: body
+        required: true
+        description: The study's review body, as for POST
+        schema:
+          type: object
+    responses:
+      200:
+        description: Edit saved
+        schema:
+          type: object
+          properties:
+            data:
+              type: object
+              properties:
+                event_id:
+                  type: integer
+                status:
+                  type: string
+                  description: Unchanged by the edit
+                modified:
+                  type: string
+                  description: ISO-8601 datetime of this edit
+      400:
+        description: Invalid review body (`error`, optional `fields`), as for POST
+      403:
+        description: >
+          Caller is not reviewer 1 or 2 of this event:
+          {"error": "Submitter is not an assigned reviewer for this event"}
+      404:
+        description: Event not found
+      409:
+        description: >
+          The review cannot be edited: {"error": "You have not submitted a
+          review for this event"}, {"error": "Both reviews for this event are
+          complete, so they can no longer be changed."}, or {"error": "This
+          event's packet is being re-processed."}
+      503:
+        description: >
+          This study's review tables are not migrated (names
+          init/migrations/014-reviews-modified.sh)
+    """
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not data:
+        return jsonify({'error': 'A review body is required'}), 400
+    study = get_study_module()
+    try:
+        parsed = study.parse_review(data)
+    except ReviewValidationError as err:
+        body = {'error': err.message}
+        if err.fields:
+            body['fields'] = err.fields
+        return jsonify(body), 400
+
+    auth_user = getattr(g, 'auth_user', None) or {}
+    user_id = int(auth_user.get('id') or 0)
+    cfg = get_workflow_config()
+    session = models.get_session()
+    try:
+        schema_error = _study_schema_error(study, session)
+        if schema_error:
+            return jsonify({'error': schema_error}), 503
+
+        e = session.query(models.Events).get(event_id)
+        if e is None:
+            return jsonify({'error': 'Event not found'}), 404
+
+        slot = _reviewer_slot(e, user_id)
+        if slot not in (1, 2):
+            return jsonify({
+                'error': 'Submitter is not an assigned reviewer for this event'
+            }), 403
+
+        # Re-checked here, immediately before the write: the other reviewer
+        # may have submitted since the page loaded (shared tables are MyISAM,
+        # so there is no transaction to lean on).
+        editable, reason = review_editable(e, slot, cfg)
+        if not editable:
+            return jsonify({'error': reason or NO_REVIEW_TO_EDIT_MESSAGE}), 409
+
+        if not study.replace_review(session, event_id, user_id, parsed):
+            return jsonify({'error': NO_REVIEW_TO_EDIT_MESSAGE}), 409
+
+        session.commit()
+        modified = None
+        own = [
+            r for r in study.get_reviews(session, event_id)
+            if r.get('reviewer_id') == user_id
+        ]
+        if own:
+            modified = own[0].get('modified')
+        app.logger.info("Review edited for event %d (slot %d)", event_id, slot)
+        return jsonify({'data': {
+            'event_id': event_id,
+            'status': e.status,
+            'modified': modified,
+        }})
+    except Exception:
+        session.rollback()
+        app.logger.exception('Failed to edit review for event %d', event_id)
+        return jsonify({'error': 'Failed to save review changes'}), 500
+    finally:
+        session.close()
 
 
 @app.route('/api/events/<int:event_id>/review', methods=['GET'])
@@ -2671,10 +3117,13 @@ def events_review_get(event_id: int):
     also has `slot`, the reviewer slot its author holds, or null. Answers go
     to admins only; for any other caller `reviews` is empty (FR-028).
 
-    `mine` is `{slot, review_date}` once the caller has reviewed this event in
-    slot 1 or 2, else null. This is the same rule as the POST 409 guard, and
-    the review page uses it to show "already reviewed" instead of the form
-    (FR-029).
+    `mine` is non-null once the caller has reviewed this event in slot 1 or
+    2, else null. This is the same rule as the POST 409 guard, and the review
+    page uses it instead of showing an empty form (FR-029). Since spec 014
+    (research D8) it also carries `modified`, `editable` and `locked_reason`
+    (`review_editable`), and `answers`: the caller's own review in this
+    study's shape, so the page can pre-fill the edit form or show it
+    read-only. It never contains another reviewer's answers.
 
     Admins may read any event; a reviewer only an event they are assigned to
     in slot 1 or 2.
@@ -2712,6 +3161,19 @@ def events_review_get(event_id: int):
                       type: integer
                     review_date:
                       type: string
+                      description: Original submission date (unchanged by edits)
+                    modified:
+                      type: string
+                      description: ISO-8601 datetime of the last edit, or null
+                    editable:
+                      type: boolean
+                      description: Whether the caller may still edit (spec 014)
+                    locked_reason:
+                      type: string
+                      description: Why the review cannot be edited, or null
+                    answers:
+                      type: object
+                      description: The caller's own review, in this study's shape
       403:
         description: Caller is neither an admin nor an assigned reviewer
       404:
@@ -2735,15 +3197,31 @@ def events_review_get(event_id: int):
             return jsonify({'error': 'Not an assigned reviewer for this event'}), 403
 
         mine = None
+        stored = None
         my_slot = _reviewer_slot(e, user_id)
         if my_slot in (1, 2):
             my_date = getattr(e, f'review{my_slot}_date')
             if my_date is not None:
-                mine = {'slot': my_slot, 'review_date': my_date.isoformat()}
+                # spec 014 D8: the caller's own answers (never anyone
+                # else's), and whether they may still change them.
+                stored = study.get_reviews(session, event_id)
+                own = [r for r in stored if r.get('reviewer_id') == user_id]
+                answers = dict(own[0]) if own else None
+                if answers is not None:
+                    answers['slot'] = my_slot
+                editable, locked_reason = review_editable(e, my_slot, get_workflow_config())
+                mine = {
+                    'slot': my_slot,
+                    'review_date': _iso(my_date),
+                    'modified': answers.get('modified') if answers else None,
+                    'editable': editable,
+                    'locked_reason': locked_reason,
+                    'answers': answers,
+                }
 
         reviews = []
         if is_admin:
-            reviews = study.get_reviews(session, event_id)
+            reviews = stored if stored is not None else study.get_reviews(session, event_id)
             for review in reviews:
                 review['slot'] = _reviewer_slot(e, review.get('reviewer_id'))
         return jsonify({'data': {
